@@ -4,7 +4,7 @@ PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into N
 
 ## Current status
 
-Version 0.1 provides a complete PNG-to-CHR conversion flow:
+Version 0.2 provides a complete PNG-to-CHR conversion flow:
 
 - PNG selection and drag-and-drop import;
 - local image decoding and preview;
@@ -13,7 +13,8 @@ Version 0.1 provides a complete PNG-to-CHR conversion flow:
 - 8×8 tile extraction in reading order;
 - enlarged, pixel-perfect tile previews with decimal and hexadecimal IDs;
 - NES 2bpp CHR encoding;
-- `.chr` download without tile deduplication;
+- optional exact tile deduplication with an immediate grid preview;
+- `.chr` download using either the original or deduplicated tile set;
 - Portuguese (Brazil) and English user interfaces;
 - responsive, keyboard-accessible controls and translated diagnostics.
 
@@ -102,7 +103,7 @@ Each 8×8 tile produces 16 bytes:
 - the low bit of each color index goes to bitplane 0;
 - the high bit goes to bitplane 1.
 
-Tiles are exported from left to right and then top to bottom. Version 0.1 does not deduplicate identical tiles.
+Tiles are exported from left to right and then top to bottom. Deduplication is disabled by default. When enabled, exact pixel duplicates are omitted, first occurrences keep their order, and tile IDs are reassigned to match their positions in the exported CHR data. Disabling the option restores the original tile list.
 
 ## Development commands
 
@@ -114,18 +115,18 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.1 limitations
+## Version 0.2 limitations
 
 - No automatic color reduction or NES master-palette matching
 - No manual pixel editing
-- No tile removal or deduplication
+- No manual tile removal
 - No playfield editor
 - No nametable or Attribute Table generation
 - No multiple NES palettes
 - No metatiles, metasprites, or animations
 - No cloud storage or backend
 
-The current color limit applies to the whole imported image. Per-tile palette analysis is outside the scope of version 0.1.
+The current color limit applies to the whole imported image. Per-tile palette analysis is outside the scope of version 0.2. Deduplication compares exact indexed pixel data and does not consider flipped or rotated variants equivalent.
 
 ## Project structure
 
@@ -142,4 +143,4 @@ The `core` directory does not access the DOM or Canvas API, which keeps conversi
 
 ## Roadmap
 
-Possible future versions may add an NES palette workflow, tile editing and deduplication, nametable and Attribute Table generation, metatiles, metasprites, and animation tooling. These features are intentionally excluded from version 0.1.
+Possible future versions may add an NES palette workflow, tile editing, nametable and Attribute Table generation, flip-aware deduplication, metatiles, metasprites, and animation tooling. These features are intentionally excluded from version 0.2.

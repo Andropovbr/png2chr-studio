@@ -14,7 +14,7 @@ export interface ProjectView {
   readonly sourceImage: ImageData | null;
   readonly indexedImage: IndexedImage | null;
   readonly tiles: readonly Tile[];
-  readonly chr: Uint8Array | null;
+  readonly deduplicationEnabled: boolean;
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

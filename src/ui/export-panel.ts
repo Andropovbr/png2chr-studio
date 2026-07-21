@@ -3,6 +3,8 @@ import { t } from '../i18n';
 export function createExportPanel(
   outputName: string,
   tileCount: number,
+  originalTileCount: number,
+  deduplicationEnabled: boolean,
   enabled: boolean,
   onDownload: () => void,
 ): HTMLElement {
@@ -12,7 +14,12 @@ export function createExportPanel(
   heading.textContent = t('exportTitle');
   const description = document.createElement('p');
   description.textContent = enabled
-    ? t('exportReady', { count: tileCount })
+    ? deduplicationEnabled
+      ? t('exportReadyDeduplicated', {
+          count: tileCount,
+          total: originalTileCount,
+        })
+      : t('exportReady', { count: tileCount })
     : t('exportUnavailable');
   const button = document.createElement('button');
   button.type = 'button';

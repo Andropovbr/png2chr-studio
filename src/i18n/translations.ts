@@ -38,6 +38,10 @@ const en = {
   colorsFoundLabel: 'Opaque colors found:',
   tilesTitle: 'CHR tiles',
   tilesEmpty: 'No tiles to display yet.',
+  deduplicateTiles: 'Remove duplicate tiles',
+  deduplicationHint:
+    'Exact duplicate tiles can be hidden and omitted from the CHR file.',
+  tileVisibilitySummary: 'Showing {visible} of {total} tiles.',
   tileDecimalId: 'ID {id}',
   tileHexId: '${id}',
   tilePosition: 'Column {column}, row {row}',
@@ -46,7 +50,9 @@ const en = {
   defaultOutputName: 'image.chr',
   downloadChr: 'Download {name}',
   exportUnavailable: 'Import a valid image to enable CHR export.',
-  exportReady: '{count} tiles will be exported without deduplication.',
+  exportReady: '{count} tiles will be exported.',
+  exportReadyDeduplicated:
+    '{count} unique tiles out of {total} will be exported.',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -94,6 +100,10 @@ const ptBr = {
   colorsFoundLabel: 'Cores opacas encontradas:',
   tilesTitle: 'Tiles CHR',
   tilesEmpty: 'Ainda não há tiles para exibir.',
+  deduplicateTiles: 'Remover tiles duplicados',
+  deduplicationHint:
+    'Tiles exatamente iguais podem ser ocultados e omitidos do arquivo CHR.',
+  tileVisibilitySummary: 'Exibindo {visible} de {total} tiles.',
   tileDecimalId: 'ID {id}',
   tileHexId: '${id}',
   tilePosition: 'Coluna {column}, linha {row}',
@@ -103,7 +113,8 @@ const ptBr = {
   downloadChr: 'Baixar {name}',
   exportUnavailable:
     'Importe uma imagem válida para habilitar a exportação CHR.',
-  exportReady: '{count} tiles serão exportados sem deduplicação.',
+  exportReady: '{count} tiles serão exportados.',
+  exportReadyDeduplicated: '{count} tiles únicos de {total} serão exportados.',
 } as const satisfies TranslationTable;
 
 export const translations = {

@@ -2,6 +2,7 @@ import './style.css';
 
 import { encodeChr } from './core/chr-encoder';
 import { analyzeImage } from './core/image-analysis';
+import { deduplicateTiles } from './core/tile-deduplication';
 import { extractTiles } from './core/tile-extraction';
 import { ImageAnalysisError } from './core/types';
 import { getLocale, subscribeToLocale, t } from './i18n';
@@ -33,7 +34,7 @@ let project: ProjectView = {
   sourceImage: null,
   indexedImage: null,
   tiles: [],
-  chr: null,
+  deduplicationEnabled: false,
   error: null,
   loading: false,
 };
@@ -45,6 +46,10 @@ function render(): void {
     project.fileName === null
       ? t('defaultOutputName')
       : toChrFileName(project.fileName);
+  const visibleTiles = project.deduplicationEnabled
+    ? deduplicateTiles(project.tiles)
+    : project.tiles;
+  const chr = project.indexedImage === null ? null : encodeChr(visibleTiles);
   const workspace = document.createElement('div');
   workspace.className = 'workspace';
   workspace.append(
@@ -60,18 +65,29 @@ function render(): void {
       width: project.width,
       height: project.height,
       indexedImage: project.indexedImage,
-      tileCount: project.tiles.length,
-      chrSize: project.chr?.length ?? null,
+      tileCount: visibleTiles.length,
+      chrSize: chr?.length ?? null,
       error: project.error,
     }),
-    createTileGrid(project.tiles, project.indexedImage),
+    createTileGrid(
+      visibleTiles,
+      project.indexedImage,
+      project.tiles.length,
+      project.deduplicationEnabled,
+      (enabled) => {
+        project = { ...project, deduplicationEnabled: enabled };
+        render();
+      },
+    ),
     createExportPanel(
       outputName,
+      visibleTiles.length,
       project.tiles.length,
-      project.chr !== null,
+      project.deduplicationEnabled,
+      chr !== null,
       () => {
-        if (project.chr !== null) {
-          downloadBytes(project.chr, outputName);
+        if (chr !== null) {
+          downloadBytes(chr, outputName);
         }
       },
     ),
@@ -84,7 +100,6 @@ function setProjectError(error: DisplayError): void {
     ...project,
     indexedImage: null,
     tiles: [],
-    chr: null,
     error,
     loading: false,
   };
@@ -110,6 +125,7 @@ async function decodeImage(file: File): Promise<ImageData> {
 
 async function loadFile(file: File): Promise<void> {
   const activeRequest = ++requestId;
+  const deduplicationEnabled = project.deduplicationEnabled;
   project = {
     fileName: file.name,
     width: null,
@@ -117,7 +133,7 @@ async function loadFile(file: File): Promise<void> {
     sourceImage: null,
     indexedImage: null,
     tiles: [],
-    chr: null,
+    deduplicationEnabled,
     error: null,
     loading: true,
   };
@@ -156,7 +172,6 @@ async function loadFile(file: File): Promise<void> {
       ...project,
       indexedImage,
       tiles,
-      chr: encodeChr(tiles),
       error: null,
       loading: false,
     };

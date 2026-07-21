@@ -27,12 +27,40 @@ function renderTile(
 export function createTileGrid(
   tiles: readonly Tile[],
   image: IndexedImage | null,
+  originalTileCount: number,
+  deduplicationEnabled: boolean,
+  onDeduplicationChange: (enabled: boolean) => void,
 ): HTMLElement {
   const section = document.createElement('section');
   section.className = 'panel tiles-panel';
   const heading = document.createElement('h2');
   heading.textContent = t('tilesTitle');
-  section.append(heading);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'tile-toolbar';
+  const checkboxLabel = document.createElement('label');
+  checkboxLabel.className = 'checkbox-control';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = deduplicationEnabled;
+  checkbox.disabled = originalTileCount === 0;
+  checkbox.addEventListener('change', () => {
+    onDeduplicationChange(checkbox.checked);
+  });
+  const checkboxText = document.createElement('span');
+  checkboxText.textContent = t('deduplicateTiles');
+  checkboxLabel.append(checkbox, checkboxText);
+
+  const hint = document.createElement('small');
+  hint.textContent =
+    originalTileCount === 0
+      ? t('deduplicationHint')
+      : t('tileVisibilitySummary', {
+          visible: tiles.length,
+          total: originalTileCount,
+        });
+  toolbar.append(checkboxLabel, hint);
+  section.append(heading, toolbar);
 
   if (tiles.length === 0 || image === null) {
     const empty = document.createElement('p');
