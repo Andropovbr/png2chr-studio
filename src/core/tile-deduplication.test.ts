@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deduplicateTiles } from './tile-deduplication';
+import { deduplicateTiles, deduplicateTileSet } from './tile-deduplication';
 import type { Tile } from './types';
 
 function tile(id: number, colorIndex: number): Tile {
@@ -39,5 +39,16 @@ describe('tile deduplication', () => {
     second.pixels[63] = 1;
 
     expect(deduplicateTiles([first, second])).toHaveLength(2);
+  });
+
+  it('maps every original tile to its exported unique index', () => {
+    const result = deduplicateTileSet([
+      tile(0, 3),
+      tile(1, 1),
+      tile(2, 3),
+      tile(3, 1),
+    ]);
+
+    expect(Array.from(result.originalToUnique)).toEqual([0, 1, 0, 1]);
   });
 });

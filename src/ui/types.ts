@@ -1,3 +1,4 @@
+import type { PlayfieldEncodingError } from '../core/playfield-encoder';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
 
@@ -7,6 +8,8 @@ export interface DisplayError {
   readonly colors?: readonly string[];
 }
 
+export type ProjectMode = 'tileset' | 'playfield';
+
 export interface ProjectView {
   readonly fileName: string | null;
   readonly width: number | null;
@@ -14,9 +17,26 @@ export interface ProjectView {
   readonly sourceImage: ImageData | null;
   readonly indexedImage: IndexedImage | null;
   readonly tiles: readonly Tile[];
+  readonly mode: ProjectMode;
   readonly deduplicationEnabled: boolean;
   readonly error: DisplayError | null;
   readonly loading: boolean;
+}
+
+export function displayErrorFromPlayfield(
+  error: PlayfieldEncodingError,
+): DisplayError {
+  switch (error.code) {
+    case 'invalid-playfield-dimensions':
+      return { key: 'invalidPlayfieldDimensions' };
+    case 'invalid-playfield-tiles':
+      return { key: 'invalidPlayfieldTiles' };
+    case 'too-many-playfield-tiles':
+      return {
+        key: 'tooManyPlayfieldTiles',
+        variables: { count: error.tileCount ?? 0 },
+      };
+  }
 }
 
 export function displayErrorFromAnalysis(

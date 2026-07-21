@@ -176,6 +176,52 @@ select {
   max-width: 30rem;
 }
 
+.mode-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+  border: 0;
+  padding: 0;
+}
+
+.mode-selector legend {
+  width: 100%;
+  margin-bottom: 0.45rem;
+  font-weight: 700;
+}
+
+.mode-selector label {
+  display: flex;
+  flex: 1 1 10rem;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+  cursor: pointer;
+}
+
+.mode-selector label:has(input:checked) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgb(87 211 164 / 8%);
+}
+
+.mode-selector label:focus-within {
+  outline: 3px solid #b6ffe3;
+  outline-offset: 2px;
+}
+
+.mode-selector input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.mode-selector small {
+  flex-basis: 100%;
+}
+
 .button {
   display: inline-flex;
   justify-content: center;
@@ -350,6 +396,16 @@ input:focus-visible + label {
 .tile-ids strong {
   color: var(--accent);
   font-family: ui-monospace, monospace;
+}
+
+.export-actions {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.export-actions:last-child {
+  margin-bottom: 0;
 }
 
 .export-panel .button {

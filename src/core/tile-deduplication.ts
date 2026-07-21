@@ -1,5 +1,10 @@
 import type { Tile } from './types';
 
+export interface TileDeduplicationResult {
+  readonly tiles: readonly Tile[];
+  readonly originalToUnique: Uint32Array;
+}
+
 function tileKey(tile: Tile): string {
   return tile.pixels.join(',');
 }
@@ -8,19 +13,30 @@ function tileKey(tile: Tile): string {
  * Removes exact pixel duplicates while preserving the first occurrence order.
  * IDs are reassigned because they represent positions in the exported CHR data.
  */
-export function deduplicateTiles(tiles: readonly Tile[]): Tile[] {
+export function deduplicateTileSet(
+  tiles: readonly Tile[],
+): TileDeduplicationResult {
   const uniqueTiles: Tile[] = [];
-  const knownTiles = new Set<string>();
+  const indicesByTile = new Map<string, number>();
+  const originalToUnique = new Uint32Array(tiles.length);
 
-  tiles.forEach((tile) => {
+  tiles.forEach((tile, originalIndex) => {
     const key = tileKey(tile);
-    if (knownTiles.has(key)) {
+    const knownIndex = indicesByTile.get(key);
+    if (knownIndex !== undefined) {
+      originalToUnique[originalIndex] = knownIndex;
       return;
     }
 
-    knownTiles.add(key);
-    uniqueTiles.push({ ...tile, id: uniqueTiles.length });
+    const uniqueIndex = uniqueTiles.length;
+    indicesByTile.set(key, uniqueIndex);
+    originalToUnique[originalIndex] = uniqueIndex;
+    uniqueTiles.push({ ...tile, id: uniqueIndex });
   });
 
-  return uniqueTiles;
+  return { tiles: uniqueTiles, originalToUnique };
+}
+
+export function deduplicateTiles(tiles: readonly Tile[]): readonly Tile[] {
+  return deduplicateTileSet(tiles).tiles;
 }

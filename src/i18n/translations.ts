@@ -1,11 +1,17 @@
 const en = {
   appTitle: 'PNG2CHR Studio',
   appDescription:
-    'Convert PNG artwork into NES CHR tiles, entirely in your browser.',
+    'Convert PNG artwork and playfields into NES data, entirely in your browser.',
   languageLabel: 'Language',
   localePtBr: 'Português (Brasil)',
   localeEn: 'English',
   importTitle: 'Import PNG',
+  imageModeLabel: 'Image purpose',
+  tilesetMode: 'Tileset / graphics',
+  playfieldMode: 'Playfield / game screen',
+  tilesetModeHint: 'Use any PNG whose width and height are multiples of 8.',
+  playfieldModeHint:
+    'A playfield must be exactly 256 × 240 px (32 × 30 tiles).',
   choosePng: 'Choose PNG',
   dropPrompt: 'or drop a PNG file here',
   processingLocal: 'Your image is processed locally and is never uploaded.',
@@ -20,13 +26,15 @@ const en = {
   colorCountLabel: 'Color indices',
   tileCountLabel: 'Tiles',
   chrSizeLabel: 'CHR size',
+  nametableSizeLabel: 'Nametable size',
+  attributeTableSizeLabel: 'Attribute Table size',
   byteCount: '{count} bytes',
   unavailableValue: '—',
   colorMappingTitle: 'Color mapping',
   colorIndex: 'Index {index}',
   transparentColor: 'Transparent',
   unassignedColor: 'Unassigned',
-  errorTitle: 'Image cannot be converted',
+  errorTitle: 'Conversion issue',
   invalidFileType: 'Select a PNG file. Other file formats are not supported.',
   imageDecodeFailed:
     'The PNG could not be read. The file may be damaged or invalid.',
@@ -35,6 +43,12 @@ const en = {
   partialTransparency: 'Partially transparent pixels are not supported yet.',
   tooManyColors:
     'Found {count} color indices. NES CHR tiles support four color indices per tile.',
+  invalidPlayfieldDimensions:
+    'A playfield must be exactly 256 × 240 px (32 × 30 tiles). CHR export remains available.',
+  invalidPlayfieldTiles:
+    'The playfield tile layout is incomplete and cannot produce a nametable.',
+  tooManyPlayfieldTiles:
+    'The nametable can address at most 256 CHR tiles, but {count} tiles would be exported. Enable deduplication or reduce the artwork.',
   colorsFoundLabel: 'Opaque colors found:',
   tilesTitle: 'CHR tiles',
   tilesEmpty: 'No tiles to display yet.',
@@ -48,11 +62,21 @@ const en = {
   tileCanvasLabel: 'Preview of tile {id}',
   exportTitle: 'Export',
   defaultOutputName: 'image.chr',
+  defaultNametableName: 'image.nam',
+  defaultAttributeTableName: 'image.atr',
   downloadChr: 'Download {name}',
+  downloadNametable: 'Download {name}',
+  downloadAttributeTable: 'Download {name}',
   exportUnavailable: 'Import a valid image to enable CHR export.',
   exportReady: '{count} tiles will be exported.',
   exportReadyDeduplicated:
     '{count} unique tiles out of {total} will be exported.',
+  playfieldExportReady:
+    'The playfield is ready with {count} CHR tiles, a 960-byte nametable, and a 64-byte Attribute Table.',
+  playfieldExportIncomplete:
+    'CHR export is available, but the playfield data needs the diagnostic issue to be resolved.',
+  attributeTablePaletteNote:
+    'The Attribute Table selects palette 0 everywhere because this version uses one global four-color palette.',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -61,11 +85,18 @@ type TranslationTable = Record<TranslationKey, string>;
 const ptBr = {
   appTitle: 'PNG2CHR Studio',
   appDescription:
-    'Converta imagens PNG em tiles CHR do NES, totalmente no navegador.',
+    'Converta imagens PNG e playfields em dados para NES, totalmente no navegador.',
   languageLabel: 'Idioma',
   localePtBr: 'Português (Brasil)',
   localeEn: 'English',
   importTitle: 'Importar PNG',
+  imageModeLabel: 'Finalidade da imagem',
+  tilesetMode: 'Tileset / gráficos',
+  playfieldMode: 'Playfield / tela do jogo',
+  tilesetModeHint:
+    'Use qualquer PNG cuja largura e altura sejam múltiplas de 8.',
+  playfieldModeHint:
+    'Um playfield deve ter exatamente 256 × 240 px (32 × 30 tiles).',
   choosePng: 'Selecionar PNG',
   dropPrompt: 'ou arraste um arquivo PNG para cá',
   processingLocal: 'Sua imagem é processada localmente e nunca é enviada.',
@@ -80,13 +111,15 @@ const ptBr = {
   colorCountLabel: 'Índices de cor',
   tileCountLabel: 'Tiles',
   chrSizeLabel: 'Tamanho do CHR',
+  nametableSizeLabel: 'Tamanho da nametable',
+  attributeTableSizeLabel: 'Tamanho da Attribute Table',
   byteCount: '{count} bytes',
   unavailableValue: '—',
   colorMappingTitle: 'Mapeamento de cores',
   colorIndex: 'Índice {index}',
   transparentColor: 'Transparente',
   unassignedColor: 'Sem cor atribuída',
-  errorTitle: 'A imagem não pode ser convertida',
+  errorTitle: 'Problema na conversão',
   invalidFileType:
     'Selecione um arquivo PNG. Outros formatos não são suportados.',
   imageDecodeFailed:
@@ -97,6 +130,12 @@ const ptBr = {
     'Pixels parcialmente transparentes ainda não são suportados.',
   tooManyColors:
     'Foram encontrados {count} índices de cor. Tiles CHR do NES permitem quatro índices de cor por tile.',
+  invalidPlayfieldDimensions:
+    'Um playfield deve ter exatamente 256 × 240 px (32 × 30 tiles). A exportação CHR continua disponível.',
+  invalidPlayfieldTiles:
+    'A organização de tiles do playfield está incompleta e não pode gerar uma nametable.',
+  tooManyPlayfieldTiles:
+    'A nametable pode endereçar no máximo 256 tiles CHR, mas {count} tiles seriam exportados. Ative a deduplicação ou reduza a imagem.',
   colorsFoundLabel: 'Cores opacas encontradas:',
   tilesTitle: 'Tiles CHR',
   tilesEmpty: 'Ainda não há tiles para exibir.',
@@ -110,11 +149,21 @@ const ptBr = {
   tileCanvasLabel: 'Prévia do tile {id}',
   exportTitle: 'Exportar',
   defaultOutputName: 'image.chr',
+  defaultNametableName: 'image.nam',
+  defaultAttributeTableName: 'image.atr',
   downloadChr: 'Baixar {name}',
+  downloadNametable: 'Baixar {name}',
+  downloadAttributeTable: 'Baixar {name}',
   exportUnavailable:
     'Importe uma imagem válida para habilitar a exportação CHR.',
   exportReady: '{count} tiles serão exportados.',
   exportReadyDeduplicated: '{count} tiles únicos de {total} serão exportados.',
+  playfieldExportReady:
+    'O playfield está pronto com {count} tiles CHR, uma nametable de 960 bytes e uma Attribute Table de 64 bytes.',
+  playfieldExportIncomplete:
+    'A exportação CHR está disponível, mas os dados do playfield precisam que o problema do diagnóstico seja resolvido.',
+  attributeTablePaletteNote:
+    'A Attribute Table seleciona a paleta 0 em toda a tela porque esta versão usa uma paleta global de quatro cores.',
 } as const satisfies TranslationTable;
 
 export const translations = {

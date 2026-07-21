@@ -8,6 +8,9 @@ interface DiagnosticsOptions {
   readonly indexedImage: IndexedImage | null;
   readonly tileCount: number;
   readonly chrSize: number | null;
+  readonly playfieldMode: boolean;
+  readonly nametableSize: number | null;
+  readonly attributeTableSize: number | null;
   readonly error: DisplayError | null;
 }
 
@@ -59,6 +62,22 @@ export function createDiagnostics(options: DiagnosticsOptions): HTMLElement {
         : t('byteCount', { count: options.chrSize }),
     ),
   );
+  if (options.playfieldMode) {
+    metrics.append(
+      metric(
+        t('nametableSizeLabel'),
+        options.nametableSize === null
+          ? t('unavailableValue')
+          : t('byteCount', { count: options.nametableSize }),
+      ),
+      metric(
+        t('attributeTableSizeLabel'),
+        options.attributeTableSize === null
+          ? t('unavailableValue')
+          : t('byteCount', { count: options.attributeTableSize }),
+      ),
+    );
+  }
   section.append(heading, metrics);
 
   if (options.error !== null) {
