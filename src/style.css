@@ -1,0 +1,360 @@
+:root {
+  color: #eaf0f5;
+  background: #0d1218;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --panel: #151d26;
+  --panel-border: #2b3948;
+  --muted: #9badbc;
+  --accent: #57d3a4;
+  --accent-dark: #092e23;
+  --danger: #ff8d86;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+button,
+label,
+select {
+  touch-action: manipulation;
+}
+
+#app {
+  width: min(90rem, calc(100% - 2rem));
+  margin-inline: auto;
+  padding-block: 2rem 4rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0.35rem;
+  font-size: clamp(1.9rem, 4vw, 3.2rem);
+  letter-spacing: -0.04em;
+}
+
+h2 {
+  font-size: 1.15rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+}
+
+.app-header p,
+.muted,
+.empty-message,
+small {
+  color: var(--muted);
+}
+
+.language-control {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+}
+
+.language-control label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+select {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+  padding: 0.55rem 2rem 0.55rem 0.7rem;
+  color: inherit;
+  background: var(--panel);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.8fr) minmax(22rem, 1.2fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  min-width: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.85rem;
+  padding: 1.15rem;
+  background: var(--panel);
+}
+
+.import-panel,
+.preview-panel,
+.diagnostics-panel,
+.export-panel {
+  grid-column: 1;
+}
+
+.tiles-panel {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+}
+
+.drop-zone {
+  display: grid;
+  place-items: center;
+  gap: 0.7rem;
+  border: 1px dashed #486078;
+  border-radius: 0.7rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  transition: 150ms ease;
+}
+
+.drop-zone.is-dragging {
+  border-color: var(--accent);
+  background: rgb(87 211 164 / 8%);
+}
+
+.drop-zone small {
+  max-width: 30rem;
+}
+
+.button {
+  display: inline-flex;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.95rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.primary-button {
+  color: var(--accent-dark);
+  background: var(--accent);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.button:focus-visible,
+select:focus-visible,
+input:focus-visible + label {
+  outline: 3px solid #b6ffe3;
+  outline-offset: 3px;
+}
+
+.file-details {
+  margin: 0.9rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.preview-frame {
+  display: grid;
+  max-height: 22rem;
+  place-items: center;
+  overflow: auto;
+  border-radius: 0.5rem;
+}
+
+.preview-frame canvas {
+  display: block;
+  max-width: 100%;
+  image-rendering: pixelated;
+}
+
+.checkerboard {
+  background-color: #bac3cc;
+  background-image:
+    linear-gradient(45deg, #e4e8ec 25%, transparent 25%),
+    linear-gradient(-45deg, #e4e8ec 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e4e8ec 75%),
+    linear-gradient(-45deg, transparent 75%, #e4e8ec 75%);
+  background-position:
+    0 0,
+    0 0.5rem,
+    0.5rem -0.5rem,
+    -0.5rem 0;
+  background-size: 1rem 1rem;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0 0 1.2rem;
+}
+
+.metrics div {
+  border-radius: 0.5rem;
+  padding: 0.7rem;
+  background: #0f161e;
+}
+
+.metrics dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.metrics dd {
+  margin: 0.15rem 0 0;
+  font-weight: 750;
+}
+
+.error-message {
+  margin-bottom: 1.2rem;
+  border-left: 3px solid var(--danger);
+  padding: 0.8rem 0.9rem;
+  color: #ffd5d2;
+  background: rgb(255 141 134 / 8%);
+}
+
+.error-message p:last-child,
+.error-colors {
+  margin-bottom: 0;
+}
+
+.error-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  padding-left: 1.2rem;
+  font-family: ui-monospace, monospace;
+}
+
+.color-mapping {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.color-mapping li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 0.45rem;
+}
+
+.color-swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-right: 0.45rem;
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 0.2rem;
+  vertical-align: -0.1rem;
+}
+
+.transparent-swatch::before {
+  content: '';
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-right: 0.45rem;
+  border-radius: 0.2rem;
+  vertical-align: -0.1rem;
+  background: repeating-conic-gradient(#d5dce2 0 25%, #7d8a95 0 50%) 50% /
+    0.5rem 0.5rem;
+}
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: 0.7rem;
+}
+
+.tile-card {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.6rem;
+  padding: 0.65rem;
+  background: #10171f;
+}
+
+.tile-canvas {
+  width: 64px;
+  height: 64px;
+  image-rendering: pixelated;
+}
+
+.tile-ids {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.tile-ids strong {
+  color: var(--accent);
+  font-family: ui-monospace, monospace;
+}
+
+.export-panel .button {
+  width: 100%;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 52rem) {
+  .app-header {
+    flex-direction: column;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .import-panel,
+  .preview-panel,
+  .diagnostics-panel,
+  .export-panel,
+  .tiles-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .tiles-panel {
+    max-height: none;
+  }
+}
