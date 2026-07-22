@@ -20,6 +20,7 @@ export interface ProjectView {
   readonly mode: ProjectMode;
   readonly deduplicationEnabled: boolean;
   readonly flipDeduplicationEnabled: boolean;
+  readonly collisionCells: Uint8Array;
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

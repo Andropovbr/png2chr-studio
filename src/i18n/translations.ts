@@ -13,6 +13,9 @@ const en = {
   playfieldModeHint:
     'A playfield must be exactly 256 × 240 px (32 × 30 tiles).',
   choosePng: 'Choose PNG',
+  generateRandomPlayfield: 'Generate random playfield',
+  randomPlayfieldHint:
+    'Creates a simple test screen with one four-color NES palette and a small reusable tile set.',
   dropPrompt: 'or drop a PNG file here',
   processingLocal: 'Your image is processed locally and is never uploaded.',
   loadingImage: 'Reading {name}…',
@@ -21,6 +24,18 @@ const en = {
   previewTitle: 'Image preview',
   previewEmpty: 'Import a valid PNG to see its preview.',
   previewCanvasLabel: 'Preview of the imported PNG',
+  collisionCanvasLabel:
+    'Playfield collision editor. Use arrow keys to move and Space or Enter to paint.',
+  collisionEditorTitle: 'Collision map',
+  collisionEditorHint:
+    'Paint or erase 8 x 8 cells by clicking and dragging over the playfield.',
+  collisionPaintSolid: 'Paint solid',
+  collisionErase: 'Erase',
+  collisionClearAll: 'Clear all',
+  collisionCellFree: 'free',
+  collisionCellSolid: 'solid',
+  collisionCellStatus:
+    'Column {column}, row {row}: {state}. {count} solid cells.',
   diagnosticsTitle: 'Diagnostics',
   dimensionsLabel: 'Dimensions',
   colorCountLabel: 'Color indices',
@@ -65,9 +80,11 @@ const en = {
   defaultOutputName: 'image.chr',
   defaultNametableName: 'image.nam',
   defaultAttributeTableName: 'image.atr',
+  defaultCollisionMapName: 'image.col',
   downloadChr: 'Download {name}',
   downloadNametable: 'Download {name}',
   downloadAttributeTable: 'Download {name}',
+  downloadCollisionMap: 'Download {name}',
   exportUnavailable: 'Import a valid image to enable CHR export.',
   exportReady: '{count} tiles will be exported.',
   exportReadyDeduplicated:
@@ -80,6 +97,8 @@ const en = {
     'CHR export is available, but the playfield data needs the diagnostic issue to be resolved.',
   attributeTablePaletteNote:
     'The Attribute Table selects palette 0 everywhere because this version uses one global four-color palette.',
+  collisionExportNote:
+    'The collision map contains {count} solid cells and uses 120 bytes (one bit per 8 x 8 cell, high bit first).',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -87,6 +106,25 @@ type TranslationTable = Record<TranslationKey, string>;
 
 const ptBr = {
   appTitle: 'PNG2CHR Studio',
+  generateRandomPlayfield: 'Gerar playfield aleat\u00f3rio',
+  randomPlayfieldHint:
+    'Cria uma tela simples para testes com uma paleta NES de quatro cores e um conjunto pequeno de tiles reutiliz\u00e1veis.',
+  collisionCanvasLabel:
+    'Editor de colis\u00f5es do playfield. Use as setas para mover e Espa\u00e7o ou Enter para pintar.',
+  collisionEditorTitle: 'Mapa de colis\u00f5es',
+  collisionEditorHint:
+    'Pinte ou apague c\u00e9lulas de 8 x 8 clicando e arrastando sobre o playfield.',
+  collisionPaintSolid: 'Pintar s\u00f3lido',
+  collisionErase: 'Apagar',
+  collisionClearAll: 'Limpar tudo',
+  collisionCellFree: 'livre',
+  collisionCellSolid: 's\u00f3lida',
+  collisionCellStatus:
+    'Coluna {column}, linha {row}: {state}. {count} c\u00e9lulas s\u00f3lidas.',
+  defaultCollisionMapName: 'image.col',
+  downloadCollisionMap: 'Baixar {name}',
+  collisionExportNote:
+    'O mapa de colis\u00f5es cont\u00e9m {count} c\u00e9lulas s\u00f3lidas e usa 120 bytes (um bit por c\u00e9lula de 8 x 8, bit mais alto primeiro).',
   appDescription:
     'Converta imagens PNG e playfields em dados para NES, totalmente no navegador.',
   languageLabel: 'Idioma',

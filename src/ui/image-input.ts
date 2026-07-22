@@ -9,6 +9,7 @@ export function createImageInput(
   mode: ProjectMode,
   onModeChange: (mode: ProjectMode) => void,
   onFile: (file: File) => void,
+  onGeneratePlayfield: () => void,
 ): HTMLElement {
   const section = document.createElement('section');
   section.className = 'panel import-panel';
@@ -45,6 +46,18 @@ export function createImageInput(
   modeHint.textContent =
     mode === 'playfield' ? t('playfieldModeHint') : t('tilesetModeHint');
   modeSelector.append(modeHint);
+
+  const randomGenerator = document.createElement('div');
+  randomGenerator.className = 'random-playfield-generator';
+  const randomButton = document.createElement('button');
+  randomButton.type = 'button';
+  randomButton.className = 'button secondary-button';
+  randomButton.textContent = t('generateRandomPlayfield');
+  randomButton.disabled = loading;
+  randomButton.addEventListener('click', onGeneratePlayfield);
+  const randomHint = document.createElement('small');
+  randomHint.textContent = t('randomPlayfieldHint');
+  randomGenerator.append(randomButton, randomHint);
 
   const dropZone = document.createElement('div');
   dropZone.className = 'drop-zone';
@@ -85,7 +98,11 @@ export function createImageInput(
   });
 
   dropZone.append(input, label, prompt, privacy);
-  section.append(heading, modeSelector, dropZone);
+  section.append(heading, modeSelector);
+  if (mode === 'playfield') {
+    section.append(randomGenerator);
+  }
+  section.append(dropZone);
 
   if (fileName !== null) {
     const details = document.createElement('p');

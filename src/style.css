@@ -172,6 +172,20 @@ select {
   transition: 150ms ease;
 }
 
+.random-playfield-generator {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.7rem;
+  padding: 0.85rem;
+  background: #0f161e;
+}
+
+.random-playfield-generator .button {
+  width: 100%;
+}
+
 .drop-zone.is-dragging {
   border-color: var(--accent);
   background: rgb(87 211 164 / 8%);
@@ -271,6 +285,60 @@ input:focus-visible + label {
   display: block;
   max-width: 100%;
   image-rendering: pixelated;
+}
+
+.collision-canvas {
+  width: min(100%, 32rem);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.collision-canvas:focus-visible {
+  outline: 3px solid #ffe36e;
+  outline-offset: -3px;
+}
+
+.collision-editor {
+  margin-top: 1rem;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 1rem;
+}
+
+.collision-editor h3,
+.collision-hint {
+  margin-bottom: 0.6rem;
+}
+
+.collision-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+
+.collision-tool,
+.secondary-button {
+  border: 1px solid var(--panel-border);
+  color: inherit;
+  background: #0f161e;
+}
+
+.collision-tool.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgb(87 211 164 / 8%);
+}
+
+.collision-status {
+  display: block;
+  min-height: 1.4em;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.export-panel small {
+  display: block;
+  margin-top: 0.45rem;
 }
 
 .checkerboard {

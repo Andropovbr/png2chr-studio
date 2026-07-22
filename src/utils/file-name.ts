@@ -18,3 +18,7 @@ export function toNametableFileName(fileName: string | null): string {
 export function toAttributeTableFileName(fileName: string | null): string {
   return toOutputFileName(fileName, 'atr');
 }
+
+export function toCollisionMapFileName(fileName: string | null): string {
+  return toOutputFileName(fileName, 'col');
+}

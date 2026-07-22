@@ -1,17 +1,23 @@
 import './style.css';
 
 import { encodeChr } from './core/chr-encoder';
+import {
+  countCollisionCells,
+  createEmptyCollisionMap,
+  encodeCollisionMap,
+} from './core/collision-encoder';
 import { analyzeImage } from './core/image-analysis';
 import {
   encodePlayfield,
   PlayfieldEncodingError,
 } from './core/playfield-encoder';
+import { generateRandomPlayfield } from './core/random-playfield';
 import {
   deduplicateTiles,
   deduplicateTilesConsideringFlips,
 } from './core/tile-deduplication';
 import { extractTiles } from './core/tile-extraction';
-import { ImageAnalysisError } from './core/types';
+import { ImageAnalysisError, type IndexedImage } from './core/types';
 import { getLocale, subscribeToLocale, t } from './i18n';
 import { createDiagnostics } from './ui/diagnostics';
 import { createExportPanel } from './ui/export-panel';
@@ -29,6 +35,7 @@ import { downloadBytes } from './utils/download';
 import {
   toAttributeTableFileName,
   toChrFileName,
+  toCollisionMapFileName,
   toNametableFileName,
 } from './utils/file-name';
 
@@ -49,6 +56,7 @@ let project: ProjectView = {
   mode: 'tileset',
   deduplicationEnabled: false,
   flipDeduplicationEnabled: false,
+  collisionCells: createEmptyCollisionMap(),
   error: null,
   loading: false,
 };
@@ -68,6 +76,10 @@ function render(): void {
     project.fileName === null
       ? t('defaultAttributeTableName')
       : toAttributeTableFileName(project.fileName);
+  const collisionMapName =
+    project.fileName === null
+      ? t('defaultCollisionMapName')
+      : toCollisionMapFileName(project.fileName);
   let visibleTiles = project.deduplicationEnabled
     ? project.mode === 'tileset' && project.flipDeduplicationEnabled
       ? deduplicateTilesConsideringFlips(project.tiles)
@@ -116,8 +128,19 @@ function render(): void {
         render();
       },
       (file) => void loadFile(file),
+      generatePlayfield,
     ),
-    createImagePreview(project.sourceImage),
+    createImagePreview({
+      image: project.sourceImage,
+      collisionCells:
+        project.mode === 'playfield' && project.indexedImage !== null
+          ? project.collisionCells
+          : null,
+      onCollisionChange: (collisionCells) => {
+        project = { ...project, collisionCells };
+        render();
+      },
+    }),
     createDiagnostics({
       width: project.width,
       height: project.height,
@@ -155,6 +178,7 @@ function render(): void {
       chrName: outputName,
       nametableName,
       attributeTableName,
+      collisionMapName,
       tileCount: visibleTiles.length,
       originalTileCount: project.tiles.length,
       deduplicationEnabled: project.deduplicationEnabled,
@@ -163,6 +187,11 @@ function render(): void {
       chr,
       nametable,
       attributeTable,
+      collisionMap:
+        project.mode === 'playfield' && nametable !== null
+          ? encodeCollisionMap(project.collisionCells)
+          : null,
+      collisionCellCount: countCollisionCells(project.collisionCells),
       onDownload: downloadBytes,
     }),
   );
@@ -212,6 +241,7 @@ async function loadFile(file: File): Promise<void> {
     mode,
     deduplicationEnabled,
     flipDeduplicationEnabled,
+    collisionCells: createEmptyCollisionMap(),
     error: null,
     loading: true,
   };
@@ -261,6 +291,43 @@ async function loadFile(file: File): Promise<void> {
         : { key: 'invalidPixelData' },
     );
   }
+}
+
+function indexedImageToImageData(image: IndexedImage): ImageData {
+  const rgba = new Uint8ClampedArray(image.width * image.height * 4);
+  for (let index = 0; index < image.pixels.length; index += 1) {
+    const color = image.colors[image.pixels[index] ?? 0] ?? {
+      red: 0,
+      green: 0,
+      blue: 0,
+    };
+    const target = index * 4;
+    rgba[target] = color.red;
+    rgba[target + 1] = color.green;
+    rgba[target + 2] = color.blue;
+    rgba[target + 3] = 255;
+  }
+  return new ImageData(rgba, image.width, image.height);
+}
+
+function generatePlayfield(): void {
+  requestId += 1;
+  const indexedImage = generateRandomPlayfield();
+  project = {
+    fileName: 'random-playfield.png',
+    width: indexedImage.width,
+    height: indexedImage.height,
+    sourceImage: indexedImageToImageData(indexedImage),
+    indexedImage,
+    tiles: extractTiles(indexedImage),
+    mode: 'playfield',
+    deduplicationEnabled: true,
+    flipDeduplicationEnabled: false,
+    collisionCells: createEmptyCollisionMap(),
+    error: null,
+    loading: false,
+  };
+  render();
 }
 
 subscribeToLocale(render);

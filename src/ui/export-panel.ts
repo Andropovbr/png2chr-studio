@@ -4,6 +4,7 @@ interface ExportPanelOptions {
   readonly chrName: string;
   readonly nametableName: string;
   readonly attributeTableName: string;
+  readonly collisionMapName: string;
   readonly tileCount: number;
   readonly originalTileCount: number;
   readonly deduplicationEnabled: boolean;
@@ -12,6 +13,8 @@ interface ExportPanelOptions {
   readonly chr: Uint8Array | null;
   readonly nametable: Uint8Array | null;
   readonly attributeTable: Uint8Array | null;
+  readonly collisionMap: Uint8Array | null;
+  readonly collisionCellCount: number;
   readonly onDownload: (bytes: Uint8Array, fileName: string) => void;
 }
 
@@ -88,10 +91,20 @@ export function createExportPanel(options: ExportPanelOptions): HTMLElement {
         options.attributeTableName,
         options.onDownload,
       ),
+      downloadButton(
+        t('downloadCollisionMap', { name: options.collisionMapName }),
+        options.collisionMap,
+        options.collisionMapName,
+        options.onDownload,
+      ),
     );
     const note = document.createElement('small');
     note.textContent = t('attributeTablePaletteNote');
-    section.append(heading, description, actions, note);
+    const collisionNote = document.createElement('small');
+    collisionNote.textContent = t('collisionExportNote', {
+      count: options.collisionCellCount,
+    });
+    section.append(heading, description, actions, note, collisionNote);
   } else {
     section.append(heading, description, actions);
   }

@@ -4,7 +4,7 @@ PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into N
 
 ## Current status
 
-Version 0.4 provides PNG-to-CHR and playfield conversion flows:
+Version 0.5 provides PNG-to-CHR and playfield conversion flows:
 
 - PNG selection and drag-and-drop import;
 - local image decoding and preview;
@@ -19,6 +19,9 @@ Version 0.4 provides PNG-to-CHR and playfield conversion flows:
 - explicit Tileset and Playfield processing modes;
 - 256×240 playfield validation;
 - `.nam` nametable and `.atr` Attribute Table exports;
+- interactive 32x30 collision painting directly over a playfield preview;
+- `.col` collision-map export with one bit per 8x8 tile;
+- one-click random playfield generation for quick export and collision tests;
 - Portuguese (Brazil) and English user interfaces;
 - responsive, keyboard-accessible controls and translated diagnostics.
 
@@ -105,10 +108,23 @@ The exported files are:
 - `.chr`: the selected original or deduplicated CHR tile set;
 - `.nam`: 960 tile indices in left-to-right, top-to-bottom order;
 - `.atr`: the 64-byte NES Attribute Table.
+- `.col`: a 120-byte collision map painted over the playfield.
 
 A nametable entry is one byte, so playfield data can reference no more than 256 exported CHR tiles. When that limit is exceeded, CHR export remains available while nametable and Attribute Table exports are disabled. Enabling deduplication will usually bring a playfield below the limit.
 
-Version 0.4 still uses one global four-color palette. Consequently, every Attribute Table quadrant selects palette 0 and the generated `.atr` file contains 64 zero bytes.
+Version 0.5 still uses one global four-color palette. Consequently, every Attribute Table quadrant selects palette 0 and the generated `.atr` file contains 64 zero bytes.
+
+### Random test playfield
+
+In Playfield mode, **Generate random playfield** creates a complete 256x240 test screen without requiring a PNG. The scene uses one four-color background palette (`$0F`, `$11`, `$21`, `$30`), a maximum of six reusable tile patterns, and automatic exact deduplication. The generated data therefore remains within the 256-tile nametable limit and can immediately be exported as `.chr`, `.nam`, `.atr`, and `.col`.
+
+Generating another screen randomizes stars, clouds, and platforms. Existing collision markings are cleared because the new screen has a different layout.
+
+### Collision map
+
+In Playfield mode, the preview becomes a 32x30 collision editor. Select **Paint solid** or **Erase**, then click and drag across the 8x8 cells. **Clear all** removes every marked cell. The editor also supports the arrow keys to move between cells and Space or Enter to apply the selected tool.
+
+The `.col` file stores the cells from left to right and top to bottom. Each byte contains eight horizontal cells: bit 7 is the leftmost cell and bit 0 is the rightmost. A set bit means solid and a clear bit means free. Each 32-cell row therefore occupies four bytes, and the complete 30-row map occupies 120 bytes. Collision data remains separate so `.nam` and `.atr` preserve their standard NES layouts.
 
 ## CHR format summary
 
@@ -135,12 +151,12 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.4 limitations
+## Version 0.5 limitations
 
 - No automatic color reduction or NES master-palette matching
 - No manual pixel editing
 - No manual tile removal
-- No interactive playfield editor
+- Collision cells are binary (solid or free); collision types and slopes are not supported
 - No multiple NES palettes
 - No metatiles, metasprites, or animations
 - No cloud storage or backend
@@ -162,4 +178,4 @@ The `core` directory does not access the DOM or Canvas API, which keeps conversi
 
 ## Roadmap
 
-Possible future versions may add multiple NES palettes, Attribute Table palette assignment, interactive tile and playfield editing, rotation-aware analysis, metatiles, metasprites, and animation tooling. These features are intentionally excluded from version 0.4.
+Possible future versions may add multiple NES palettes, Attribute Table palette assignment, interactive tile editing, typed collision regions, rotation-aware analysis, metatiles, metasprites, and animation tooling. These features are intentionally excluded from version 0.5.

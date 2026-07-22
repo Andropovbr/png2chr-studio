@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   toAttributeTableFileName,
   toChrFileName,
+  toCollisionMapFileName,
   toNametableFileName,
 } from './file-name';
 
@@ -18,5 +19,6 @@ describe('CHR file names', () => {
   it('creates playfield data file names from the PNG name', () => {
     expect(toNametableFileName('level-1.png')).toBe('level-1.nam');
     expect(toAttributeTableFileName('level-1.png')).toBe('level-1.atr');
+    expect(toCollisionMapFileName('level-1.png')).toBe('level-1.col');
   });
 });
