@@ -56,7 +56,7 @@ describe('image analysis', () => {
     expect(error.details.pixelIndex).toBe(0);
   });
 
-  it('rejects images requiring more than four color indices', () => {
+  it('accepts source images with more than four colors for later NES quantization', () => {
     const image = createImage([
       [255, 0, 0, 255],
       [0, 255, 0, 255],
@@ -65,11 +65,10 @@ describe('image analysis', () => {
       [255, 0, 255, 255],
     ]);
 
-    const error = captureAnalysisError(() => analyzeImage(image));
+    const result = analyzeImage(image);
 
-    expect(error.code).toBe('too-many-colors');
-    expect(error.details.colorCount).toBe(5);
-    expect(error.details.colors).toHaveLength(5);
+    expect(result.colorCount).toBe(5);
+    expect(new Set(result.pixels).size).toBe(5);
   });
 
   it('keeps opaque colors in first-occurrence order', () => {

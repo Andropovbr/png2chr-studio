@@ -1,4 +1,8 @@
 import { deduplicateTileSet } from './tile-deduplication';
+import {
+  createPaletteAssignments,
+  encodePlayfieldAttributeTable,
+} from './nes-palette';
 import type { IndexedImage, Tile } from './types';
 
 export const PLAYFIELD_WIDTH = 256;
@@ -45,6 +49,7 @@ export function encodePlayfield(
   image: IndexedImage,
   tiles: readonly Tile[],
   deduplicationEnabled: boolean,
+  paletteAssignments: Uint8Array = createPaletteAssignments(256, 240, 16),
 ): PlayfieldExport {
   if (image.width !== PLAYFIELD_WIDTH || image.height !== PLAYFIELD_HEIGHT) {
     throw new PlayfieldEncodingError('invalid-playfield-dimensions');
@@ -68,7 +73,6 @@ export function encodePlayfield(
   return {
     chrTiles: tileSet.tiles,
     nametable: Uint8Array.from(tileSet.originalToUnique),
-    // Version 0.3 uses one global four-color palette, so every quadrant selects palette 0.
-    attributeTable: new Uint8Array(ATTRIBUTE_TABLE_SIZE),
+    attributeTable: encodePlayfieldAttributeTable(paletteAssignments),
   };
 }

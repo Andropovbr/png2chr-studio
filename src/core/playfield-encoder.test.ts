@@ -63,6 +63,19 @@ describe('playfield encoding', () => {
     expect(result.attributeTable).toEqual(new Uint8Array(ATTRIBUTE_TABLE_SIZE));
   });
 
+  it('encodes the palettes painted into 16x16 playfield regions', () => {
+    const tiles = Array.from({ length: 960 }, (_, id) => tile(id, 0));
+    const assignments = new Uint8Array(16 * 15);
+    assignments[0] = 3;
+    assignments[1] = 1;
+    assignments[16] = 2;
+    assignments[17] = 2;
+
+    const result = encodePlayfield(indexedImage(), tiles, true, assignments);
+
+    expect(result.attributeTable[0]).toBe(0xa7);
+  });
+
   it('rejects images that are not 256x240 pixels', () => {
     const error = capturePlayfieldError(() =>
       encodePlayfield(indexedImage(128, 120), [], true),

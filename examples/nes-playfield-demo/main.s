@@ -12,7 +12,6 @@ BUTTON_UP    = $08
 BUTTON_DOWN  = $04
 BUTTON_LEFT  = $02
 BUTTON_RIGHT = $01
-PLAYER_TILE  = 6
 
 .segment "HEADER"
     .byte "NES", $1A
@@ -344,8 +343,8 @@ oam: .res 256
 
 .segment "RODATA"
 palette_data:
-    .byte $0F, $11, $21, $30,  $0F, $11, $21, $30
-    .byte $0F, $11, $21, $30,  $0F, $11, $21, $30
+    .incbin "random-playfield.pal"
+sprite_palette_data:
     .byte $0F, $30, $16, $27,  $0F, $30, $16, $27
     .byte $0F, $30, $16, $27,  $0F, $30, $16, $27
 
@@ -363,7 +362,10 @@ collision_data:
     .word nmi, reset, irq
 
 .segment "CHR"
+playfield_chr:
     .incbin "random-playfield.chr"
+playfield_chr_end:
+PLAYER_TILE = (playfield_chr_end - playfield_chr) / 16
 player_tile:
     .byte %00111100
     .byte %01111110
@@ -381,4 +383,4 @@ player_tile:
     .byte %01111110
     .byte %10100101
     .byte %10000001
-    .res 8192 - 96 - 16, $00
+    .res 8192 - (playfield_chr_end - playfield_chr) - 16, $00

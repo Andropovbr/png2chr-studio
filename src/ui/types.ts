@@ -1,4 +1,5 @@
 import type { PlayfieldEncodingError } from '../core/playfield-encoder';
+import type { NesPaletteSet } from '../core/nes-palette';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
 
@@ -9,6 +10,7 @@ export interface DisplayError {
 }
 
 export type ProjectMode = 'tileset' | 'playfield';
+export type PreviewTool = 'palette' | 'paint-collision' | 'erase-collision';
 
 export interface ProjectView {
   readonly fileName: string | null;
@@ -21,6 +23,18 @@ export interface ProjectView {
   readonly deduplicationEnabled: boolean;
   readonly flipDeduplicationEnabled: boolean;
   readonly collisionCells: Uint8Array;
+  readonly previewTool: PreviewTool;
+  readonly paletteSet: NesPaletteSet;
+  readonly paletteAssignments: Uint8Array;
+  readonly pixelOverrides: Uint8Array;
+  readonly activePaletteIndex: number;
+  readonly activeColorIndex: number;
+  readonly showPaletteNumbers: boolean;
+  readonly zoomedPaletteRegion: number | null;
+  readonly paletteColorTarget: {
+    readonly paletteIndex: number;
+    readonly colorIndex: number;
+  };
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

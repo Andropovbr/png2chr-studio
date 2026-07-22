@@ -7,7 +7,8 @@ $requiredFiles = @(
     "random-playfield.chr",
     "random-playfield.nam",
     "random-playfield.atr",
-    "random-playfield.col"
+    "random-playfield.col",
+    "random-playfield.pal"
 )
 
 foreach ($requiredFile in $requiredFiles) {

@@ -1,3 +1,4 @@
+import { NES_MASTER_PALETTE, type NesPaletteSet } from '../core/nes-palette';
 import type { IndexedImage, Tile } from '../core/types';
 import { t } from '../i18n';
 
@@ -5,6 +6,9 @@ function renderTile(
   canvas: HTMLCanvasElement,
   tile: Tile,
   image: IndexedImage,
+  paletteSet: NesPaletteSet,
+  paletteAssignments: Uint8Array,
+  paletteRegionSize: number,
 ): void {
   const context = canvas.getContext('2d');
   if (context === null) {
@@ -12,9 +16,16 @@ function renderTile(
   }
 
   const pixels = context.createImageData(8, 8);
+  const regionColumns = image.width / paletteRegionSize;
+  const regionIndex =
+    Math.floor((tile.row * 8) / paletteRegionSize) * regionColumns +
+    Math.floor((tile.column * 8) / paletteRegionSize);
+  const paletteIndex = paletteAssignments[regionIndex] ?? 0;
+  const palette = paletteSet[paletteIndex] ?? paletteSet[0];
   tile.pixels.forEach((colorIndex, pixelIndex) => {
     const target = pixelIndex * 4;
-    const color = image.colors[colorIndex];
+    const colorCode = palette[colorIndex] ?? 0x0f;
+    const color = NES_MASTER_PALETTE[colorCode];
     const transparent = image.transparentIndex === colorIndex;
     pixels.data[target] = color?.red ?? 0;
     pixels.data[target + 1] = color?.green ?? 0;
@@ -33,6 +44,9 @@ export function createTileGrid(
   allowFlipDeduplication: boolean,
   flipDeduplicationEnabled: boolean,
   onFlipDeduplicationChange: (enabled: boolean) => void,
+  paletteSet: NesPaletteSet,
+  paletteAssignments: Uint8Array,
+  paletteRegionSize: number,
 ): HTMLElement {
   const section = document.createElement('section');
   section.className = 'panel tiles-panel';
@@ -103,7 +117,14 @@ export function createTileGrid(
     canvas.className = 'tile-canvas checkerboard';
     canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', t('tileCanvasLabel', { id: tile.id }));
-    renderTile(canvas, tile, image);
+    renderTile(
+      canvas,
+      tile,
+      image,
+      paletteSet,
+      paletteAssignments,
+      paletteRegionSize,
+    );
 
     const ids = document.createElement('div');
     ids.className = 'tile-ids';

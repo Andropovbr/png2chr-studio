@@ -22,3 +22,7 @@ export function toAttributeTableFileName(fileName: string | null): string {
 export function toCollisionMapFileName(fileName: string | null): string {
   return toOutputFileName(fileName, 'col');
 }
+
+export function toPaletteFileName(fileName: string | null): string {
+  return toOutputFileName(fileName, 'pal');
+}

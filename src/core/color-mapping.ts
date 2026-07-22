@@ -6,7 +6,10 @@ import {
 } from './types';
 
 const CHANNELS_PER_PIXEL = 4;
-const MAX_COLOR_INDICES = 4;
+// Source PNG colors are quantized into the selected NES palettes later. An
+// 8-bit source index keeps analysis compact while allowing artwork to use far
+// more than the four colors available to any one NES background region.
+const MAX_COLOR_INDICES = 256;
 
 function colorKey(red: number, green: number, blue: number): string {
   return [red, green, blue].join(',');
@@ -71,7 +74,7 @@ export function mapColors(image: RawImageData): IndexedImage {
   const firstOpaqueIndex = hasTransparency ? 1 : 0;
   const indicesByColor = new Map<string, number>();
   const palette: (RgbColor | null)[] = Array.from(
-    { length: MAX_COLOR_INDICES },
+    { length: colorCount },
     () => null,
   );
 

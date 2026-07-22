@@ -4,12 +4,14 @@ PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into N
 
 ## Current status
 
-Version 0.5 provides PNG-to-CHR and playfield conversion flows:
+Version 0.6 provides PNG-to-CHR and playfield conversion flows:
 
 - PNG selection and drag-and-drop import;
 - local image decoding and preview;
 - dimension, transparency, and color validation;
-- stable four-index color mapping;
+- quantization to the 64 NES PPU color codes;
+- four editable background palettes with a shared universal color;
+- graphical palette assignment per 8x8 tileset tile or 16x16 playfield region;
 - 8×8 tile extraction in reading order;
 - enlarged, pixel-perfect tile previews with decimal and hexadecimal IDs;
 - NES 2bpp CHR encoding;
@@ -18,7 +20,7 @@ Version 0.5 provides PNG-to-CHR and playfield conversion flows:
 - `.chr` download using either the original or deduplicated tile set;
 - explicit Tileset and Playfield processing modes;
 - 256×240 playfield validation;
-- `.nam` nametable and `.atr` Attribute Table exports;
+- `.nam` nametable, `.atr` Attribute Table, and `.pal` palette exports;
 - interactive 32x30 collision painting directly over a playfield preview;
 - `.col` collision-map export with one bit per 8x8 tile;
 - one-click random playfield generation for quick export and collision tests;
@@ -92,12 +94,12 @@ An imported image must:
 - be a PNG file;
 - have a width divisible by 8;
 - have a height divisible by 8;
-- use at most four color indices in total;
+- use at most 256 distinct source color indices;
 - contain only fully opaque or fully transparent pixels.
 
-Fully transparent pixels always use color index 0. Their stored RGB channel values are ignored. Opaque colors are assigned to the remaining indices in first-occurrence order, scanning left to right and top to bottom. If no transparent pixel exists, the first opaque color uses index 0.
+Fully transparent pixels always use source index 0. Their stored RGB channel values are ignored. Source colors are quantized to the four colors of the palette assigned to each region before CHR encoding. Partial transparency is rejected.
 
-Partial transparency is rejected. Images requiring more than four indices are also rejected rather than automatically reduced.
+Palette choices are restricted to the NES PPU's 64 color codes (`$00`-`$3F`). The editor exposes four background palettes. Slot 0 is the universal background color and is shared automatically by all four palettes.
 
 ### Playfield mode
 
@@ -109,14 +111,25 @@ The exported files are:
 - `.nam`: 960 tile indices in left-to-right, top-to-bottom order;
 - `.atr`: the 64-byte NES Attribute Table.
 - `.col`: a 120-byte collision map painted over the playfield.
+- `.pal`: four NES background palettes stored as 16 PPU color codes.
 
 A nametable entry is one byte, so playfield data can reference no more than 256 exported CHR tiles. When that limit is exceeded, CHR export remains available while nametable and Attribute Table exports are disabled. Enabling deduplication will usually bring a playfield below the limit.
 
-Version 0.5 still uses one global four-color palette. Consequently, every Attribute Table quadrant selects palette 0 and the generated `.atr` file contains 64 zero bytes.
+Each Attribute Table quadrant covers a 16x16 pixel region and selects one of the four configured palettes. Select a palette in the GUI and paint directly over the converted preview to generate the corresponding two-bit fields in the 64-byte `.atr` file.
+
+In Tileset mode, palettes are assigned per 8x8 tile. The selection remaps that tile's pixels to CHR indices 0-3, while the `.pal` file carries the four palette definitions for use by the game.
+
+The palette editor uses one painting workflow: select one of the four palettes, choose a 0-3 CHR color index, and paint individual pixels. Every pixel in an 8x8 tile stores its own two-bit color index, so all four colors can coexist inside a tile. Painting also assigns the active palette to the containing 8x8 tileset or 16x16 playfield region, keeping the Attribute Table consistent with NES hardware. Enable **Show palette numbers in image regions** to inspect those assignments without changing the artwork.
+
+Choose **Edit palette** and click the main image preview to open its 8x8 or 16x16 region in the enlarged editor. Palette selection and pixel editing are available only in this zoomed view, avoiding a second interactive playfield. Use the left mouse button to paint individual pixels. The right button suppresses the browser context menu and replaces every pixel with the clicked color index inside the same palette region. The preview highlights the active palette region and reports its pixel, tile, and palette coordinates.
+
+The playfield preview also provides explicit **Paint solid** and **Erase** collision tools. A click changes one 8x8 collision cell, while dragging changes multiple cells. This keeps collision editing separate from 16x16 palette-region selection.
+
+Selecting a swatch in the palette definition changes only which color is being edited. It does not change the CHR paint brush. The active brush is selected explicitly in the **CHR color brush** control and is always identified by palette, color index, and NES color code.
 
 ### Random test playfield
 
-In Playfield mode, **Generate random playfield** creates a complete 256x240 test screen without requiring a PNG. The scene uses one four-color background palette (`$0F`, `$11`, `$21`, `$30`), a maximum of six reusable tile patterns, and automatic exact deduplication. The generated data therefore remains within the 256-tile nametable limit and can immediately be exported as `.chr`, `.nam`, `.atr`, and `.col`.
+In Playfield mode, **Generate random playfield** creates a complete 256x240 test screen without requiring a PNG. The scene uses one four-color background palette (`$0F`, `$11`, `$21`, `$30`), a maximum of six reusable tile patterns, and automatic exact deduplication. The generated data therefore remains within the 256-tile nametable limit and can immediately be exported as `.chr`, `.nam`, `.atr`, `.col`, and `.pal`.
 
 Generating another screen randomizes stars, clouds, and platforms. Existing collision markings are cleared because the new screen has a different layout.
 
@@ -151,17 +164,14 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.5 limitations
+## Version 0.6 limitations
 
-- No automatic color reduction or NES master-palette matching
-- No manual pixel editing
 - No manual tile removal
 - Collision cells are binary (solid or free); collision types and slopes are not supported
-- No multiple NES palettes
 - No metatiles, metasprites, or animations
 - No cloud storage or backend
 
-The current color limit applies to the whole imported image. Per-tile palette assignment is outside the scope of version 0.4, so the generated Attribute Table always selects palette 0. Flip-aware deduplication is limited to Tileset exports; rotated variants are still considered different.
+Color quantization uses nearest-color matching in sRGB. It does not simulate NTSC composite artifacts or color-emphasis bits. Flip-aware deduplication is limited to Tileset exports; rotated variants are still considered different.
 
 ## Project structure
 
@@ -178,4 +188,4 @@ The `core` directory does not access the DOM or Canvas API, which keeps conversi
 
 ## Roadmap
 
-Possible future versions may add multiple NES palettes, Attribute Table palette assignment, interactive tile editing, typed collision regions, rotation-aware analysis, metatiles, metasprites, and animation tooling. These features are intentionally excluded from version 0.5.
+Possible future versions may add typed collision regions, rotation-aware analysis, metatiles, metasprites, and animation tooling.

@@ -10,7 +10,7 @@ Demo NROM-128 para validar os arquivos exportados pelo PNG2CHR Studio em um jogo
 ## Compilação
 
 Coloque `random-playfield.chr`, `random-playfield.nam`, `random-playfield.atr` e
-`random-playfield.col` nesta pasta e execute:
+`random-playfield.col` e `random-playfield.pal` nesta pasta e execute:
 
 ```powershell
 .\build.ps1
@@ -18,5 +18,8 @@ Coloque `random-playfield.chr`, `random-playfield.nam`, `random-playfield.atr` e
 
 O script usa `ca65` e `ld65` disponíveis no `PATH` e gera `playfield-demo.nes`.
 
-O cenário ocupa a pattern table de fundo a partir do tile 0. Um tile adicional,
-de índice 6, é incluído para representar o personagem como sprite.
+O cenário ocupa a pattern table de fundo a partir do tile 0. Um tile adicional
+para o personagem é inserido automaticamente depois do último tile exportado.
+
+As quatro paletas de fundo são carregadas diretamente do arquivo `.pal`
+exportado pelo PNG2CHR Studio.

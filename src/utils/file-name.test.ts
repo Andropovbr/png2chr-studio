@@ -5,6 +5,7 @@ import {
   toChrFileName,
   toCollisionMapFileName,
   toNametableFileName,
+  toPaletteFileName,
 } from './file-name';
 
 describe('CHR file names', () => {
@@ -20,5 +21,6 @@ describe('CHR file names', () => {
     expect(toNametableFileName('level-1.png')).toBe('level-1.nam');
     expect(toAttributeTableFileName('level-1.png')).toBe('level-1.atr');
     expect(toCollisionMapFileName('level-1.png')).toBe('level-1.col');
+    expect(toPaletteFileName('level-1.png')).toBe('level-1.pal');
   });
 });

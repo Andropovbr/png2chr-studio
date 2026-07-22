@@ -25,10 +25,11 @@ const en = {
   previewEmpty: 'Import a valid PNG to see its preview.',
   previewCanvasLabel: 'Preview of the imported PNG',
   collisionCanvasLabel:
-    'Playfield collision editor. Use arrow keys to move and Space or Enter to paint.',
+    'Playfield preview. Click to edit the palette region; drag to paint collisions.',
   collisionEditorTitle: 'Collision map',
   collisionEditorHint:
-    'Paint or erase 8 x 8 cells by clicking and dragging over the playfield.',
+    'Choose a tool. Palette mode opens a 16 x 16 region; collision modes paint or erase one 8 x 8 cell per click and multiple cells by dragging.',
+  collisionEditPalette: 'Edit palette',
   collisionPaintSolid: 'Paint solid',
   collisionErase: 'Erase',
   collisionClearAll: 'Clear all',
@@ -57,7 +58,7 @@ const en = {
   invalidPixelData: 'The decoded image contains invalid pixel data.',
   partialTransparency: 'Partially transparent pixels are not supported yet.',
   tooManyColors:
-    'Found {count} color indices. NES CHR tiles support four color indices per tile.',
+    'Found {count} source colors. At most 256 can be indexed before NES palette quantization.',
   invalidPlayfieldDimensions:
     'A playfield must be exactly 256 × 240 px (32 × 30 tiles). CHR export remains available.',
   invalidPlayfieldTiles:
@@ -76,15 +77,48 @@ const en = {
   tileHexId: '${id}',
   tilePosition: 'Column {column}, row {row}',
   tileCanvasLabel: 'Preview of tile {id}',
+  paletteEditorTitle: 'NES palettes',
+  paletteEditorHint:
+    'Build four background palettes using only the 64 color codes supported by the NES PPU. Color 0 is the shared universal background color.',
+  paletteEditorEmpty: 'Import or generate an image to assign palettes.',
+  nesPaletteName: 'Palette {index}',
+  nesPaletteSlotLabel:
+    'Palette {palette}, color {slot}, current NES code {code}',
+  nesMasterPaletteTitle: 'NES master palette ($00-$3F)',
+  nesColorEditTarget:
+    'Editing palette {palette}, color index {color} ({code}). Choose its NES color below.',
+  nesColorButton: 'Use NES color {code}',
+  paletteRegionsTitle: 'Paint CHR color indices',
+  paletteRegionsHint:
+    'Click the main image preview to open a {size} x {size} region here. Palette and pixel color editing is available only in the zoomed region.',
+  paletteColorBrushTitle: 'CHR color brush',
+  paletteColorBrushLabel: 'Paint color index {index}, NES code {code}',
+  paletteActiveBrush:
+    'Active brush: palette {palette}, color index {color}, NES code {code}.',
+  paletteShowNumbers: 'Show palette numbers in image regions',
+  paletteCanvasLabel:
+    'NES palette editor. Left-click paints, right-click replaces matching colors, and middle-click zooms a region.',
+  paletteZoomTitle: 'Zoomed region: column {column}, row {row}',
+  paletteZoomDetails:
+    '{size} x {size} pixels (x {startX}-{endX}, y {startY}-{endY}); tiles columns {tileStartX}-{tileEndX}, rows {tileStartY}-{tileEndY}; palette {palette}.',
+  paletteZoomHint:
+    'Left-click paints a pixel. Right-click replaces matching colors inside this region.',
+  paletteZoomClose: 'Close zoom',
+  paletteZoomCanvasLabel: 'Zoomed NES palette pixel editor.',
+  paletteZoomEmpty: 'Click a region in the main image preview to edit it.',
+  palettePixelPaintStatus:
+    'Pixel column {column}, row {row}: paint color index {color} from palette {palette}.',
   exportTitle: 'Export',
   defaultOutputName: 'image.chr',
   defaultNametableName: 'image.nam',
   defaultAttributeTableName: 'image.atr',
   defaultCollisionMapName: 'image.col',
+  defaultPaletteName: 'image.pal',
   downloadChr: 'Download {name}',
   downloadNametable: 'Download {name}',
   downloadAttributeTable: 'Download {name}',
   downloadCollisionMap: 'Download {name}',
+  downloadPalette: 'Download {name}',
   exportUnavailable: 'Import a valid image to enable CHR export.',
   exportReady: '{count} tiles will be exported.',
   exportReadyDeduplicated:
@@ -96,7 +130,9 @@ const en = {
   playfieldExportIncomplete:
     'CHR export is available, but the playfield data needs the diagnostic issue to be resolved.',
   attributeTablePaletteNote:
-    'The Attribute Table selects palette 0 everywhere because this version uses one global four-color palette.',
+    'The Attribute Table stores the selected palette for every 16 x 16 pixel region.',
+  paletteExportNote:
+    'The palette file contains four NES background palettes (16 PPU color codes).',
   collisionExportNote:
     'The collision map contains {count} solid cells and uses 120 bytes (one bit per 8 x 8 cell, high bit first).',
 } as const;
@@ -110,10 +146,11 @@ const ptBr = {
   randomPlayfieldHint:
     'Cria uma tela simples para testes com uma paleta NES de quatro cores e um conjunto pequeno de tiles reutiliz\u00e1veis.',
   collisionCanvasLabel:
-    'Editor de colis\u00f5es do playfield. Use as setas para mover e Espa\u00e7o ou Enter para pintar.',
+    'Pr\u00e9via do playfield. Clique para editar a regi\u00e3o de paleta; arraste para pintar colis\u00f5es.',
   collisionEditorTitle: 'Mapa de colis\u00f5es',
   collisionEditorHint:
-    'Pinte ou apague c\u00e9lulas de 8 x 8 clicando e arrastando sobre o playfield.',
+    'Escolha uma ferramenta. Editar paleta abre uma regi\u00e3o de 16 x 16; os modos de colis\u00e3o pintam ou apagam uma c\u00e9lula de 8 x 8 por clique e v\u00e1rias ao arrastar.',
+  collisionEditPalette: 'Editar paleta',
   collisionPaintSolid: 'Pintar s\u00f3lido',
   collisionErase: 'Apagar',
   collisionClearAll: 'Limpar tudo',
@@ -123,6 +160,8 @@ const ptBr = {
     'Coluna {column}, linha {row}: {state}. {count} c\u00e9lulas s\u00f3lidas.',
   defaultCollisionMapName: 'image.col',
   downloadCollisionMap: 'Baixar {name}',
+  defaultPaletteName: 'image.pal',
+  downloadPalette: 'Baixar {name}',
   collisionExportNote:
     'O mapa de colis\u00f5es cont\u00e9m {count} c\u00e9lulas s\u00f3lidas e usa 120 bytes (um bit por c\u00e9lula de 8 x 8, bit mais alto primeiro).',
   appDescription:
@@ -170,7 +209,7 @@ const ptBr = {
   partialTransparency:
     'Pixels parcialmente transparentes ainda não são suportados.',
   tooManyColors:
-    'Foram encontrados {count} índices de cor. Tiles CHR do NES permitem quatro índices de cor por tile.',
+    'Foram encontradas {count} cores na imagem. No máximo 256 podem ser indexadas antes da quantização para as paletas do NES.',
   invalidPlayfieldDimensions:
     'Um playfield deve ter exatamente 256 × 240 px (32 × 30 tiles). A exportação CHR continua disponível.',
   invalidPlayfieldTiles:
@@ -189,6 +228,40 @@ const ptBr = {
   tileHexId: '${id}',
   tilePosition: 'Coluna {column}, linha {row}',
   tileCanvasLabel: 'Prévia do tile {id}',
+  paletteEditorTitle: 'Paletas do NES',
+  paletteEditorHint:
+    'Monte quatro paletas de fundo usando somente os 64 c\u00f3digos de cor suportados pela PPU do NES. A cor 0 \u00e9 a cor de fundo universal compartilhada.',
+  paletteEditorEmpty: 'Importe ou gere uma imagem para atribuir as paletas.',
+  nesPaletteName: 'Paleta {index}',
+  nesPaletteSlotLabel:
+    'Paleta {palette}, cor {slot}, c\u00f3digo NES atual {code}',
+  nesMasterPaletteTitle: 'Paleta mestre do NES ($00-$3F)',
+  nesColorEditTarget:
+    'Editando a paleta {palette}, \u00edndice de cor {color} ({code}). Escolha abaixo a cor NES correspondente.',
+  nesColorButton: 'Usar a cor NES {code}',
+  paletteRegionsTitle: 'Pintar \u00edndices de cor CHR',
+  paletteRegionsHint:
+    'Clique na pr\u00e9via principal da imagem para abrir aqui uma regi\u00e3o de {size} x {size}. A edi\u00e7\u00e3o de paleta e das cores dos pixels fica dispon\u00edvel somente na regi\u00e3o ampliada.',
+  paletteColorBrushTitle: 'Pincel de cor CHR',
+  paletteColorBrushLabel:
+    'Pintar \u00edndice de cor {index}, c\u00f3digo NES {code}',
+  paletteActiveBrush:
+    'Pincel ativo: paleta {palette}, \u00edndice de cor {color}, c\u00f3digo NES {code}.',
+  paletteShowNumbers:
+    'Mostrar n\u00fameros das paletas nas regi\u00f5es da imagem',
+  paletteCanvasLabel:
+    'Editor de paletas do NES. O bot\u00e3o esquerdo pinta, o direito substitui cores iguais e o bot\u00e3o do meio amplia uma regi\u00e3o.',
+  paletteZoomTitle: 'Regi\u00e3o ampliada: coluna {column}, linha {row}',
+  paletteZoomDetails:
+    '{size} x {size} pixels (x {startX}-{endX}, y {startY}-{endY}); tiles nas colunas {tileStartX}-{tileEndX}, linhas {tileStartY}-{tileEndY}; paleta {palette}.',
+  paletteZoomHint:
+    'O bot\u00e3o esquerdo pinta um pixel. O direito substitui cores iguais dentro desta regi\u00e3o.',
+  paletteZoomClose: 'Fechar amplia\u00e7\u00e3o',
+  paletteZoomCanvasLabel: 'Editor ampliado de pixels da paleta do NES.',
+  paletteZoomEmpty:
+    'Clique em uma regi\u00e3o da pr\u00e9via principal para edit\u00e1-la.',
+  palettePixelPaintStatus:
+    'Pixel coluna {column}, linha {row}: pintar \u00edndice de cor {color} da paleta {palette}.',
   exportTitle: 'Exportar',
   defaultOutputName: 'image.chr',
   defaultNametableName: 'image.nam',
@@ -207,7 +280,9 @@ const ptBr = {
   playfieldExportIncomplete:
     'A exportação CHR está disponível, mas os dados do playfield precisam que o problema do diagnóstico seja resolvido.',
   attributeTablePaletteNote:
-    'A Attribute Table seleciona a paleta 0 em toda a tela porque esta versão usa uma paleta global de quatro cores.',
+    'A Attribute Table armazena a paleta selecionada para cada regi\u00e3o de 16 x 16 pixels.',
+  paletteExportNote:
+    'O arquivo de paletas cont\u00e9m quatro paletas de fundo do NES (16 c\u00f3digos de cor da PPU).',
 } as const satisfies TranslationTable;
 
 export const translations = {

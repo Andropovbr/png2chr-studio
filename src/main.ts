@@ -8,6 +8,17 @@ import {
 } from './core/collision-encoder';
 import { analyzeImage } from './core/image-analysis';
 import {
+  createDefaultNesPaletteSet,
+  createPaletteAssignments,
+  createPixelOverrides,
+  encodeNesBackgroundPalettes,
+  mapImageToNesPalettes,
+  PLAYFIELD_PALETTE_REGION_SIZE,
+  renderNesPaletteImage,
+  setNesPaletteColor,
+  TILESET_PALETTE_REGION_SIZE,
+} from './core/nes-palette';
+import {
   encodePlayfield,
   PlayfieldEncodingError,
 } from './core/playfield-encoder';
@@ -24,6 +35,7 @@ import { createExportPanel } from './ui/export-panel';
 import { createHeader } from './ui/header';
 import { createImageInput } from './ui/image-input';
 import { createImagePreview } from './ui/image-preview';
+import { createPaletteEditor } from './ui/palette-editor';
 import { createTileGrid } from './ui/tile-grid';
 import {
   displayErrorFromAnalysis,
@@ -37,6 +49,7 @@ import {
   toChrFileName,
   toCollisionMapFileName,
   toNametableFileName,
+  toPaletteFileName,
 } from './utils/file-name';
 
 const appElement = document.querySelector<HTMLElement>('#app');
@@ -57,9 +70,38 @@ let project: ProjectView = {
   deduplicationEnabled: false,
   flipDeduplicationEnabled: false,
   collisionCells: createEmptyCollisionMap(),
+  paletteSet: createDefaultNesPaletteSet(),
+  paletteAssignments: new Uint8Array(),
+  previewTool: 'palette',
+  pixelOverrides: new Uint8Array(),
+  activePaletteIndex: 0,
+  activeColorIndex: 1,
+  showPaletteNumbers: false,
+  zoomedPaletteRegion: null,
+  paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
   error: null,
   loading: false,
 };
+
+function paletteRegionSize(
+  mode: ProjectView['mode'],
+  image: IndexedImage | null,
+): number {
+  return mode === 'playfield' && image?.width === 256 && image.height === 240
+    ? PLAYFIELD_PALETTE_REGION_SIZE
+    : TILESET_PALETTE_REGION_SIZE;
+}
+
+function assignmentsForImage(
+  image: IndexedImage,
+  mode: ProjectView['mode'],
+): Uint8Array {
+  return createPaletteAssignments(
+    image.width,
+    image.height,
+    paletteRegionSize(mode, image),
+  );
+}
 
 function render(): void {
   document.documentElement.lang = getLocale();
@@ -80,21 +122,38 @@ function render(): void {
     project.fileName === null
       ? t('defaultCollisionMapName')
       : toCollisionMapFileName(project.fileName);
+  const paletteName =
+    project.fileName === null
+      ? t('defaultPaletteName')
+      : toPaletteFileName(project.fileName);
+  const regionSize = paletteRegionSize(project.mode, project.indexedImage);
+  const mappedImage =
+    project.indexedImage === null
+      ? null
+      : mapImageToNesPalettes(
+          project.indexedImage,
+          project.paletteSet,
+          project.paletteAssignments,
+          regionSize,
+          project.pixelOverrides,
+        );
+  const mappedTiles = mappedImage === null ? [] : extractTiles(mappedImage);
   let visibleTiles = project.deduplicationEnabled
     ? project.mode === 'tileset' && project.flipDeduplicationEnabled
-      ? deduplicateTilesConsideringFlips(project.tiles)
-      : deduplicateTiles(project.tiles)
-    : project.tiles;
+      ? deduplicateTilesConsideringFlips(mappedTiles)
+      : deduplicateTiles(mappedTiles)
+    : mappedTiles;
   let nametable: Uint8Array | null = null;
   let attributeTable: Uint8Array | null = null;
   let conversionError = project.error;
 
-  if (project.mode === 'playfield' && project.indexedImage !== null) {
+  if (project.mode === 'playfield' && mappedImage !== null) {
     try {
       const playfield = encodePlayfield(
-        project.indexedImage,
-        project.tiles,
+        mappedImage,
+        mappedTiles,
         project.deduplicationEnabled,
+        project.paletteAssignments,
       );
       visibleTiles = playfield.chrTiles;
       nametable = playfield.nametable;
@@ -106,9 +165,98 @@ function render(): void {
     }
   }
 
-  const chr = project.indexedImage === null ? null : encodeChr(visibleTiles);
+  const chr = mappedImage === null ? null : encodeChr(visibleTiles);
   const workspace = document.createElement('div');
   workspace.className = 'workspace';
+  const editingWorkspace = document.createElement('div');
+  editingWorkspace.className = 'playfield-editing-workspace';
+  editingWorkspace.append(
+    createImagePreview({
+      image:
+        mappedImage === null
+          ? project.sourceImage
+          : new ImageData(
+              renderNesPaletteImage(
+                mappedImage,
+                project.paletteSet,
+                project.paletteAssignments,
+                regionSize,
+              ),
+              mappedImage.width,
+              mappedImage.height,
+            ),
+      collisionCells:
+        project.mode === 'playfield' && project.indexedImage !== null
+          ? project.collisionCells
+          : null,
+      paletteAssignments:
+        project.indexedImage === null ? null : project.paletteAssignments,
+      paletteRegionSize: project.indexedImage === null ? null : regionSize,
+      showPaletteNumbers: project.showPaletteNumbers,
+      selectedPaletteRegion: project.zoomedPaletteRegion,
+      activeTool: project.previewTool,
+      onActiveToolChange: (previewTool) => {
+        project = { ...project, previewTool };
+        render();
+      },
+      onCollisionChange: (collisionCells) => {
+        project = { ...project, collisionCells };
+        render();
+      },
+      onPaletteRegionSelect: (zoomedPaletteRegion) => {
+        project = { ...project, zoomedPaletteRegion };
+        render();
+      },
+    }),
+    createPaletteEditor({
+      image: project.indexedImage,
+      paletteSet: project.paletteSet,
+      assignments: project.paletteAssignments,
+      regionSize,
+      activePaletteIndex: project.activePaletteIndex,
+      activeColorIndex: project.activeColorIndex,
+      showPaletteNumbers: project.showPaletteNumbers,
+      zoomedRegionIndex: project.zoomedPaletteRegion,
+      colorTarget: project.paletteColorTarget,
+      onActivePaletteChange: (activePaletteIndex) => {
+        project = { ...project, activePaletteIndex };
+        render();
+      },
+      onActiveColorChange: (activeColorIndex) => {
+        project = { ...project, activeColorIndex };
+        render();
+      },
+      onShowPaletteNumbersChange: (showPaletteNumbers) => {
+        project = { ...project, showPaletteNumbers };
+        render();
+      },
+      onZoomedRegionChange: (zoomedPaletteRegion) => {
+        project = { ...project, zoomedPaletteRegion };
+        render();
+      },
+      onColorTargetChange: (paletteColorTarget) => {
+        project = { ...project, paletteColorTarget };
+        render();
+      },
+      onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
+        project = {
+          ...project,
+          paletteSet: setNesPaletteColor(
+            project.paletteSet,
+            paletteIndex,
+            colorIndex,
+            colorCode,
+          ),
+        };
+        render();
+      },
+      pixelOverrides: project.pixelOverrides,
+      onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
+        project = { ...project, pixelOverrides, paletteAssignments };
+        render();
+      },
+    }),
+  );
   workspace.append(
     createImageInput(
       project.fileName,
@@ -117,6 +265,10 @@ function render(): void {
       project.loading,
       project.mode,
       (mode) => {
+        const paletteAssignments =
+          project.indexedImage === null
+            ? new Uint8Array()
+            : assignmentsForImage(project.indexedImage, mode);
         project = {
           ...project,
           mode,
@@ -124,27 +276,19 @@ function render(): void {
             mode === 'playfield' ? true : project.deduplicationEnabled,
           flipDeduplicationEnabled:
             mode === 'playfield' ? false : project.flipDeduplicationEnabled,
+          paletteAssignments,
+          zoomedPaletteRegion: null,
         };
         render();
       },
       (file) => void loadFile(file),
       generatePlayfield,
     ),
-    createImagePreview({
-      image: project.sourceImage,
-      collisionCells:
-        project.mode === 'playfield' && project.indexedImage !== null
-          ? project.collisionCells
-          : null,
-      onCollisionChange: (collisionCells) => {
-        project = { ...project, collisionCells };
-        render();
-      },
-    }),
+    editingWorkspace,
     createDiagnostics({
       width: project.width,
       height: project.height,
-      indexedImage: project.indexedImage,
+      indexedImage: mappedImage,
       tileCount: visibleTiles.length,
       chrSize: chr?.length ?? null,
       playfieldMode: project.mode === 'playfield',
@@ -155,7 +299,7 @@ function render(): void {
     createTileGrid(
       visibleTiles,
       project.indexedImage,
-      project.tiles.length,
+      mappedTiles.length,
       project.deduplicationEnabled,
       (enabled) => {
         project = {
@@ -173,14 +317,18 @@ function render(): void {
         project = { ...project, flipDeduplicationEnabled: enabled };
         render();
       },
+      project.paletteSet,
+      project.paletteAssignments,
+      regionSize,
     ),
     createExportPanel({
       chrName: outputName,
       nametableName,
       attributeTableName,
       collisionMapName,
+      paletteName,
       tileCount: visibleTiles.length,
-      originalTileCount: project.tiles.length,
+      originalTileCount: mappedTiles.length,
       deduplicationEnabled: project.deduplicationEnabled,
       flipDeduplicationEnabled: project.flipDeduplicationEnabled,
       playfieldMode: project.mode === 'playfield',
@@ -191,6 +339,7 @@ function render(): void {
         project.mode === 'playfield' && nametable !== null
           ? encodeCollisionMap(project.collisionCells)
           : null,
+      palette: encodeNesBackgroundPalettes(project.paletteSet),
       collisionCellCount: countCollisionCells(project.collisionCells),
       onDownload: downloadBytes,
     }),
@@ -231,6 +380,11 @@ async function loadFile(file: File): Promise<void> {
   const mode = project.mode;
   const deduplicationEnabled = project.deduplicationEnabled;
   const flipDeduplicationEnabled = project.flipDeduplicationEnabled;
+  const paletteSet = project.paletteSet;
+  const activePaletteIndex = project.activePaletteIndex;
+  const paletteColorTarget = project.paletteColorTarget;
+  const activeColorIndex = project.activeColorIndex;
+  const showPaletteNumbers = project.showPaletteNumbers;
   project = {
     fileName: file.name,
     width: null,
@@ -242,6 +396,15 @@ async function loadFile(file: File): Promise<void> {
     deduplicationEnabled,
     flipDeduplicationEnabled,
     collisionCells: createEmptyCollisionMap(),
+    paletteSet,
+    paletteAssignments: new Uint8Array(),
+    previewTool: 'palette',
+    pixelOverrides: new Uint8Array(),
+    activePaletteIndex,
+    activeColorIndex,
+    showPaletteNumbers,
+    zoomedPaletteRegion: null,
+    paletteColorTarget,
     error: null,
     loading: true,
   };
@@ -275,11 +438,25 @@ async function loadFile(file: File): Promise<void> {
 
   try {
     const indexedImage = analyzeImage(imageData);
-    const tiles = extractTiles(indexedImage);
+    const paletteAssignments = assignmentsForImage(indexedImage, mode);
+    const pixelOverrides = createPixelOverrides(
+      indexedImage.width,
+      indexedImage.height,
+    );
+    const mappedImage = mapImageToNesPalettes(
+      indexedImage,
+      paletteSet,
+      paletteAssignments,
+      paletteRegionSize(mode, indexedImage),
+      pixelOverrides,
+    );
+    const tiles = extractTiles(mappedImage);
     project = {
       ...project,
       indexedImage,
       tiles,
+      paletteAssignments,
+      pixelOverrides,
       error: null,
       loading: false,
     };
@@ -313,17 +490,39 @@ function indexedImageToImageData(image: IndexedImage): ImageData {
 function generatePlayfield(): void {
   requestId += 1;
   const indexedImage = generateRandomPlayfield();
+  const paletteAssignments = assignmentsForImage(indexedImage, 'playfield');
+  const paletteSet = createDefaultNesPaletteSet();
+  const pixelOverrides = createPixelOverrides(
+    indexedImage.width,
+    indexedImage.height,
+  );
+  const mappedImage = mapImageToNesPalettes(
+    indexedImage,
+    paletteSet,
+    paletteAssignments,
+    PLAYFIELD_PALETTE_REGION_SIZE,
+    pixelOverrides,
+  );
   project = {
     fileName: 'random-playfield.png',
     width: indexedImage.width,
     height: indexedImage.height,
     sourceImage: indexedImageToImageData(indexedImage),
     indexedImage,
-    tiles: extractTiles(indexedImage),
+    tiles: extractTiles(mappedImage),
     mode: 'playfield',
     deduplicationEnabled: true,
     flipDeduplicationEnabled: false,
     collisionCells: createEmptyCollisionMap(),
+    paletteSet,
+    paletteAssignments,
+    previewTool: 'palette',
+    pixelOverrides,
+    activePaletteIndex: 0,
+    activeColorIndex: 1,
+    showPaletteNumbers: false,
+    zoomedPaletteRegion: null,
+    paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
     error: null,
     loading: false,
   };
