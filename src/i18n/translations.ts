@@ -53,6 +53,7 @@ const en = {
   tilesTitle: 'CHR tiles',
   tilesEmpty: 'No tiles to display yet.',
   deduplicateTiles: 'Remove duplicate tiles',
+  deduplicateFlippedTiles: 'Also match horizontal and vertical flips',
   deduplicationHint:
     'Exact duplicate tiles can be hidden and omitted from the CHR file.',
   tileVisibilitySummary: 'Showing {visible} of {total} tiles.',
@@ -71,6 +72,8 @@ const en = {
   exportReady: '{count} tiles will be exported.',
   exportReadyDeduplicated:
     '{count} unique tiles out of {total} will be exported.',
+  exportReadyFlipDeduplicated:
+    '{count} unique tiles out of {total} will be exported after matching horizontal and vertical flips.',
   playfieldExportReady:
     'The playfield is ready with {count} CHR tiles, a 960-byte nametable, and a 64-byte Attribute Table.',
   playfieldExportIncomplete:
@@ -140,6 +143,7 @@ const ptBr = {
   tilesTitle: 'Tiles CHR',
   tilesEmpty: 'Ainda não há tiles para exibir.',
   deduplicateTiles: 'Remover tiles duplicados',
+  deduplicateFlippedTiles: 'Também considerar flips horizontais e verticais',
   deduplicationHint:
     'Tiles exatamente iguais podem ser ocultados e omitidos do arquivo CHR.',
   tileVisibilitySummary: 'Exibindo {visible} de {total} tiles.',
@@ -158,6 +162,8 @@ const ptBr = {
     'Importe uma imagem válida para habilitar a exportação CHR.',
   exportReady: '{count} tiles serão exportados.',
   exportReadyDeduplicated: '{count} tiles únicos de {total} serão exportados.',
+  exportReadyFlipDeduplicated:
+    '{count} tiles únicos de {total} serão exportados após considerar flips horizontais e verticais.',
   playfieldExportReady:
     'O playfield está pronto com {count} tiles CHR, uma nametable de 960 bytes e uma Attribute Table de 64 bytes.',
   playfieldExportIncomplete:

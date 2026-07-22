@@ -4,7 +4,7 @@ PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into N
 
 ## Current status
 
-Version 0.3 provides PNG-to-CHR and playfield conversion flows:
+Version 0.4 provides PNG-to-CHR and playfield conversion flows:
 
 - PNG selection and drag-and-drop import;
 - local image decoding and preview;
@@ -14,6 +14,7 @@ Version 0.3 provides PNG-to-CHR and playfield conversion flows:
 - enlarged, pixel-perfect tile previews with decimal and hexadecimal IDs;
 - NES 2bpp CHR encoding;
 - optional exact tile deduplication with an immediate grid preview;
+- optional Tileset deduplication across horizontal, vertical, and combined flips;
 - `.chr` download using either the original or deduplicated tile set;
 - explicit Tileset and Playfield processing modes;
 - 256×240 playfield validation;
@@ -61,7 +62,7 @@ Open the local URL printed by Vite. Do not open `index.html` directly with a `fi
 npm run test
 ```
 
-The test suite covers color mapping, transparency validation, tile extraction, deduplication maps, bit direction, CHR bitplanes, nametable and Attribute Table generation, translation parity, file naming, and the complete RGBA-to-CHR pipeline.
+The test suite covers color mapping, transparency validation, tile extraction, exact and flip-aware deduplication, deduplication maps, bit direction, CHR bitplanes, nametable and Attribute Table generation, translation parity, file naming, and the complete RGBA-to-CHR pipeline.
 
 ## Build
 
@@ -107,7 +108,7 @@ The exported files are:
 
 A nametable entry is one byte, so playfield data can reference no more than 256 exported CHR tiles. When that limit is exceeded, CHR export remains available while nametable and Attribute Table exports are disabled. Enabling deduplication will usually bring a playfield below the limit.
 
-Version 0.3 still uses one global four-color palette. Consequently, every Attribute Table quadrant selects palette 0 and the generated `.atr` file contains 64 zero bytes.
+Version 0.4 still uses one global four-color palette. Consequently, every Attribute Table quadrant selects palette 0 and the generated `.atr` file contains 64 zero bytes.
 
 ## CHR format summary
 
@@ -122,6 +123,8 @@ Each 8×8 tile produces 16 bytes:
 
 Tiles are exported from left to right and then top to bottom. Deduplication is disabled by default. When enabled, exact pixel duplicates are omitted, first occurrences keep their order, and tile IDs are reassigned to match their positions in the exported CHR data. Disabling the option restores the original tile list.
 
+Tileset mode provides an additional option that treats horizontal, vertical, and combined flips as duplicates. It keeps the orientation of the first matching tile encountered and exports only that orientation to CHR. This option depends on the main deduplication setting and is intentionally unavailable in Playfield mode because standard NES background nametables have no flip bits.
+
 ## Development commands
 
 ```bash
@@ -132,7 +135,7 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.3 limitations
+## Version 0.4 limitations
 
 - No automatic color reduction or NES master-palette matching
 - No manual pixel editing
@@ -142,7 +145,7 @@ npm run build
 - No metatiles, metasprites, or animations
 - No cloud storage or backend
 
-The current color limit applies to the whole imported image. Per-tile palette assignment is outside the scope of version 0.3, so the generated Attribute Table always selects palette 0. Deduplication compares exact indexed pixel data and does not consider flipped or rotated variants equivalent.
+The current color limit applies to the whole imported image. Per-tile palette assignment is outside the scope of version 0.4, so the generated Attribute Table always selects palette 0. Flip-aware deduplication is limited to Tileset exports; rotated variants are still considered different.
 
 ## Project structure
 
@@ -159,4 +162,4 @@ The `core` directory does not access the DOM or Canvas API, which keeps conversi
 
 ## Roadmap
 
-Possible future versions may add multiple NES palettes, Attribute Table palette assignment, interactive tile and playfield editing, flip-aware deduplication, metatiles, metasprites, and animation tooling. These features are intentionally excluded from version 0.3.
+Possible future versions may add multiple NES palettes, Attribute Table palette assignment, interactive tile and playfield editing, rotation-aware analysis, metatiles, metasprites, and animation tooling. These features are intentionally excluded from version 0.4.

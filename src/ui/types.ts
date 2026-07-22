@@ -19,6 +19,7 @@ export interface ProjectView {
   readonly tiles: readonly Tile[];
   readonly mode: ProjectMode;
   readonly deduplicationEnabled: boolean;
+  readonly flipDeduplicationEnabled: boolean;
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

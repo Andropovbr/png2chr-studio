@@ -30,6 +30,9 @@ export function createTileGrid(
   originalTileCount: number,
   deduplicationEnabled: boolean,
   onDeduplicationChange: (enabled: boolean) => void,
+  allowFlipDeduplication: boolean,
+  flipDeduplicationEnabled: boolean,
+  onFlipDeduplicationChange: (enabled: boolean) => void,
 ): HTMLElement {
   const section = document.createElement('section');
   section.className = 'panel tiles-panel';
@@ -38,6 +41,8 @@ export function createTileGrid(
 
   const toolbar = document.createElement('div');
   toolbar.className = 'tile-toolbar';
+  const controls = document.createElement('div');
+  controls.className = 'deduplication-controls';
   const checkboxLabel = document.createElement('label');
   checkboxLabel.className = 'checkbox-control';
   const checkbox = document.createElement('input');
@@ -50,6 +55,23 @@ export function createTileGrid(
   const checkboxText = document.createElement('span');
   checkboxText.textContent = t('deduplicateTiles');
   checkboxLabel.append(checkbox, checkboxText);
+  controls.append(checkboxLabel);
+
+  if (allowFlipDeduplication) {
+    const flipLabel = document.createElement('label');
+    flipLabel.className = 'checkbox-control';
+    const flipCheckbox = document.createElement('input');
+    flipCheckbox.type = 'checkbox';
+    flipCheckbox.checked = flipDeduplicationEnabled;
+    flipCheckbox.disabled = originalTileCount === 0 || !deduplicationEnabled;
+    flipCheckbox.addEventListener('change', () => {
+      onFlipDeduplicationChange(flipCheckbox.checked);
+    });
+    const flipText = document.createElement('span');
+    flipText.textContent = t('deduplicateFlippedTiles');
+    flipLabel.append(flipCheckbox, flipText);
+    controls.append(flipLabel);
+  }
 
   const hint = document.createElement('small');
   hint.textContent =
@@ -59,7 +81,7 @@ export function createTileGrid(
           visible: tiles.length,
           total: originalTileCount,
         });
-  toolbar.append(checkboxLabel, hint);
+  toolbar.append(controls, hint);
   section.append(heading, toolbar);
 
   if (tiles.length === 0 || image === null) {

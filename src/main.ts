@@ -6,7 +6,10 @@ import {
   encodePlayfield,
   PlayfieldEncodingError,
 } from './core/playfield-encoder';
-import { deduplicateTiles } from './core/tile-deduplication';
+import {
+  deduplicateTiles,
+  deduplicateTilesConsideringFlips,
+} from './core/tile-deduplication';
 import { extractTiles } from './core/tile-extraction';
 import { ImageAnalysisError } from './core/types';
 import { getLocale, subscribeToLocale, t } from './i18n';
@@ -45,6 +48,7 @@ let project: ProjectView = {
   tiles: [],
   mode: 'tileset',
   deduplicationEnabled: false,
+  flipDeduplicationEnabled: false,
   error: null,
   loading: false,
 };
@@ -65,7 +69,9 @@ function render(): void {
       ? t('defaultAttributeTableName')
       : toAttributeTableFileName(project.fileName);
   let visibleTiles = project.deduplicationEnabled
-    ? deduplicateTiles(project.tiles)
+    ? project.mode === 'tileset' && project.flipDeduplicationEnabled
+      ? deduplicateTilesConsideringFlips(project.tiles)
+      : deduplicateTiles(project.tiles)
     : project.tiles;
   let nametable: Uint8Array | null = null;
   let attributeTable: Uint8Array | null = null;
@@ -104,6 +110,8 @@ function render(): void {
           mode,
           deduplicationEnabled:
             mode === 'playfield' ? true : project.deduplicationEnabled,
+          flipDeduplicationEnabled:
+            mode === 'playfield' ? false : project.flipDeduplicationEnabled,
         };
         render();
       },
@@ -127,7 +135,19 @@ function render(): void {
       project.tiles.length,
       project.deduplicationEnabled,
       (enabled) => {
-        project = { ...project, deduplicationEnabled: enabled };
+        project = {
+          ...project,
+          deduplicationEnabled: enabled,
+          flipDeduplicationEnabled: enabled
+            ? project.flipDeduplicationEnabled
+            : false,
+        };
+        render();
+      },
+      project.mode === 'tileset',
+      project.flipDeduplicationEnabled,
+      (enabled) => {
+        project = { ...project, flipDeduplicationEnabled: enabled };
         render();
       },
     ),
@@ -138,6 +158,7 @@ function render(): void {
       tileCount: visibleTiles.length,
       originalTileCount: project.tiles.length,
       deduplicationEnabled: project.deduplicationEnabled,
+      flipDeduplicationEnabled: project.flipDeduplicationEnabled,
       playfieldMode: project.mode === 'playfield',
       chr,
       nametable,
@@ -180,6 +201,7 @@ async function loadFile(file: File): Promise<void> {
   const activeRequest = ++requestId;
   const mode = project.mode;
   const deduplicationEnabled = project.deduplicationEnabled;
+  const flipDeduplicationEnabled = project.flipDeduplicationEnabled;
   project = {
     fileName: file.name,
     width: null,
@@ -189,6 +211,7 @@ async function loadFile(file: File): Promise<void> {
     tiles: [],
     mode,
     deduplicationEnabled,
+    flipDeduplicationEnabled,
     error: null,
     loading: true,
   };

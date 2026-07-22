@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { deduplicateTiles, deduplicateTileSet } from './tile-deduplication';
+import {
+  deduplicateTiles,
+  deduplicateTilesConsideringFlips,
+  deduplicateTileSet,
+} from './tile-deduplication';
 import type { Tile } from './types';
 
 function tile(id: number, colorIndex: number): Tile {
@@ -10,6 +14,28 @@ function tile(id: number, colorIndex: number): Tile {
     row: 0,
     pixels: new Uint8Array(64).fill(colorIndex),
   };
+}
+
+function asymmetricTile(
+  id: number,
+  horizontalFlip: boolean,
+  verticalFlip: boolean,
+): Tile {
+  const source = new Uint8Array(64);
+  source[0] = 1;
+  source[1] = 2;
+  source[8] = 3;
+  const pixels = new Uint8Array(64);
+
+  for (let row = 0; row < 8; row += 1) {
+    for (let column = 0; column < 8; column += 1) {
+      const sourceRow = verticalFlip ? 7 - row : row;
+      const sourceColumn = horizontalFlip ? 7 - column : column;
+      pixels[row * 8 + column] = source[sourceRow * 8 + sourceColumn] ?? 0;
+    }
+  }
+
+  return { id, column: id, row: 0, pixels };
 }
 
 describe('tile deduplication', () => {
@@ -50,5 +76,28 @@ describe('tile deduplication', () => {
     ]);
 
     expect(Array.from(result.originalToUnique)).toEqual([0, 1, 0, 1]);
+  });
+
+  it('groups horizontal, vertical, and combined flips', () => {
+    const variants = [
+      asymmetricTile(0, false, false),
+      asymmetricTile(1, true, false),
+      asymmetricTile(2, false, true),
+      asymmetricTile(3, true, true),
+    ];
+
+    expect(deduplicateTiles(variants)).toHaveLength(4);
+    expect(deduplicateTilesConsideringFlips(variants)).toHaveLength(1);
+  });
+
+  it('preserves the first encountered orientation', () => {
+    const first = asymmetricTile(7, true, false);
+    const original = asymmetricTile(8, false, false);
+
+    const unique = deduplicateTilesConsideringFlips([first, original]);
+
+    expect(unique).toHaveLength(1);
+    expect(unique[0]).toMatchObject({ id: 0, column: 7 });
+    expect(unique[0]?.pixels).toEqual(first.pixels);
   });
 });

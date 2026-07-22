@@ -7,6 +7,7 @@ interface ExportPanelOptions {
   readonly tileCount: number;
   readonly originalTileCount: number;
   readonly deduplicationEnabled: boolean;
+  readonly flipDeduplicationEnabled: boolean;
   readonly playfieldMode: boolean;
   readonly chr: Uint8Array | null;
   readonly nametable: Uint8Array | null;
@@ -49,12 +50,17 @@ export function createExportPanel(options: ExportPanelOptions): HTMLElement {
       count: options.tileCount,
     });
   } else {
-    description.textContent = options.deduplicationEnabled
-      ? t('exportReadyDeduplicated', {
+    description.textContent = options.flipDeduplicationEnabled
+      ? t('exportReadyFlipDeduplicated', {
           count: options.tileCount,
           total: options.originalTileCount,
         })
-      : t('exportReady', { count: options.tileCount });
+      : options.deduplicationEnabled
+        ? t('exportReadyDeduplicated', {
+            count: options.tileCount,
+            total: options.originalTileCount,
+          })
+        : t('exportReady', { count: options.tileCount });
   }
 
   const actions = document.createElement('div');

@@ -144,6 +144,11 @@ select {
   cursor: pointer;
 }
 
+.deduplication-controls {
+  display: grid;
+  gap: 0.55rem;
+}
+
 .checkbox-control:has(input:disabled) {
   cursor: not-allowed;
   opacity: 0.55;
