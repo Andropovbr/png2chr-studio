@@ -1,31 +1,31 @@
 const en = {
   appTitle: 'PNG2CHR Studio',
   appDescription:
-    'Convert PNG artwork, CHR tilesets, and playfields into NES data, entirely in your browser.',
+    'Convert PNG artwork, CHR tilesets, NROM graphics, and playfields into NES data, entirely in your browser.',
   languageLabel: 'Language',
   localePtBr: 'Português (Brasil)',
   localeEn: 'English',
-  importTitle: 'Import PNG or CHR',
+  importTitle: 'Import PNG, CHR, or NROM',
   imageModeLabel: 'Image purpose',
   tilesetMode: 'Tileset / graphics',
   playfieldMode: 'Playfield / game screen',
   tilesetModeHint:
-    'Use a PNG whose dimensions are multiples of 8 or a CHR file containing 16 bytes per tile.',
+    'Use a PNG, a CHR file, or an iNES mapper 0 ROM with 8 KB of CHR-ROM.',
   playfieldModeHint:
     'A playfield must be exactly 256 × 240 px (32 × 30 tiles).',
   choosePng: 'Choose PNG',
-  choosePngOrChr: 'Choose PNG or CHR',
+  choosePngOrChr: 'Choose PNG, CHR, or NES ROM',
   generateRandomPlayfield: 'Generate random playfield',
   randomPlayfieldHint:
     'Creates a simple test screen with one four-color NES palette and a small reusable tile set.',
-  dropPrompt: 'or drop a PNG or CHR file here',
+  dropPrompt: 'or drop a PNG, CHR, or NES ROM here',
   dropPngPrompt: 'or drop a PNG file here',
-  processingLocal: 'Your image is processed locally and is never uploaded.',
+  processingLocal: 'Your file is processed locally and is never uploaded.',
   loadingImage: 'Reading {name}…',
   fileDetails: '{name} · {width} × {height} px',
   dimensionsValue: '{width} × {height} px',
   previewTitle: 'Image preview',
-  previewEmpty: 'Import a valid PNG or CHR file to see its preview.',
+  previewEmpty: 'Import a valid PNG, CHR, or NROM file to see its preview.',
   previewCanvasLabel: 'Preview of the imported graphics',
   collisionCanvasLabel:
     'Playfield preview. Click to edit the palette region; drag to paint collisions.',
@@ -54,12 +54,22 @@ const en = {
   transparentColor: 'Transparent',
   unassignedColor: 'Unassigned',
   errorTitle: 'Conversion issue',
-  invalidFileType: 'Select a PNG or CHR file.',
+  invalidFileType: 'Select a PNG, CHR, or NES ROM file.',
   chrReadFailed: 'The CHR file could not be read.',
   emptyChrFile: 'The CHR file is empty.',
   invalidChrSize:
     'The CHR file size must be a positive multiple of 16 bytes (16 bytes per tile).',
-  chrTilesetOnly: 'CHR files can only be imported in Tileset mode.',
+  chrTilesetOnly: 'CHR and NES ROM files can only be imported in Tileset mode.',
+  nesReadFailed: 'The NES ROM file could not be read.',
+  invalidNesHeader: 'The file does not contain a valid iNES header.',
+  nes2Unsupported: 'NES 2.0 ROMs are not supported in version 0.8.',
+  nesMapperUnsupported:
+    'Only NROM/mapper 0 is supported. This ROM uses mapper {mapper}.',
+  nesPrgSizeUnsupported: 'NROM import requires a 16 KB or 32 KB PRG-ROM.',
+  nesChrRamUnsupported:
+    'This ROM uses CHR-RAM and has no static CHR-ROM tiles to extract.',
+  nesChrSizeUnsupported: 'NROM import requires exactly 8 KB of CHR-ROM.',
+  nesRomTruncated: 'The ROM ends before its declared CHR-ROM data.',
   imageDecodeFailed:
     'The PNG could not be read. The file may be damaged or invalid.',
   invalidDimensions: 'The image width and height must both be multiples of 8.',
@@ -173,29 +183,29 @@ const ptBr = {
   collisionExportNote:
     'O mapa de colis\u00f5es cont\u00e9m {count} c\u00e9lulas s\u00f3lidas e usa 120 bytes (um bit por c\u00e9lula de 8 x 8, bit mais alto primeiro).',
   appDescription:
-    'Converta imagens PNG, tilesets CHR e playfields em dados para NES, totalmente no navegador.',
+    'Converta imagens PNG, tilesets CHR, gráficos de NROM e playfields em dados para NES, totalmente no navegador.',
   languageLabel: 'Idioma',
   localePtBr: 'Português (Brasil)',
   localeEn: 'English',
-  importTitle: 'Importar PNG ou CHR',
+  importTitle: 'Importar PNG, CHR ou NROM',
   imageModeLabel: 'Finalidade da imagem',
   tilesetMode: 'Tileset / gráficos',
   playfieldMode: 'Playfield / tela do jogo',
   tilesetModeHint:
-    'Use um PNG com dimensões múltiplas de 8 ou um arquivo CHR com 16 bytes por tile.',
+    'Use um PNG, um arquivo CHR ou uma ROM iNES mapper 0 com 8 KB de CHR-ROM.',
   playfieldModeHint:
     'Um playfield deve ter exatamente 256 × 240 px (32 × 30 tiles).',
   choosePng: 'Selecionar PNG',
-  choosePngOrChr: 'Selecionar PNG ou CHR',
-  dropPrompt: 'ou arraste um arquivo PNG ou CHR para cá',
+  choosePngOrChr: 'Selecionar PNG, CHR ou ROM NES',
+  dropPrompt: 'ou arraste um arquivo PNG, CHR ou ROM NES para cá',
   dropPngPrompt: 'ou arraste um arquivo PNG para cá',
-  processingLocal: 'Sua imagem é processada localmente e nunca é enviada.',
+  processingLocal: 'Seu arquivo é processado localmente e nunca é enviado.',
   loadingImage: 'Lendo {name}…',
   fileDetails: '{name} · {width} × {height} px',
   dimensionsValue: '{width} × {height} px',
   previewTitle: 'Prévia da imagem',
   previewEmpty:
-    'Importe um arquivo PNG ou CHR válido para visualizar sua prévia.',
+    'Importe um arquivo PNG, CHR ou NROM válido para visualizar sua prévia.',
   previewCanvasLabel: 'Prévia dos gráficos importados',
   diagnosticsTitle: 'Diagnóstico',
   dimensionsLabel: 'Dimensões',
@@ -211,12 +221,24 @@ const ptBr = {
   transparentColor: 'Transparente',
   unassignedColor: 'Sem cor atribuída',
   errorTitle: 'Problema na conversão',
-  invalidFileType: 'Selecione um arquivo PNG ou CHR.',
+  invalidFileType: 'Selecione um arquivo PNG, CHR ou uma ROM NES.',
   chrReadFailed: 'Não foi possível ler o arquivo CHR.',
   emptyChrFile: 'O arquivo CHR está vazio.',
   invalidChrSize:
     'O tamanho do arquivo CHR deve ser um múltiplo positivo de 16 bytes (16 bytes por tile).',
-  chrTilesetOnly: 'Arquivos CHR só podem ser importados no modo Tileset.',
+  chrTilesetOnly:
+    'Arquivos CHR e ROMs NES só podem ser importados no modo Tileset.',
+  nesReadFailed: 'Não foi possível ler o arquivo de ROM NES.',
+  invalidNesHeader: 'O arquivo não contém um cabeçalho iNES válido.',
+  nes2Unsupported: 'ROMs NES 2.0 não são suportadas na versão 0.8.',
+  nesMapperUnsupported:
+    'Apenas NROM/mapper 0 é suportado. Esta ROM usa o mapper {mapper}.',
+  nesPrgSizeUnsupported:
+    'A importação NROM requer uma PRG-ROM de 16 KB ou 32 KB.',
+  nesChrRamUnsupported:
+    'Esta ROM usa CHR-RAM e não possui tiles CHR-ROM estáticos para extrair.',
+  nesChrSizeUnsupported: 'A importação NROM requer exatamente 8 KB de CHR-ROM.',
+  nesRomTruncated: 'A ROM termina antes dos dados CHR-ROM declarados.',
   imageDecodeFailed:
     'Não foi possível ler o PNG. O arquivo pode estar danificado ou ser inválido.',
   invalidDimensions: 'A largura e a altura da imagem devem ser múltiplas de 8.',

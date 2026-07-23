@@ -65,7 +65,7 @@ export function createImageInput(
   input.type = 'file';
   input.id = 'asset-input';
   input.accept =
-    mode === 'playfield' ? 'image/png,.png' : 'image/png,.png,.chr';
+    mode === 'playfield' ? 'image/png,.png' : 'image/png,.png,.chr,.nes';
   input.className = 'visually-hidden';
 
   const label = document.createElement('label');

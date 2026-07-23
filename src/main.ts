@@ -12,6 +12,7 @@ import {
   encodeCollisionMap,
 } from './core/collision-encoder';
 import { analyzeImage } from './core/image-analysis';
+import { extractNromChr, InesRomError } from './core/ines-rom';
 import {
   createDefaultNesPaletteSet,
   createPaletteAssignments,
@@ -45,6 +46,7 @@ import { createPaletteEditor } from './ui/palette-editor';
 import { createTileGrid } from './ui/tile-grid';
 import {
   displayErrorFromAnalysis,
+  displayErrorFromInes,
   displayErrorFromPlayfield,
   type DisplayError,
   type ProjectView,
@@ -275,7 +277,10 @@ function render(): void {
       project.loading,
       project.mode,
       (mode) => {
-        if (mode === 'playfield' && project.sourceKind === 'chr') {
+        if (
+          mode === 'playfield' &&
+          (project.sourceKind === 'chr' || project.sourceKind === 'nes')
+        ) {
           project = {
             ...project,
             fileName: null,
@@ -410,8 +415,9 @@ async function decodeImage(file: File): Promise<ImageData> {
 async function loadFile(file: File): Promise<void> {
   const lowerCaseName = file.name.toLowerCase();
   const isChrFile = lowerCaseName.endsWith('.chr');
+  const isNesFile = lowerCaseName.endsWith('.nes');
   const isPngFile = lowerCaseName.endsWith('.png');
-  if (isChrFile && project.mode === 'playfield') {
+  if ((isChrFile || isNesFile) && project.mode === 'playfield') {
     project = {
       ...project,
       error: { key: 'chrTilesetOnly' },
@@ -432,7 +438,13 @@ async function loadFile(file: File): Promise<void> {
   const showPaletteNumbers = project.showPaletteNumbers;
   project = {
     fileName: file.name,
-    sourceKind: isChrFile ? 'chr' : isPngFile ? 'png' : null,
+    sourceKind: isChrFile
+      ? 'chr'
+      : isNesFile
+        ? 'nes'
+        : isPngFile
+          ? 'png'
+          : null,
     width: null,
     height: null,
     sourceImage: null,
@@ -456,25 +468,26 @@ async function loadFile(file: File): Promise<void> {
   };
   render();
 
-  if (!isChrFile && (!isPngFile || file.type !== 'image/png')) {
+  if (!isChrFile && !isNesFile && (!isPngFile || file.type !== 'image/png')) {
     setProjectError({ key: 'invalidFileType' });
     return;
   }
 
-  if (isChrFile) {
+  if (isChrFile || isNesFile) {
     let bytes: Uint8Array;
     try {
       bytes = new Uint8Array(await file.arrayBuffer());
     } catch {
       if (activeRequest === requestId) {
-        setProjectError({ key: 'chrReadFailed' });
+        setProjectError({ key: isNesFile ? 'nesReadFailed' : 'chrReadFailed' });
       }
       return;
     }
     if (activeRequest !== requestId) return;
 
     try {
-      const tiles = decodeChr(bytes);
+      const chrBytes = isNesFile ? extractNromChr(bytes).chr : bytes;
+      const tiles = decodeChr(chrBytes);
       const previewColors = paletteSet[0].map(
         (colorCode) =>
           NES_MASTER_PALETTE[colorCode] ?? { red: 0, green: 0, blue: 0 },
@@ -495,12 +508,16 @@ async function loadFile(file: File): Promise<void> {
       };
       render();
     } catch (error: unknown) {
-      setProjectError({
-        key:
-          error instanceof ChrDecodingError && error.code === 'empty-file'
-            ? 'emptyChrFile'
-            : 'invalidChrSize',
-      });
+      if (error instanceof InesRomError) {
+        setProjectError(displayErrorFromInes(error));
+      } else {
+        setProjectError({
+          key:
+            error instanceof ChrDecodingError && error.code === 'empty-file'
+              ? 'emptyChrFile'
+              : 'invalidChrSize',
+        });
+      }
     }
     return;
   }

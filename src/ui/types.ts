@@ -1,4 +1,5 @@
 import type { PlayfieldEncodingError } from '../core/playfield-encoder';
+import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
@@ -11,7 +12,7 @@ export interface DisplayError {
 
 export type ProjectMode = 'tileset' | 'playfield';
 export type PreviewTool = 'palette' | 'paint-collision' | 'erase-collision';
-export type SourceKind = 'png' | 'chr';
+export type SourceKind = 'png' | 'chr' | 'nes';
 
 export interface ProjectView {
   readonly fileName: string | null;
@@ -54,6 +55,28 @@ export function displayErrorFromPlayfield(
         key: 'tooManyPlayfieldTiles',
         variables: { count: error.tileCount ?? 0 },
       };
+  }
+}
+
+export function displayErrorFromInes(error: InesRomError): DisplayError {
+  switch (error.code) {
+    case 'invalid-header':
+      return { key: 'invalidNesHeader' };
+    case 'nes2-unsupported':
+      return { key: 'nes2Unsupported' };
+    case 'mapper-unsupported':
+      return {
+        key: 'nesMapperUnsupported',
+        variables: { mapper: error.mapper ?? 0 },
+      };
+    case 'prg-size-unsupported':
+      return { key: 'nesPrgSizeUnsupported' };
+    case 'chr-ram-unsupported':
+      return { key: 'nesChrRamUnsupported' };
+    case 'chr-size-unsupported':
+      return { key: 'nesChrSizeUnsupported' };
+    case 'truncated-rom':
+      return { key: 'nesRomTruncated' };
   }
 }
 

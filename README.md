@@ -1,13 +1,14 @@
 # PNG2CHR Studio
 
-PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into Nintendo Entertainment System CHR tiles and playfield data, as well as inspecting and editing existing CHR tilesets. It is designed for artists and developers who need a small, transparent conversion workflow without installing a desktop graphics suite or uploading source artwork to a server.
+PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into Nintendo Entertainment System CHR tiles and playfield data, as well as inspecting and editing existing CHR tilesets or extracting graphics from simple NROM games. It is designed for artists and developers who need a small, transparent conversion workflow without installing a desktop graphics suite or uploading source artwork to a server.
 
 ## Current status
 
-Version 0.7 provides PNG/CHR import and playfield conversion flows:
+Version 0.8 provides PNG/CHR/NROM import and playfield conversion flows:
 
 - PNG selection and drag-and-drop import;
 - CHR tileset import with automatic 2bpp decoding;
+- iNES NROM/mapper 0 import with extraction of its 8 KB CHR-ROM;
 - local image decoding and preview;
 - dimension, transparency, and color validation;
 - quantization to the 64 NES PPU color codes;
@@ -28,7 +29,7 @@ Version 0.7 provides PNG/CHR import and playfield conversion flows:
 - Portuguese (Brazil) and English user interfaces;
 - responsive, keyboard-accessible controls and translated diagnostics.
 
-All graphics processing happens locally in the browser. PNG and CHR files are never sent to a server or external service.
+All graphics processing happens locally in the browser. PNG, CHR, and NES ROM files are never sent to a server or external service.
 
 ## Technology
 
@@ -102,6 +103,8 @@ Fully transparent pixels always use source index 0. Their stored RGB channel val
 
 An imported CHR file must contain a positive multiple of 16 bytes. Each 16-byte block is decoded as one NES 2bpp tile. Because CHR files do not store dimensions or palette colors, imported tiles are arranged into rows of up to 16 and initially displayed with palette 0. Their original color indices are preserved, and exporting without deduplication reproduces the decoded tile sequence.
 
+An imported NES ROM must use the traditional iNES format, mapper 0 (NROM), a 16 KB or 32 KB PRG-ROM, and exactly 8 KB of CHR-ROM. A 512-byte trainer is supported. NES 2.0, other mappers, banked CHR, and CHR-RAM games are rejected with specific diagnostics. Imported CHR-ROM produces 512 tiles arranged as two consecutive 4 KB pattern tables and uses the configured palette for preview because ROM pattern data contains no colors.
+
 Palette choices are restricted to the NES PPU's 64 color codes (`$00`-`$3F`). The editor exposes four background palettes. Slot 0 is the universal background color and is shared automatically by all four palettes.
 
 ### Playfield mode
@@ -167,11 +170,12 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.7 limitations
+## Version 0.8 limitations
 
 - No manual tile removal
 - Collision cells are binary (solid or free); collision types and slopes are not supported
 - No metatiles, metasprites, or animations
+- ROM graphics extraction is limited to iNES mapper 0 with one 8 KB CHR-ROM bank
 - No cloud storage or backend
 
 Color quantization uses nearest-color matching in sRGB. It does not simulate NTSC composite artifacts or color-emphasis bits. Flip-aware deduplication is limited to Tileset exports; rotated variants are still considered different.
