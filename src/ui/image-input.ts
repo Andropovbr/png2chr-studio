@@ -63,16 +63,19 @@ export function createImageInput(
   dropZone.className = 'drop-zone';
   const input = document.createElement('input');
   input.type = 'file';
-  input.id = 'png-input';
-  input.accept = 'image/png,.png';
+  input.id = 'asset-input';
+  input.accept =
+    mode === 'playfield' ? 'image/png,.png' : 'image/png,.png,.chr';
   input.className = 'visually-hidden';
 
   const label = document.createElement('label');
   label.htmlFor = input.id;
   label.className = 'button primary-button';
-  label.textContent = t('choosePng');
+  label.textContent =
+    mode === 'playfield' ? t('choosePng') : t('choosePngOrChr');
   const prompt = document.createElement('span');
-  prompt.textContent = t('dropPrompt');
+  prompt.textContent =
+    mode === 'playfield' ? t('dropPngPrompt') : t('dropPrompt');
   const privacy = document.createElement('small');
   privacy.textContent = t('processingLocal');
 

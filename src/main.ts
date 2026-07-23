@@ -2,6 +2,11 @@ import './style.css';
 
 import { encodeChr } from './core/chr-encoder';
 import {
+  ChrDecodingError,
+  chrTilesToIndexedImage,
+  decodeChr,
+} from './core/chr-decoder';
+import {
   countCollisionCells,
   createEmptyCollisionMap,
   encodeCollisionMap,
@@ -13,6 +18,7 @@ import {
   createPixelOverrides,
   encodeNesBackgroundPalettes,
   mapImageToNesPalettes,
+  NES_MASTER_PALETTE,
   PLAYFIELD_PALETTE_REGION_SIZE,
   renderNesPaletteImage,
   setNesPaletteColor,
@@ -61,6 +67,7 @@ const app: HTMLElement = appElement;
 let requestId = 0;
 let project: ProjectView = {
   fileName: null,
+  sourceKind: null,
   width: null,
   height: null,
   sourceImage: null,
@@ -137,7 +144,10 @@ function render(): void {
           regionSize,
           project.pixelOverrides,
         );
-  const mappedTiles = mappedImage === null ? [] : extractTiles(mappedImage);
+  const mappedTiles =
+    mappedImage === null
+      ? []
+      : extractTiles(mappedImage).slice(0, project.tiles.length);
   let visibleTiles = project.deduplicationEnabled
     ? project.mode === 'tileset' && project.flipDeduplicationEnabled
       ? deduplicateTilesConsideringFlips(mappedTiles)
@@ -265,6 +275,28 @@ function render(): void {
       project.loading,
       project.mode,
       (mode) => {
+        if (mode === 'playfield' && project.sourceKind === 'chr') {
+          project = {
+            ...project,
+            fileName: null,
+            sourceKind: null,
+            width: null,
+            height: null,
+            sourceImage: null,
+            indexedImage: null,
+            tiles: [],
+            mode,
+            deduplicationEnabled: true,
+            flipDeduplicationEnabled: false,
+            collisionCells: createEmptyCollisionMap(),
+            paletteAssignments: new Uint8Array(),
+            pixelOverrides: new Uint8Array(),
+            zoomedPaletteRegion: null,
+            error: null,
+          };
+          render();
+          return;
+        }
         const paletteAssignments =
           project.indexedImage === null
             ? new Uint8Array()
@@ -376,6 +408,19 @@ async function decodeImage(file: File): Promise<ImageData> {
 }
 
 async function loadFile(file: File): Promise<void> {
+  const lowerCaseName = file.name.toLowerCase();
+  const isChrFile = lowerCaseName.endsWith('.chr');
+  const isPngFile = lowerCaseName.endsWith('.png');
+  if (isChrFile && project.mode === 'playfield') {
+    project = {
+      ...project,
+      error: { key: 'chrTilesetOnly' },
+      loading: false,
+    };
+    render();
+    return;
+  }
+
   const activeRequest = ++requestId;
   const mode = project.mode;
   const deduplicationEnabled = project.deduplicationEnabled;
@@ -387,6 +432,7 @@ async function loadFile(file: File): Promise<void> {
   const showPaletteNumbers = project.showPaletteNumbers;
   project = {
     fileName: file.name,
+    sourceKind: isChrFile ? 'chr' : isPngFile ? 'png' : null,
     width: null,
     height: null,
     sourceImage: null,
@@ -410,8 +456,52 @@ async function loadFile(file: File): Promise<void> {
   };
   render();
 
-  if (file.type !== 'image/png' || !file.name.toLowerCase().endsWith('.png')) {
+  if (!isChrFile && (!isPngFile || file.type !== 'image/png')) {
     setProjectError({ key: 'invalidFileType' });
+    return;
+  }
+
+  if (isChrFile) {
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch {
+      if (activeRequest === requestId) {
+        setProjectError({ key: 'chrReadFailed' });
+      }
+      return;
+    }
+    if (activeRequest !== requestId) return;
+
+    try {
+      const tiles = decodeChr(bytes);
+      const previewColors = paletteSet[0].map(
+        (colorCode) =>
+          NES_MASTER_PALETTE[colorCode] ?? { red: 0, green: 0, blue: 0 },
+      );
+      const indexedImage = chrTilesToIndexedImage(tiles, previewColors);
+      const paletteAssignments = assignmentsForImage(indexedImage, 'tileset');
+      const pixelOverrides = indexedImage.pixels.slice();
+      project = {
+        ...project,
+        width: indexedImage.width,
+        height: indexedImage.height,
+        indexedImage,
+        tiles,
+        paletteAssignments,
+        pixelOverrides,
+        error: null,
+        loading: false,
+      };
+      render();
+    } catch (error: unknown) {
+      setProjectError({
+        key:
+          error instanceof ChrDecodingError && error.code === 'empty-file'
+            ? 'emptyChrFile'
+            : 'invalidChrSize',
+      });
+    }
     return;
   }
 
@@ -505,6 +595,7 @@ function generatePlayfield(): void {
   );
   project = {
     fileName: 'random-playfield.png',
+    sourceKind: 'png',
     width: indexedImage.width,
     height: indexedImage.height,
     sourceImage: indexedImageToImageData(indexedImage),

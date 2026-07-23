@@ -11,9 +11,11 @@ export interface DisplayError {
 
 export type ProjectMode = 'tileset' | 'playfield';
 export type PreviewTool = 'palette' | 'paint-collision' | 'erase-collision';
+export type SourceKind = 'png' | 'chr';
 
 export interface ProjectView {
   readonly fileName: string | null;
+  readonly sourceKind: SourceKind | null;
   readonly width: number | null;
   readonly height: number | null;
   readonly sourceImage: ImageData | null;

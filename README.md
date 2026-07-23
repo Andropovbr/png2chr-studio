@@ -1,12 +1,13 @@
 # PNG2CHR Studio
 
-PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into Nintendo Entertainment System CHR tiles and playfield data. It is designed for artists and developers who need a small, transparent conversion workflow without installing a desktop graphics suite or uploading source artwork to a server.
+PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into Nintendo Entertainment System CHR tiles and playfield data, as well as inspecting and editing existing CHR tilesets. It is designed for artists and developers who need a small, transparent conversion workflow without installing a desktop graphics suite or uploading source artwork to a server.
 
 ## Current status
 
-Version 0.6 provides PNG-to-CHR and playfield conversion flows:
+Version 0.7 provides PNG/CHR import and playfield conversion flows:
 
 - PNG selection and drag-and-drop import;
+- CHR tileset import with automatic 2bpp decoding;
 - local image decoding and preview;
 - dimension, transparency, and color validation;
 - quantization to the 64 NES PPU color codes;
@@ -27,7 +28,7 @@ Version 0.6 provides PNG-to-CHR and playfield conversion flows:
 - Portuguese (Brazil) and English user interfaces;
 - responsive, keyboard-accessible controls and translated diagnostics.
 
-All image processing happens locally in the browser. PNG files and generated CHR data are never sent to a server or external service.
+All graphics processing happens locally in the browser. PNG and CHR files are never sent to a server or external service.
 
 ## Technology
 
@@ -67,7 +68,7 @@ Open the local URL printed by Vite. Do not open `index.html` directly with a `fi
 npm run test
 ```
 
-The test suite covers color mapping, transparency validation, tile extraction, exact and flip-aware deduplication, deduplication maps, bit direction, CHR bitplanes, nametable and Attribute Table generation, translation parity, file naming, and the complete RGBA-to-CHR pipeline.
+The test suite covers color mapping, transparency validation, tile extraction, exact and flip-aware deduplication, deduplication maps, bit direction, CHR encoding and decoding, nametable and Attribute Table generation, translation parity, file naming, and the complete RGBA-to-CHR pipeline.
 
 ## Build
 
@@ -89,7 +90,7 @@ npm run preview
 
 ## Input rules
 
-An imported image must:
+An imported PNG must:
 
 - be a PNG file;
 - have a width divisible by 8;
@@ -98,6 +99,8 @@ An imported image must:
 - contain only fully opaque or fully transparent pixels.
 
 Fully transparent pixels always use source index 0. Their stored RGB channel values are ignored. Source colors are quantized to the four colors of the palette assigned to each region before CHR encoding. Partial transparency is rejected.
+
+An imported CHR file must contain a positive multiple of 16 bytes. Each 16-byte block is decoded as one NES 2bpp tile. Because CHR files do not store dimensions or palette colors, imported tiles are arranged into rows of up to 16 and initially displayed with palette 0. Their original color indices are preserved, and exporting without deduplication reproduces the decoded tile sequence.
 
 Palette choices are restricted to the NES PPU's 64 color codes (`$00`-`$3F`). The editor exposes four background palettes. Slot 0 is the universal background color and is shared automatically by all four palettes.
 
@@ -164,7 +167,7 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.6 limitations
+## Version 0.7 limitations
 
 - No manual tile removal
 - Collision cells are binary (solid or free); collision types and slopes are not supported
