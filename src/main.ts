@@ -7,6 +7,7 @@ import {
   decodeChr,
 } from './core/chr-decoder';
 import {
+  COLLISION_TYPES,
   countCollisionCells,
   createEmptyCollisionMap,
   encodeCollisionMap,
@@ -29,7 +30,10 @@ import {
   encodePlayfield,
   PlayfieldEncodingError,
 } from './core/playfield-encoder';
-import { generateRandomPlayfield } from './core/random-playfield';
+import {
+  DEFAULT_RANDOM_PLAYFIELD_FEATURES,
+  generateRandomPlayfield,
+} from './core/random-playfield';
 import {
   deduplicateTiles,
   deduplicateTilesConsideringFlips,
@@ -79,6 +83,8 @@ let project: ProjectView = {
   deduplicationEnabled: false,
   flipDeduplicationEnabled: false,
   collisionCells: createEmptyCollisionMap(),
+  activeCollisionType: COLLISION_TYPES.solid,
+  randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
   paletteSet: createDefaultNesPaletteSet(),
   paletteAssignments: new Uint8Array(),
   previewTool: 'palette',
@@ -207,12 +213,21 @@ function render(): void {
       showPaletteNumbers: project.showPaletteNumbers,
       selectedPaletteRegion: project.zoomedPaletteRegion,
       activeTool: project.previewTool,
+      activeCollisionType: project.activeCollisionType,
       onActiveToolChange: (previewTool) => {
         project = { ...project, previewTool };
         render();
       },
       onCollisionChange: (collisionCells) => {
         project = { ...project, collisionCells };
+        render();
+      },
+      onCollisionTypeChange: (activeCollisionType) => {
+        project = {
+          ...project,
+          activeCollisionType,
+          previewTool: 'paint-collision',
+        };
         render();
       },
       onPaletteRegionSelect: (zoomedPaletteRegion) => {
@@ -276,6 +291,7 @@ function render(): void {
       project.height,
       project.loading,
       project.mode,
+      project.randomPlayfieldFeatures,
       (mode) => {
         if (
           mode === 'playfield' &&
@@ -294,6 +310,7 @@ function render(): void {
             deduplicationEnabled: true,
             flipDeduplicationEnabled: false,
             collisionCells: createEmptyCollisionMap(),
+            activeCollisionType: COLLISION_TYPES.solid,
             paletteAssignments: new Uint8Array(),
             pixelOverrides: new Uint8Array(),
             zoomedPaletteRegion: null,
@@ -316,6 +333,10 @@ function render(): void {
           paletteAssignments,
           zoomedPaletteRegion: null,
         };
+        render();
+      },
+      (randomPlayfieldFeatures) => {
+        project = { ...project, randomPlayfieldFeatures };
         render();
       },
       (file) => void loadFile(file),
@@ -436,6 +457,7 @@ async function loadFile(file: File): Promise<void> {
   const paletteColorTarget = project.paletteColorTarget;
   const activeColorIndex = project.activeColorIndex;
   const showPaletteNumbers = project.showPaletteNumbers;
+  const randomPlayfieldFeatures = project.randomPlayfieldFeatures;
   project = {
     fileName: file.name,
     sourceKind: isChrFile
@@ -454,6 +476,8 @@ async function loadFile(file: File): Promise<void> {
     deduplicationEnabled,
     flipDeduplicationEnabled,
     collisionCells: createEmptyCollisionMap(),
+    activeCollisionType: COLLISION_TYPES.solid,
+    randomPlayfieldFeatures,
     paletteSet,
     paletteAssignments: new Uint8Array(),
     previewTool: 'palette',
@@ -596,7 +620,9 @@ function indexedImageToImageData(image: IndexedImage): ImageData {
 
 function generatePlayfield(): void {
   requestId += 1;
-  const indexedImage = generateRandomPlayfield();
+  const indexedImage = generateRandomPlayfield(Math.random, {
+    features: project.randomPlayfieldFeatures,
+  });
   const paletteAssignments = assignmentsForImage(indexedImage, 'playfield');
   const paletteSet = createDefaultNesPaletteSet();
   const pixelOverrides = createPixelOverrides(
@@ -622,6 +648,8 @@ function generatePlayfield(): void {
     deduplicationEnabled: true,
     flipDeduplicationEnabled: false,
     collisionCells: createEmptyCollisionMap(),
+    activeCollisionType: COLLISION_TYPES.solid,
+    randomPlayfieldFeatures: project.randomPlayfieldFeatures,
     paletteSet,
     paletteAssignments,
     previewTool: 'palette',

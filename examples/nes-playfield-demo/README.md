@@ -5,7 +5,7 @@ Demo NROM-128 para validar os arquivos exportados pelo PNG2CHR Studio em um jogo
 ## Controles
 
 - Direcional: move o personagem nas quatro direções.
-- As células marcadas no arquivo `.col` bloqueiam o movimento.
+- As células do tipo sólido (`$1`) no arquivo `.col` bloqueiam o movimento.
 
 ## Compilação
 
@@ -23,3 +23,7 @@ para o personagem é inserido automaticamente depois do último tile exportado.
 
 As quatro paletas de fundo são carregadas diretamente do arquivo `.pal`
 exportado pelo PNG2CHR Studio.
+
+O mapa `.col` usa o formato tipado de 480 bytes da versão 0.9: cada byte
+armazena duas células, com a célula esquerda no nibble alto. Este demo reage
+somente ao tipo sólido; os demais tipos podem ser tratados pela lógica do jogo.

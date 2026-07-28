@@ -4,7 +4,7 @@ PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into N
 
 ## Current status
 
-Version 0.8 provides PNG/CHR/NROM import and playfield conversion flows:
+Version 0.9 provides PNG/CHR/NROM import and playfield conversion flows:
 
 - PNG selection and drag-and-drop import;
 - CHR tileset import with automatic 2bpp decoding;
@@ -23,9 +23,10 @@ Version 0.8 provides PNG/CHR/NROM import and playfield conversion flows:
 - explicit Tileset and Playfield processing modes;
 - 256×240 playfield validation;
 - `.nam` nametable, `.atr` Attribute Table, and `.pal` palette exports;
-- interactive 32x30 collision painting directly over a playfield preview;
-- `.col` collision-map export with one bit per 8x8 tile;
-- one-click random playfield generation for quick export and collision tests;
+- interactive 32x30 typed collision painting directly over a playfield preview;
+- `.col` collision-map export with two four-bit cell types per byte;
+- configurable random playfield generation with walls, platforms, clouds,
+  stars, trees, stairs, and full-side borders;
 - Portuguese (Brazil) and English user interfaces;
 - responsive, keyboard-accessible controls and translated diagnostics.
 
@@ -116,7 +117,7 @@ The exported files are:
 - `.chr`: the selected original or deduplicated CHR tile set;
 - `.nam`: 960 tile indices in left-to-right, top-to-bottom order;
 - `.atr`: the 64-byte NES Attribute Table.
-- `.col`: a 120-byte collision map painted over the playfield.
+- `.col`: a 480-byte typed collision map painted over the playfield.
 - `.pal`: four NES background palettes stored as 16 PPU color codes.
 
 A nametable entry is one byte, so playfield data can reference no more than 256 exported CHR tiles. When that limit is exceeded, CHR export remains available while nametable and Attribute Table exports are disabled. Enabling deduplication will usually bring a playfield below the limit.
@@ -129,21 +130,21 @@ The palette editor uses one painting workflow: select one of the four palettes, 
 
 Choose **Edit palette** and click the main image preview to open its 8x8 or 16x16 region in the enlarged editor. Palette selection and pixel editing are available only in this zoomed view, avoiding a second interactive playfield. Use the left mouse button to paint individual pixels. The right button suppresses the browser context menu and replaces every pixel with the clicked color index inside the same palette region. The preview highlights the active palette region and reports its pixel, tile, and palette coordinates.
 
-The playfield preview also provides explicit **Paint solid** and **Erase** collision tools. A click changes one 8x8 collision cell, while dragging changes multiple cells. This keeps collision editing separate from 16x16 palette-region selection.
+The playfield preview provides a collision brush and explicit **Paint collision** and **Erase** tools. Available types are solid, damage, bidirectional ladder, move up, move down, water, one-way platform, ice, and left/right conveyors. A click changes one 8x8 collision cell, while dragging changes multiple cells. Colors and symbols distinguish the types without covering the underlying playfield. This keeps collision editing separate from 16x16 palette-region selection.
 
 Selecting a swatch in the palette definition changes only which color is being edited. It does not change the CHR paint brush. The active brush is selected explicitly in the **CHR color brush** control and is always identified by palette, color index, and NES color code.
 
 ### Random test playfield
 
-In Playfield mode, **Generate random playfield** creates a complete 256x240 test screen without requiring a PNG. The scene uses one four-color background palette (`$0F`, `$11`, `$21`, `$30`), a maximum of six reusable tile patterns, and automatic exact deduplication. The generated data therefore remains within the 256-tile nametable limit and can immediately be exported as `.chr`, `.nam`, `.atr`, `.col`, and `.pal`.
+In Playfield mode, **Generate random playfield** creates a complete 256x240 test screen without requiring a PNG. Select one or more background elements: walls, platforms, clouds, stars, trees, stairs, and borders on any of the four sides. A selected border fills its complete side. When both platforms and stairs are selected, the generator prefers ladders that connect platforms on consecutive levels.
 
-Generating another screen randomizes stars, clouds, and platforms. Existing collision markings are cleared because the new screen has a different layout.
+The scene uses one four-color background palette (`$0F`, `$11`, `$21`, `$30`), a maximum of nine reusable tile patterns, and automatic exact deduplication. The generated data therefore remains within the 256-tile nametable limit and can immediately be exported as `.chr`, `.nam`, `.atr`, `.col`, and `.pal`. Generating another screen randomizes the selected elements. Existing collision markings are cleared because the new screen has a different layout.
 
 ### Collision map
 
-In Playfield mode, the preview becomes a 32x30 collision editor. Select **Paint solid** or **Erase**, then click and drag across the 8x8 cells. **Clear all** removes every marked cell. The editor also supports the arrow keys to move between cells and Space or Enter to apply the selected tool.
+In Playfield mode, the preview becomes a 32x30 collision editor. Select a collision brush and **Paint collision** or **Erase**, then click and drag across the 8x8 cells. **Clear all** removes every marked cell. The editor also supports the arrow keys to move between cells and Space or Enter to apply the selected tool.
 
-The `.col` file stores the cells from left to right and top to bottom. Each byte contains eight horizontal cells: bit 7 is the leftmost cell and bit 0 is the rightmost. A set bit means solid and a clear bit means free. Each 32-cell row therefore occupies four bytes, and the complete 30-row map occupies 120 bytes. Collision data remains separate so `.nam` and `.atr` preserve their standard NES layouts.
+The `.col` file stores the cells from left to right and top to bottom. Each cell is a four-bit value: 0 free, 1 solid, 2 damage, 3 bidirectional ladder, 4 move up, 5 water, 6 one-way platform, 7 ice, 8 conveyor left, 9 conveyor right, and 10 move down. Each byte stores the left cell in its high nibble and the following cell in its low nibble. Each 32-cell row therefore occupies 16 bytes, and the complete 30-row map occupies 480 bytes. Collision data remains separate so `.nam` and `.atr` preserve their standard NES layouts.
 
 ## CHR format summary
 
@@ -170,10 +171,10 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.8 limitations
+## Version 0.9 limitations
 
 - No manual tile removal
-- Collision cells are binary (solid or free); collision types and slopes are not supported
+- Collision cells support nine gameplay types; slopes and custom user-defined types are not supported
 - No metatiles, metasprites, or animations
 - ROM graphics extraction is limited to iNES mapper 0 with one 8 KB CHR-ROM bank
 - No cloud storage or backend
@@ -195,4 +196,4 @@ The `core` directory does not access the DOM or Canvas API, which keeps conversi
 
 ## Roadmap
 
-Possible future versions may add typed collision regions, rotation-aware analysis, metatiles, metasprites, and animation tooling.
+Possible future versions may add custom collision types, slopes, rotation-aware analysis, metatiles, metasprites, and animation tooling.

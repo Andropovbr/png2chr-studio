@@ -13,6 +13,8 @@ BUTTON_DOWN  = $04
 BUTTON_LEFT  = $02
 BUTTON_RIGHT = $01
 
+COLLISION_SOLID = $01
+
 .segment "HEADER"
     .byte "NES", $1A
     .byte 1                       ; 16 KiB PRG ROM
@@ -267,13 +269,15 @@ oam: .res 256
     rts
 .endproc
 
-; A = pixel X, X = pixel Y. Returns Z clear when the collision bit is set.
+; A = pixel X, X = pixel Y. Returns a non-zero value for solid cells.
 .proc pixel_is_solid
     sta pixel_x
     txa
     lsr a
     lsr a
     lsr a
+    asl a
+    asl a
     asl a
     asl a
     sta row_offset
@@ -284,16 +288,27 @@ oam: .res 256
     lsr a
     pha
     lsr a
-    lsr a
-    lsr a
     clc
     adc row_offset
     tay
     pla
-    and #$07
+    and #$01
     tax
     lda collision_data, y
-    and bit_masks, x
+    cpx #$00
+    bne @low_nibble
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+@low_nibble:
+    and #$0F
+    cmp #COLLISION_SOLID
+    beq @solid
+    lda #$00
+    rts
+@solid:
+    lda #$01
     rts
 .endproc
 
@@ -347,9 +362,6 @@ palette_data:
 sprite_palette_data:
     .byte $0F, $30, $16, $27,  $0F, $30, $16, $27
     .byte $0F, $30, $16, $27,  $0F, $30, $16, $27
-
-bit_masks:
-    .byte $80, $40, $20, $10, $08, $04, $02, $01
 
 nametable_data:
     .incbin "random-playfield.nam"

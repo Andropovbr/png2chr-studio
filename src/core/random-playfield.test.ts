@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { encodePlayfield } from './playfield-encoder';
 import {
+  DEFAULT_RANDOM_PLAYFIELD_FEATURES,
   generateRandomPlayfield,
   RANDOM_PLAYFIELD_COLORS,
   RANDOM_PLAYFIELD_HEIGHT,
@@ -50,5 +51,70 @@ describe('random playfield generation', () => {
     const second = generateRandomPlayfield(seededRandom);
 
     expect(second.pixels).toEqual(first.pixels);
+  });
+
+  it.each([
+    ['top-border', 0, 0, 31, 0],
+    ['bottom-border', 0, 29, 31, 29],
+    ['left-border', 0, 0, 0, 29],
+    ['right-border', 31, 0, 31, 29],
+  ] as const)(
+    'fills the complete %s',
+    (feature, startColumn, startRow, endColumn, endRow) => {
+      const image = generateRandomPlayfield(() => 0.5, {
+        features: [feature],
+      });
+      const tiles = extractTiles(image);
+      const tileAt = (column: number, row: number) =>
+        tiles[row * 32 + column]?.pixels ?? new Uint8Array();
+      const length = Math.max(endColumn - startColumn, endRow - startRow);
+
+      for (let offset = 0; offset <= length; offset += 1) {
+        const column = startColumn + Math.min(offset, endColumn - startColumn);
+        const row = startRow + Math.min(offset, endRow - startRow);
+        expect(
+          Array.from(tileAt(column, row)).some((pixel) => pixel !== 0),
+        ).toBe(true);
+      }
+    },
+  );
+
+  it('connects vertically aligned platforms with stairs', () => {
+    const image = generateRandomPlayfield(() => 0.5, {
+      features: ['platforms', 'stairs'],
+    });
+    const tiles = extractTiles(image);
+    const tileAt = (column: number, row: number) =>
+      tiles[row * 32 + column]?.pixels ?? new Uint8Array();
+    const isStairs = (pixels: Uint8Array) =>
+      pixels[1] === 3 && pixels[6] === 3 && pixels[8 + 2] === 2;
+
+    expect(isStairs(tileAt(16, 11))).toBe(true);
+    expect(isStairs(tileAt(16, 12))).toBe(true);
+    expect(isStairs(tileAt(16, 13))).toBe(true);
+    expect(isStairs(tileAt(16, 10))).toBe(false);
+    expect(isStairs(tileAt(16, 14))).toBe(false);
+  });
+
+  it.each([
+    'walls',
+    'platforms',
+    'clouds',
+    'stars',
+    'trees',
+    'stairs',
+  ] as const)('draws the selected %s feature', (feature) => {
+    const image = generateRandomPlayfield(() => 0, {
+      features: [feature],
+    });
+
+    expect(Array.from(image.pixels).some((pixel) => pixel !== 0)).toBe(true);
+  });
+
+  it('requires at least one selected feature', () => {
+    expect(() => generateRandomPlayfield(() => 0.5, { features: [] })).toThrow(
+      RangeError,
+    );
+    expect(DEFAULT_RANDOM_PLAYFIELD_FEATURES.length).toBeGreaterThan(0);
   });
 });

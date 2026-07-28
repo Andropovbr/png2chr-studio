@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { ProjectMode } from './types';
 
 export function createImageInput(
@@ -7,7 +8,11 @@ export function createImageInput(
   height: number | null,
   loading: boolean,
   mode: ProjectMode,
+  randomPlayfieldFeatures: readonly RandomPlayfieldFeature[],
   onModeChange: (mode: ProjectMode) => void,
+  onRandomPlayfieldFeaturesChange: (
+    features: readonly RandomPlayfieldFeature[],
+  ) => void,
   onFile: (file: File) => void,
   onGeneratePlayfield: () => void,
 ): HTMLElement {
@@ -49,6 +54,59 @@ export function createImageInput(
 
   const randomGenerator = document.createElement('div');
   randomGenerator.className = 'random-playfield-generator';
+  const featureFieldset = document.createElement('fieldset');
+  featureFieldset.className = 'random-feature-selector';
+  const featureLegend = document.createElement('legend');
+  featureLegend.textContent = t('randomFeaturesTitle');
+  const featureGrid = document.createElement('div');
+  featureGrid.className = 'random-feature-grid';
+  const features: readonly [
+    RandomPlayfieldFeature,
+    (
+      | 'randomFeatureWalls'
+      | 'randomFeaturePlatforms'
+      | 'randomFeatureClouds'
+      | 'randomFeatureStars'
+      | 'randomFeatureTrees'
+      | 'randomFeatureStairs'
+      | 'randomFeatureTopBorder'
+      | 'randomFeatureBottomBorder'
+      | 'randomFeatureLeftBorder'
+      | 'randomFeatureRightBorder'
+    ),
+  ][] = [
+    ['walls', 'randomFeatureWalls'],
+    ['platforms', 'randomFeaturePlatforms'],
+    ['clouds', 'randomFeatureClouds'],
+    ['stars', 'randomFeatureStars'],
+    ['trees', 'randomFeatureTrees'],
+    ['stairs', 'randomFeatureStairs'],
+    ['top-border', 'randomFeatureTopBorder'],
+    ['bottom-border', 'randomFeatureBottomBorder'],
+    ['left-border', 'randomFeatureLeftBorder'],
+    ['right-border', 'randomFeatureRightBorder'],
+  ];
+  features.forEach(([feature, labelKey]) => {
+    const featureLabel = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = randomPlayfieldFeatures.includes(feature);
+    checkbox.addEventListener('change', () => {
+      const next = new Set(randomPlayfieldFeatures);
+      if (checkbox.checked) next.add(feature);
+      else next.delete(feature);
+      if (next.size === 0) {
+        checkbox.checked = true;
+        return;
+      }
+      onRandomPlayfieldFeaturesChange([...next]);
+    });
+    const text = document.createElement('span');
+    text.textContent = t(labelKey);
+    featureLabel.append(checkbox, text);
+    featureGrid.append(featureLabel);
+  });
+  featureFieldset.append(featureLegend, featureGrid);
   const randomButton = document.createElement('button');
   randomButton.type = 'button';
   randomButton.className = 'button secondary-button';
@@ -57,7 +115,7 @@ export function createImageInput(
   randomButton.addEventListener('click', onGeneratePlayfield);
   const randomHint = document.createElement('small');
   randomHint.textContent = t('randomPlayfieldHint');
-  randomGenerator.append(randomButton, randomHint);
+  randomGenerator.append(featureFieldset, randomButton, randomHint);
 
   const dropZone = document.createElement('div');
   dropZone.className = 'drop-zone';

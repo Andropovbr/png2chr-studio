@@ -1,9 +1,16 @@
 import {
   COLLISION_COLUMNS,
   COLLISION_ROWS,
+  COLLISION_TYPES,
+  PAINTABLE_COLLISION_TYPES,
   countCollisionCells,
 } from '../core/collision-encoder';
 import { t } from '../i18n';
+import type {
+  CollisionType,
+  CollisionTypeName,
+} from '../core/collision-encoder';
+import type { TranslationKey } from '../i18n';
 import type { PreviewTool } from './types';
 
 interface ImagePreviewOptions {
@@ -14,9 +21,79 @@ interface ImagePreviewOptions {
   readonly showPaletteNumbers: boolean;
   readonly selectedPaletteRegion: number | null;
   readonly activeTool: PreviewTool;
+  readonly activeCollisionType: CollisionType;
   readonly onActiveToolChange: (tool: PreviewTool) => void;
+  readonly onCollisionTypeChange: (type: CollisionType) => void;
   readonly onCollisionChange: (cells: Uint8Array) => void;
   readonly onPaletteRegionSelect: (regionIndex: number) => void;
+}
+
+const COLLISION_PRESENTATION: Record<
+  CollisionTypeName,
+  {
+    readonly color: string;
+    readonly symbol: string;
+    readonly label: TranslationKey;
+  }
+> = {
+  none: { color: 'rgb(0 0 0 / 0%)', symbol: '', label: 'collisionCellFree' },
+  solid: {
+    color: 'rgb(255 57 82 / 58%)',
+    symbol: 'X',
+    label: 'collisionTypeSolid',
+  },
+  damage: {
+    color: 'rgb(255 145 61 / 65%)',
+    symbol: '!',
+    label: 'collisionTypeDamage',
+  },
+  ladder: {
+    color: 'rgb(71 211 151 / 62%)',
+    symbol: 'H',
+    label: 'collisionTypeLadder',
+  },
+  moveUp: {
+    color: 'rgb(48 190 174 / 62%)',
+    symbol: '↑',
+    label: 'collisionTypeMoveUp',
+  },
+  water: {
+    color: 'rgb(42 127 255 / 62%)',
+    symbol: '~',
+    label: 'collisionTypeWater',
+  },
+  oneWay: {
+    color: 'rgb(175 105 255 / 62%)',
+    symbol: '↑',
+    label: 'collisionTypeOneWay',
+  },
+  ice: {
+    color: 'rgb(105 220 255 / 64%)',
+    symbol: '*',
+    label: 'collisionTypeIce',
+  },
+  conveyorLeft: {
+    color: 'rgb(255 210 64 / 64%)',
+    symbol: '←',
+    label: 'collisionTypeConveyorLeft',
+  },
+  conveyorRight: {
+    color: 'rgb(255 210 64 / 64%)',
+    symbol: '→',
+    label: 'collisionTypeConveyorRight',
+  },
+  moveDown: {
+    color: 'rgb(48 190 174 / 62%)',
+    symbol: '↓',
+    label: 'collisionTypeMoveDown',
+  },
+};
+
+function collisionNameFromValue(value: number): CollisionTypeName {
+  const entry = Object.entries(COLLISION_TYPES).find(
+    ([, typeValue]) => typeValue === value,
+  );
+  return (entry?.[0] as CollisionTypeName | undefined) ?? 'none';
 }
 
 function drawPreview(
@@ -35,16 +112,20 @@ function drawPreview(
       if (cells[index] === 0) continue;
       const column = index % COLLISION_COLUMNS;
       const row = Math.floor(index / COLLISION_COLUMNS);
-      context.fillStyle = 'rgb(255 57 82 / 55%)';
+      const presentation =
+        COLLISION_PRESENTATION[
+          collisionNameFromValue(cells[index] ?? COLLISION_TYPES.none)
+        ];
+      context.fillStyle = presentation.color;
       context.fillRect(column * 8, row * 8, 8, 8);
-      context.strokeStyle = 'rgb(255 255 255 / 80%)';
-      context.lineWidth = 0.75;
-      context.beginPath();
-      context.moveTo(column * 8 + 2, row * 8 + 2);
-      context.lineTo(column * 8 + 6, row * 8 + 6);
-      context.moveTo(column * 8 + 6, row * 8 + 2);
-      context.lineTo(column * 8 + 2, row * 8 + 6);
-      context.stroke();
+      context.font = 'bold 7px monospace';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.lineWidth = 2;
+      context.strokeStyle = 'rgb(0 0 0 / 85%)';
+      context.strokeText(presentation.symbol, column * 8 + 4, row * 8 + 4);
+      context.fillStyle = '#ffffff';
+      context.fillText(presentation.symbol, column * 8 + 4, row * 8 + 4);
     }
 
     context.strokeStyle = 'rgb(255 255 255 / 28%)';
@@ -126,7 +207,9 @@ function collisionEditor(
   showPaletteNumbers: boolean,
   selectedPaletteRegion: number | null,
   activeTool: PreviewTool,
+  activeCollisionType: CollisionType,
   onActiveToolChange: (tool: PreviewTool) => void,
+  onCollisionTypeChange: (type: CollisionType) => void,
   onPaletteRegionSelect: (regionIndex: number) => void,
 ): HTMLElement {
   const editor = document.createElement('div');
@@ -142,17 +225,17 @@ function collisionEditor(
   paletteButton.type = 'button';
   paletteButton.className = 'button collision-tool';
   paletteButton.textContent = t('collisionEditPalette');
-  const solidButton = document.createElement('button');
-  solidButton.type = 'button';
-  solidButton.className = 'button collision-tool';
-  solidButton.textContent = t('collisionPaintSolid');
+  const paintButton = document.createElement('button');
+  paintButton.type = 'button';
+  paintButton.className = 'button collision-tool';
+  paintButton.textContent = t('collisionPaint');
   const eraseButton = document.createElement('button');
   eraseButton.type = 'button';
   eraseButton.className = 'button collision-tool';
   eraseButton.textContent = t('collisionErase');
   const toolButtons: readonly [HTMLButtonElement, PreviewTool][] = [
     [paletteButton, 'palette'],
-    [solidButton, 'paint-collision'],
+    [paintButton, 'paint-collision'],
     [eraseButton, 'erase-collision'],
   ];
   toolButtons.forEach(([button, tool]) => {
@@ -163,6 +246,23 @@ function collisionEditor(
       onActiveToolChange(tool);
     });
   });
+  const typeControl = document.createElement('label');
+  typeControl.className = 'collision-type-control';
+  const typeLabel = document.createElement('span');
+  typeLabel.textContent = t('collisionTypeLabel');
+  const typeSelect = document.createElement('select');
+  PAINTABLE_COLLISION_TYPES.forEach((typeName) => {
+    const typeValue = COLLISION_TYPES[typeName];
+    const option = document.createElement('option');
+    option.value = String(typeValue);
+    option.selected = typeValue === activeCollisionType;
+    option.textContent = t(COLLISION_PRESENTATION[typeName].label);
+    typeSelect.append(option);
+  });
+  typeSelect.addEventListener('change', () => {
+    onCollisionTypeChange(Number(typeSelect.value) as CollisionType);
+  });
+  typeControl.append(typeLabel, typeSelect);
   const clearButton = document.createElement('button');
   clearButton.type = 'button';
   clearButton.className = 'button secondary-button';
@@ -181,8 +281,11 @@ function collisionEditor(
     status.textContent = t('collisionCellStatus', {
       column: index % COLLISION_COLUMNS,
       row: Math.floor(index / COLLISION_COLUMNS),
-      state:
-        cells[index] === 0 ? t('collisionCellFree') : t('collisionCellSolid'),
+      state: t(
+        COLLISION_PRESENTATION[
+          collisionNameFromValue(cells[index] ?? COLLISION_TYPES.none)
+        ].label,
+      ),
       count: countCollisionCells(cells),
     });
   };
@@ -225,7 +328,10 @@ function collisionEditor(
   };
   const paint = (index: number): void => {
     keyboardIndex = index;
-    const paintValue = activeTool === 'erase-collision' ? 0 : 1;
+    const paintValue =
+      activeTool === 'erase-collision'
+        ? COLLISION_TYPES.none
+        : activeCollisionType;
     if (cells[index] !== paintValue) {
       cells[index] = paintValue;
       changed = true;
@@ -319,8 +425,18 @@ function collisionEditor(
     redraw();
   });
 
-  toolbar.append(paletteButton, solidButton, eraseButton, clearButton);
-  editor.append(heading, hint, toolbar, status);
+  const legend = document.createElement('div');
+  legend.className = 'collision-legend';
+  PAINTABLE_COLLISION_TYPES.forEach((typeName) => {
+    const item = document.createElement('span');
+    const swatch = document.createElement('i');
+    swatch.style.background = COLLISION_PRESENTATION[typeName].color;
+    swatch.textContent = COLLISION_PRESENTATION[typeName].symbol;
+    item.append(swatch, t(COLLISION_PRESENTATION[typeName].label));
+    legend.append(item);
+  });
+  toolbar.append(paletteButton, paintButton, eraseButton, clearButton);
+  editor.append(heading, hint, typeControl, toolbar, legend, status);
   redraw();
   return editor;
 }
@@ -386,7 +502,9 @@ export function createImagePreview(options: ImagePreviewOptions): HTMLElement {
         options.showPaletteNumbers,
         options.selectedPaletteRegion,
         options.activeTool,
+        options.activeCollisionType,
         options.onActiveToolChange,
+        options.onCollisionTypeChange,
         options.onPaletteRegionSelect,
       ),
     );

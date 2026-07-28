@@ -1,6 +1,8 @@
 import type { PlayfieldEncodingError } from '../core/playfield-encoder';
+import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
+import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
 
@@ -26,6 +28,8 @@ export interface ProjectView {
   readonly deduplicationEnabled: boolean;
   readonly flipDeduplicationEnabled: boolean;
   readonly collisionCells: Uint8Array;
+  readonly activeCollisionType: CollisionType;
+  readonly randomPlayfieldFeatures: readonly RandomPlayfieldFeature[];
   readonly previewTool: PreviewTool;
   readonly paletteSet: NesPaletteSet;
   readonly paletteAssignments: Uint8Array;
