@@ -1,0 +1,96 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  generateCAnimationExport,
+  generateCa65AnimationExport,
+  sanitizeCIdentifier,
+  serializeAnimationMetadata,
+} from './animation-exporters';
+import { buildAnimationProjectModel } from './animation-model';
+import type { IndexedImage } from './types';
+
+function model() {
+  const pixels = new Uint8Array(128);
+  pixels[0] = 1;
+  pixels[8 + 7] = 1;
+  const image: IndexedImage = {
+    width: 16,
+    height: 8,
+    pixels,
+    colors: [null, { red: 255, green: 255, blue: 255 }],
+    transparentIndex: 0,
+    colorCount: 2,
+  };
+  return buildAnimationProjectModel({
+    name: 'Hero Player',
+    sourceImageName: 'hero.png',
+    image,
+    frameWidth: 8,
+    frameHeight: 8,
+    animations: [
+      { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 12 },
+      {
+        name: 'movement',
+        category: 'movement',
+        frameIndices: [1],
+        frameDuration: 6,
+      },
+    ],
+  });
+}
+
+describe('animation exporters', () => {
+  it.each([
+    ['Hero Player', 'hero_player'],
+    ['ação rápida', 'acao_rapida'],
+    ['123 hero', '_123_hero'],
+    ['const', 'const_animation'],
+    ['---', 'animation'],
+  ])('sanitizes C identifier %s', (input, expected) => {
+    expect(sanitizeCIdentifier(input)).toBe(expected);
+  });
+
+  it('serializes deterministic versioned JSON without binary CHR data', () => {
+    const first = serializeAnimationMetadata(model());
+    const second = serializeAnimationMetadata(model());
+    const parsed = JSON.parse(first) as Record<string, unknown>;
+
+    expect(first).toBe(second);
+    expect(parsed).toMatchObject({
+      format: 'png2chr-studio-animation',
+      version: 1,
+      name: 'Hero Player',
+      chr: { base_tile_count: 0, final_tile_count: 1 },
+    });
+    expect(first).not.toContain('finalChr');
+    expect(first).toContain('"attributes": 64');
+  });
+
+  it('generates consistent cc65-friendly flattened C data', () => {
+    const output = generateCAnimationExport(model());
+
+    expect(output.headerFileName).toBe('hero_player_animation.h');
+    expect(output.header).toContain('typedef struct {');
+    expect(output.header).toContain('uint16_t sprite_offset;');
+    expect(output.source).toContain('{ 0, 0, 0x00, 0x00 }');
+    expect(output.source).toContain('{ 0, 0, 0x00, 0x40 }');
+    expect(output.source).toContain(
+      'const uint8_t hero_player_animation_count = 2;',
+    );
+    expect(output.estimatedRomBytes).toBe(29);
+  });
+
+  it('generates deterministic ca65 data with documented layouts', () => {
+    const first = generateCa65AnimationExport(model());
+    const second = generateCa65AnimationExport(model());
+
+    expect(first).toEqual(second);
+    expect(first.includeFileName).toBe('hero_player_animation.inc');
+    expect(first.include).toContain('Sprite entry (4 bytes)');
+    expect(first.source).toContain('.segment "RODATA"');
+    expect(first.source).not.toContain('.include');
+    expect(first.source).toContain('.byte $00, $00, $00, $40');
+    expect(first.source).toContain('hero_player_animation_count:');
+    expect(first.estimatedRomBytes).toBe(29);
+  });
+});

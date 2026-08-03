@@ -26,9 +26,13 @@ export function createImageInput(
   const modeLegend = document.createElement('legend');
   modeLegend.textContent = t('imageModeLabel');
   modeSelector.append(modeLegend);
-  const modes: readonly [ProjectMode, 'tilesetMode' | 'playfieldMode'][] = [
+  const modes: readonly [
+    ProjectMode,
+    'tilesetMode' | 'playfieldMode' | 'animationMode',
+  ][] = [
     ['tileset', 'tilesetMode'],
     ['playfield', 'playfieldMode'],
+    ['animation', 'animationMode'],
   ];
   modes.forEach(([value, labelKey]) => {
     const label = document.createElement('label');
@@ -49,7 +53,11 @@ export function createImageInput(
   });
   const modeHint = document.createElement('small');
   modeHint.textContent =
-    mode === 'playfield' ? t('playfieldModeHint') : t('tilesetModeHint');
+    mode === 'playfield'
+      ? t('playfieldModeHint')
+      : mode === 'animation'
+        ? t('animationModeHint')
+        : t('tilesetModeHint');
   modeSelector.append(modeHint);
 
   const randomGenerator = document.createElement('div');
@@ -123,17 +131,16 @@ export function createImageInput(
   input.type = 'file';
   input.id = 'asset-input';
   input.accept =
-    mode === 'playfield' ? 'image/png,.png' : 'image/png,.png,.chr,.nes';
+    mode === 'tileset' ? 'image/png,.png,.chr,.nes' : 'image/png,.png';
   input.className = 'visually-hidden';
 
   const label = document.createElement('label');
   label.htmlFor = input.id;
   label.className = 'button primary-button';
-  label.textContent =
-    mode === 'playfield' ? t('choosePng') : t('choosePngOrChr');
+  label.textContent = mode === 'tileset' ? t('choosePngOrChr') : t('choosePng');
   const prompt = document.createElement('span');
   prompt.textContent =
-    mode === 'playfield' ? t('dropPngPrompt') : t('dropPrompt');
+    mode === 'tileset' ? t('dropPrompt') : t('dropPngPrompt');
   const privacy = document.createElement('small');
   privacy.textContent = t('processingLocal');
 
