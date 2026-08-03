@@ -1,4 +1,5 @@
 import type { PlayfieldEncodingError } from '../core/playfield-encoder';
+import type { AnimationCategory } from '../core/animation-model';
 import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
@@ -12,9 +13,28 @@ export interface DisplayError {
   readonly colors?: readonly string[];
 }
 
-export type ProjectMode = 'tileset' | 'playfield';
+export type ProjectMode = 'tileset' | 'playfield' | 'animation';
 export type PreviewTool = 'palette' | 'paint-collision' | 'erase-collision';
 export type SourceKind = 'png' | 'chr' | 'nes';
+
+export interface AnimationSettings {
+  readonly name: string;
+  readonly frameWidth: number;
+  readonly frameHeight: number;
+  readonly selectionTarget: AnimationCategory;
+  readonly idleFrames: readonly number[];
+  readonly movementFrames: readonly number[];
+  readonly idleDuration: number;
+  readonly movementDuration: number;
+  readonly idleFrameDurations: readonly number[];
+  readonly movementFrameDurations: readonly number[];
+  readonly flipDeduplication: boolean;
+  readonly spritePalette: number;
+  readonly originX: number;
+  readonly originY: number;
+  readonly destinationChrName: string | null;
+  readonly destinationChr: Uint8Array;
+}
 
 export interface ProjectView {
   readonly fileName: string | null;
@@ -42,6 +62,7 @@ export interface ProjectView {
     readonly paletteIndex: number;
     readonly colorIndex: number;
   };
+  readonly animation: AnimationSettings;
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

@@ -1,5 +1,14 @@
 import './style.css';
 
+import {
+  AnimationModelError,
+  buildAnimationProjectModel,
+} from './core/animation-model';
+import type {
+  AnimationDefinitionInput,
+  AnimationProjectModel,
+} from './core/animation-model';
+import { sanitizeCIdentifier } from './core/animation-exporters';
 import { encodeChr } from './core/chr-encoder';
 import {
   ChrDecodingError,
@@ -42,6 +51,7 @@ import { extractTiles } from './core/tile-extraction';
 import { ImageAnalysisError, type IndexedImage } from './core/types';
 import { getLocale, subscribeToLocale, t } from './i18n';
 import { createDiagnostics } from './ui/diagnostics';
+import { createAnimationEditor } from './ui/animation-editor';
 import { createExportPanel } from './ui/export-panel';
 import { createHeader } from './ui/header';
 import { createImageInput } from './ui/image-input';
@@ -53,9 +63,11 @@ import {
   displayErrorFromInes,
   displayErrorFromPlayfield,
   type DisplayError,
+  type AnimationSettings,
+  type ProjectMode,
   type ProjectView,
 } from './ui/types';
-import { downloadBytes } from './utils/download';
+import { downloadBytes, downloadText } from './utils/download';
 import {
   toAttributeTableFileName,
   toChrFileName,
@@ -69,6 +81,27 @@ if (appElement === null) {
   throw new Error('Application root element was not found.');
 }
 const app: HTMLElement = appElement;
+
+function createDefaultAnimationSettings(): AnimationSettings {
+  return {
+    name: 'player',
+    frameWidth: 16,
+    frameHeight: 16,
+    selectionTarget: 'idle',
+    idleFrames: [],
+    movementFrames: [],
+    idleDuration: 12,
+    movementDuration: 6,
+    idleFrameDurations: [],
+    movementFrameDurations: [],
+    flipDeduplication: true,
+    spritePalette: 0,
+    originX: 0,
+    originY: 0,
+    destinationChrName: null,
+    destinationChr: new Uint8Array(),
+  };
+}
 
 let requestId = 0;
 let project: ProjectView = {
@@ -94,6 +127,7 @@ let project: ProjectView = {
   showPaletteNumbers: false,
   zoomedPaletteRegion: null,
   paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
+  animation: createDefaultAnimationSettings(),
   error: null,
   loading: false,
 };
@@ -118,9 +152,355 @@ function assignmentsForImage(
   );
 }
 
+function changeMode(mode: ProjectMode): void {
+  if (
+    mode !== 'tileset' &&
+    (project.sourceKind === 'chr' || project.sourceKind === 'nes')
+  ) {
+    project = {
+      ...project,
+      fileName: null,
+      sourceKind: null,
+      width: null,
+      height: null,
+      sourceImage: null,
+      indexedImage: null,
+      tiles: [],
+      mode,
+      deduplicationEnabled: mode === 'playfield',
+      flipDeduplicationEnabled: false,
+      collisionCells: createEmptyCollisionMap(),
+      activeCollisionType: COLLISION_TYPES.solid,
+      paletteAssignments: new Uint8Array(),
+      pixelOverrides: new Uint8Array(),
+      zoomedPaletteRegion: null,
+      error: null,
+    };
+    render();
+    return;
+  }
+  const paletteAssignments =
+    project.indexedImage === null
+      ? new Uint8Array()
+      : assignmentsForImage(project.indexedImage, mode);
+  project = {
+    ...project,
+    mode,
+    deduplicationEnabled:
+      mode === 'playfield' ? true : project.deduplicationEnabled,
+    flipDeduplicationEnabled:
+      mode === 'playfield' ? false : project.flipDeduplicationEnabled,
+    paletteAssignments,
+    zoomedPaletteRegion: null,
+  };
+  render();
+}
+
+function createProjectImageInput(): HTMLElement {
+  return createImageInput(
+    project.fileName,
+    project.width,
+    project.height,
+    project.loading,
+    project.mode,
+    project.randomPlayfieldFeatures,
+    changeMode,
+    (randomPlayfieldFeatures) => {
+      project = { ...project, randomPlayfieldFeatures };
+      render();
+    },
+    (file) => void loadFile(file),
+    generatePlayfield,
+  );
+}
+
+function toggleAnimationFrame(frameIndex: number): void {
+  const animation = project.animation;
+  const inIdle = animation.idleFrames.includes(frameIndex);
+  const inMovement = animation.movementFrames.includes(frameIndex);
+  const idleFrames: number[] = [];
+  const idleFrameDurations: number[] = [];
+  animation.idleFrames.forEach((index, order) => {
+    if (index === frameIndex) return;
+    idleFrames.push(index);
+    idleFrameDurations.push(
+      animation.idleFrameDurations[order] ?? animation.idleDuration,
+    );
+  });
+  const movementFrames: number[] = [];
+  const movementFrameDurations: number[] = [];
+  animation.movementFrames.forEach((index, order) => {
+    if (index === frameIndex) return;
+    movementFrames.push(index);
+    movementFrameDurations.push(
+      animation.movementFrameDurations[order] ?? animation.movementDuration,
+    );
+  });
+  const alreadyInTarget =
+    animation.selectionTarget === 'idle' ? inIdle : inMovement;
+  if (!alreadyInTarget) {
+    if (animation.selectionTarget === 'idle') {
+      idleFrames.push(frameIndex);
+      idleFrameDurations.push(animation.idleDuration);
+    } else {
+      movementFrames.push(frameIndex);
+      movementFrameDurations.push(animation.movementDuration);
+    }
+  }
+  project = {
+    ...project,
+    animation: {
+      ...animation,
+      idleFrames,
+      movementFrames,
+      idleFrameDurations,
+      movementFrameDurations,
+    },
+    error: null,
+  };
+  render();
+}
+
+function moveAnimationFrame(
+  category: 'idle' | 'movement',
+  frameIndex: number,
+  direction: -1 | 1,
+): void {
+  const key = category === 'idle' ? 'idleFrames' : 'movementFrames';
+  const durationKey =
+    category === 'idle' ? 'idleFrameDurations' : 'movementFrameDurations';
+  const frames = [...project.animation[key]];
+  const durations = [...project.animation[durationKey]];
+  const current = frames.indexOf(frameIndex);
+  const target = current + direction;
+  if (current < 0 || target < 0 || target >= frames.length) return;
+  [frames[current], frames[target]] = [
+    frames[target] ?? 0,
+    frames[current] ?? 0,
+  ];
+  [durations[current], durations[target]] = [
+    durations[target] ??
+      (category === 'idle'
+        ? project.animation.idleDuration
+        : project.animation.movementDuration),
+    durations[current] ??
+      (category === 'idle'
+        ? project.animation.idleDuration
+        : project.animation.movementDuration),
+  ];
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      [key]: frames,
+      [durationKey]: durations,
+    },
+  };
+  render();
+}
+
+function setAnimationFrameDuration(
+  category: 'idle' | 'movement',
+  frameIndex: number,
+  duration: number,
+): void {
+  const frameKey = category === 'idle' ? 'idleFrames' : 'movementFrames';
+  const durationKey =
+    category === 'idle' ? 'idleFrameDurations' : 'movementFrameDurations';
+  const order = project.animation[frameKey].indexOf(frameIndex);
+  if (order < 0) return;
+  const durations = [...project.animation[durationKey]];
+  durations[order] = duration;
+  project = {
+    ...project,
+    animation: { ...project.animation, [durationKey]: durations },
+  };
+  render();
+}
+
+async function loadAnimationDestination(file: File): Promise<void> {
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.length === 0 || bytes.length % 16 !== 0 || bytes.length > 4096) {
+      throw new RangeError('Invalid animation destination CHR.');
+    }
+    project = {
+      ...project,
+      animation: {
+        ...project.animation,
+        destinationChrName: file.name,
+        destinationChr: bytes,
+      },
+      error: null,
+    };
+  } catch {
+    project = {
+      ...project,
+      error: { key: 'animationErrorDestination' },
+    };
+  }
+  render();
+}
+
+function renderAnimationWorkspace(): void {
+  const workspace = document.createElement('div');
+  workspace.className = 'workspace animation-workspace';
+  let mappedImage: IndexedImage | null = null;
+  let previewImage: ImageData | null = project.sourceImage;
+  let model: AnimationProjectModel | null = null;
+  let modelError: AnimationModelError | null = null;
+
+  if (project.indexedImage !== null) {
+    const assignments = new Uint8Array(project.paletteAssignments.length).fill(
+      project.animation.spritePalette,
+    );
+    mappedImage = mapImageToNesPalettes(
+      project.indexedImage,
+      project.paletteSet,
+      assignments,
+      TILESET_PALETTE_REGION_SIZE,
+      project.pixelOverrides,
+    );
+    const previewPixels = renderNesPaletteImage(
+      mappedImage,
+      project.paletteSet,
+      assignments,
+      TILESET_PALETTE_REGION_SIZE,
+    );
+    mappedImage.pixels.forEach((colorIndex, pixelIndex) => {
+      if (colorIndex === 0) previewPixels[pixelIndex * 4 + 3] = 0;
+    });
+    previewImage = new ImageData(
+      previewPixels,
+      mappedImage.width,
+      mappedImage.height,
+    );
+    try {
+      const definitions: AnimationDefinitionInput[] = [];
+      if (project.animation.idleFrames.length > 0) {
+        definitions.push({
+          name: 'idle',
+          category: 'idle' as const,
+          frameIndices: project.animation.idleFrames,
+          frameDuration: project.animation.idleDuration,
+          frameDurations: project.animation.idleFrameDurations,
+        });
+      }
+      if (project.animation.movementFrames.length > 0) {
+        definitions.push({
+          name: 'movement',
+          category: 'movement' as const,
+          frameIndices: project.animation.movementFrames,
+          frameDuration: project.animation.movementDuration,
+          frameDurations: project.animation.movementFrameDurations,
+        });
+      }
+      const safeName = sanitizeCIdentifier(project.animation.name);
+      model = buildAnimationProjectModel({
+        name: project.animation.name,
+        sourceImageName: project.fileName ?? 'sprites.png',
+        image: mappedImage,
+        frameWidth: project.animation.frameWidth,
+        frameHeight: project.animation.frameHeight,
+        animations: definitions,
+        baseChr: project.animation.destinationChr,
+        chrOutputName: `${safeName}.chr`,
+        capacityTiles: 256,
+        flipDeduplication: project.animation.flipDeduplication,
+        spritePalette: project.animation.spritePalette,
+        originX: project.animation.originX,
+        originY: project.animation.originY,
+      });
+    } catch (error: unknown) {
+      if (error instanceof AnimationModelError) modelError = error;
+      else throw error;
+    }
+  }
+
+  const editorOptions = {
+    image: previewImage,
+    settings: project.animation,
+    model,
+    modelError,
+    paletteSet: project.paletteSet,
+    paletteColorTarget: project.paletteColorTarget,
+    onSettingsChange: (animation: AnimationSettings) => {
+      project = { ...project, animation, error: null };
+      render();
+    },
+    onFrameToggle: toggleAnimationFrame,
+    onFrameMove: moveAnimationFrame,
+    onFrameDurationChange: setAnimationFrameDuration,
+    onSpritePaletteSelectionChange: (
+      paletteIndex: number,
+      colorIndex: number,
+    ) => {
+      project = {
+        ...project,
+        animation: { ...project.animation, spritePalette: paletteIndex },
+        paletteColorTarget: { paletteIndex, colorIndex },
+        error: null,
+      };
+      render();
+    },
+    onPaletteColorChange: (
+      paletteIndex: number,
+      colorIndex: number,
+      colorCode: number,
+    ) => {
+      project = {
+        ...project,
+        paletteSet: setNesPaletteColor(
+          project.paletteSet,
+          paletteIndex,
+          colorIndex,
+          colorCode,
+        ),
+        paletteColorTarget: { paletteIndex, colorIndex },
+        error: null,
+      };
+      render();
+    },
+    onDestinationFile: (file: File) => void loadAnimationDestination(file),
+    onDestinationClear: () => {
+      project = {
+        ...project,
+        animation: {
+          ...project.animation,
+          destinationChrName: null,
+          destinationChr: new Uint8Array(),
+        },
+        error: null,
+      };
+      render();
+    },
+    onDownloadBytes: downloadBytes,
+    onDownloadText: downloadText,
+  };
+  workspace.append(
+    createProjectImageInput(),
+    ...createAnimationEditor(editorOptions),
+  );
+  if (project.error !== null) {
+    const error = document.createElement('section');
+    error.className = 'panel error-panel animation-error-panel';
+    const heading = document.createElement('h2');
+    heading.textContent = t('errorTitle');
+    const message = document.createElement('p');
+    message.textContent = t(project.error.key, project.error.variables);
+    error.append(heading, message);
+    workspace.append(error);
+  }
+  app.replaceChildren(createHeader(), workspace);
+}
+
 function render(): void {
   document.documentElement.lang = getLocale();
   document.title = t('appTitle');
+  if (project.mode === 'animation') {
+    renderAnimationWorkspace();
+    return;
+  }
   const outputName =
     project.fileName === null
       ? t('defaultOutputName')
@@ -285,63 +665,7 @@ function render(): void {
     }),
   );
   workspace.append(
-    createImageInput(
-      project.fileName,
-      project.width,
-      project.height,
-      project.loading,
-      project.mode,
-      project.randomPlayfieldFeatures,
-      (mode) => {
-        if (
-          mode === 'playfield' &&
-          (project.sourceKind === 'chr' || project.sourceKind === 'nes')
-        ) {
-          project = {
-            ...project,
-            fileName: null,
-            sourceKind: null,
-            width: null,
-            height: null,
-            sourceImage: null,
-            indexedImage: null,
-            tiles: [],
-            mode,
-            deduplicationEnabled: true,
-            flipDeduplicationEnabled: false,
-            collisionCells: createEmptyCollisionMap(),
-            activeCollisionType: COLLISION_TYPES.solid,
-            paletteAssignments: new Uint8Array(),
-            pixelOverrides: new Uint8Array(),
-            zoomedPaletteRegion: null,
-            error: null,
-          };
-          render();
-          return;
-        }
-        const paletteAssignments =
-          project.indexedImage === null
-            ? new Uint8Array()
-            : assignmentsForImage(project.indexedImage, mode);
-        project = {
-          ...project,
-          mode,
-          deduplicationEnabled:
-            mode === 'playfield' ? true : project.deduplicationEnabled,
-          flipDeduplicationEnabled:
-            mode === 'playfield' ? false : project.flipDeduplicationEnabled,
-          paletteAssignments,
-          zoomedPaletteRegion: null,
-        };
-        render();
-      },
-      (randomPlayfieldFeatures) => {
-        project = { ...project, randomPlayfieldFeatures };
-        render();
-      },
-      (file) => void loadFile(file),
-      generatePlayfield,
-    ),
+    createProjectImageInput(),
     editingWorkspace,
     createDiagnostics({
       width: project.width,
@@ -438,7 +762,7 @@ async function loadFile(file: File): Promise<void> {
   const isChrFile = lowerCaseName.endsWith('.chr');
   const isNesFile = lowerCaseName.endsWith('.nes');
   const isPngFile = lowerCaseName.endsWith('.png');
-  if ((isChrFile || isNesFile) && project.mode === 'playfield') {
+  if ((isChrFile || isNesFile) && project.mode !== 'tileset') {
     project = {
       ...project,
       error: { key: 'chrTilesetOnly' },
@@ -458,6 +782,7 @@ async function loadFile(file: File): Promise<void> {
   const activeColorIndex = project.activeColorIndex;
   const showPaletteNumbers = project.showPaletteNumbers;
   const randomPlayfieldFeatures = project.randomPlayfieldFeatures;
+  const animation = project.animation;
   project = {
     fileName: file.name,
     sourceKind: isChrFile
@@ -487,6 +812,7 @@ async function loadFile(file: File): Promise<void> {
     showPaletteNumbers,
     zoomedPaletteRegion: null,
     paletteColorTarget,
+    animation,
     error: null,
     loading: true,
   };
@@ -659,6 +985,7 @@ function generatePlayfield(): void {
     showPaletteNumbers: false,
     zoomedPaletteRegion: null,
     paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
+    animation: project.animation,
     error: null,
     loading: false,
   };

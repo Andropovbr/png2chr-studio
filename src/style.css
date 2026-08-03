@@ -104,6 +104,414 @@ select {
   align-items: start;
 }
 
+.animation-workspace > .import-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.animation-config-panel {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.animation-palette-panel,
+.animation-frame-panel,
+.animation-preview-panel,
+.animation-mapping-panel,
+.animation-export-panel,
+.animation-error-panel {
+  grid-column: 1 / -1;
+}
+
+.animation-palette-panel {
+  grid-row: 2;
+}
+
+.animation-frame-panel {
+  grid-row: 3;
+}
+
+.animation-preview-panel {
+  grid-row: 4;
+}
+
+.animation-mapping-panel {
+  grid-row: 5;
+}
+
+.animation-export-panel {
+  grid-row: 6;
+}
+
+.animation-error-panel {
+  grid-row: 7;
+}
+
+.animation-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+
+.animation-name-field {
+  grid-column: 1 / -1;
+}
+
+.animation-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.animation-field input {
+  width: 100%;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  padding: 0.55rem;
+  color: inherit;
+  background: #0f161e;
+}
+
+.animation-target,
+.animation-destination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0 0 0.8rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.75rem;
+}
+
+.animation-target legend,
+.animation-destination legend {
+  padding-inline: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.animation-target label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.animation-target input,
+.animation-flip-control input {
+  accent-color: var(--accent);
+}
+
+.animation-flip-control {
+  margin-block: 0.8rem;
+}
+
+.animation-config-panel > small {
+  display: block;
+  margin-bottom: 0.8rem;
+}
+
+.animation-sprite-palettes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+
+.animation-sprite-palette {
+  margin: 0;
+  border: 2px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.7rem;
+  background: #0f161e;
+}
+
+.animation-sprite-palette.is-selected {
+  border-color: var(--accent);
+  background: rgb(87 211 164 / 8%);
+}
+
+.animation-sprite-palette legend {
+  padding-inline: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.animation-sprite-palette legend,
+.animation-sprite-swatches {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.animation-sprite-palette legend label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.animation-sprite-palette input {
+  accent-color: var(--accent);
+}
+
+.animation-transparent-swatch {
+  width: 2.2rem;
+  height: 2.2rem;
+  flex: 0 0 auto;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 0.35rem;
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #aab2bb 25%, transparent 25%),
+    linear-gradient(-45deg, #aab2bb 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #aab2bb 75%),
+    linear-gradient(-45deg, transparent 75%, #aab2bb 75%);
+  background-position:
+    0 0,
+    0 0.55rem,
+    0.55rem -0.55rem,
+    -0.55rem 0;
+  background-size: 1.1rem 1.1rem;
+}
+
+.animation-sprite-master-palette {
+  margin-bottom: 0;
+}
+
+.animation-destination small {
+  flex-basis: 100%;
+}
+
+.animation-frame-grid {
+  display: grid;
+  gap: 0.65rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.animation-frame-button {
+  display: grid;
+  min-width: 5rem;
+  gap: 0.4rem;
+  border: 2px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.45rem;
+  color: inherit;
+  background: #0f161e;
+  cursor: pointer;
+}
+
+.animation-frame-button canvas {
+  width: 100%;
+  max-height: 9rem;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.animation-frame-button span {
+  font-size: 0.75rem;
+}
+
+.animation-frame-button[data-category='idle'] {
+  border-color: var(--accent);
+  background: rgb(87 211 164 / 10%);
+}
+
+.animation-frame-button[data-category='movement'] {
+  border-color: #66a8ff;
+  background: rgb(102 168 255 / 10%);
+}
+
+.animation-order-title {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 1rem;
+}
+
+.animation-orders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.animation-orders.is-single {
+  grid-template-columns: 1fr;
+}
+
+.animation-order-group {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.75rem;
+}
+
+.animation-order-group ol {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.6rem;
+}
+
+.animation-order-group li {
+  padding-left: 0.2rem;
+}
+
+.animation-order-group li,
+.animation-order-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.animation-order-group li {
+  display: grid;
+  grid-template-columns: minmax(5rem, 1fr) minmax(11rem, 0.8fr) auto;
+}
+
+.animation-frame-duration {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.animation-frame-duration input {
+  width: 4.5rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.35rem;
+  padding: 0.35rem;
+  color: inherit;
+  background: #0f161e;
+}
+
+.animation-order-actions button {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.3rem;
+  color: inherit;
+  background: #0f161e;
+  cursor: pointer;
+}
+
+.animation-order-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.animation-preview-stage {
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.65rem;
+  padding: 1rem;
+  background: #0f161e;
+}
+
+.animation-preview-canvas,
+.animation-frame-button canvas,
+.animation-tile-cell canvas {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #aab2bb 25%, transparent 25%),
+    linear-gradient(-45deg, #aab2bb 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #aab2bb 75%),
+    linear-gradient(-45deg, transparent 75%, #aab2bb 75%);
+  background-position:
+    0 0,
+    0 0.5rem,
+    0.5rem -0.5rem,
+    -0.5rem 0;
+  background-size: 1rem 1rem;
+}
+
+.animation-preview-canvas {
+  width: min(18rem, 70vw);
+  height: min(18rem, 70vw);
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.animation-preview-controls {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.animation-mapping-group + .animation-mapping-group,
+.animation-frame-mapping + .animation-frame-mapping {
+  margin-top: 1rem;
+}
+
+.animation-frame-mapping {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+}
+
+.animation-frame-mapping h4 {
+  margin: 0 0 0.65rem;
+}
+
+.animation-tile-map {
+  display: grid;
+  gap: 0.45rem;
+  overflow-x: auto;
+}
+
+.animation-tile-cell {
+  display: grid;
+  gap: 0.3rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  padding: 0.4rem;
+  background: #0f161e;
+}
+
+.animation-tile-cell canvas {
+  width: 3rem;
+  height: 3rem;
+  justify-self: center;
+  image-rendering: pixelated;
+}
+
+.animation-tile-cell span {
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.animation-tile-cell.is-omitted {
+  opacity: 0.55;
+}
+
+.animation-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0 0 1rem;
+}
+
+.animation-stats div {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+  background: #0f161e;
+}
+
+.animation-stats dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.animation-stats dd {
+  margin: 0.25rem 0 0;
+  font-weight: 800;
+}
+
 .playfield-editing-workspace {
   display: grid;
   grid-column: 1 / -1;
@@ -839,9 +1247,24 @@ input:focus-visible + label {
   .palette-panel,
   .diagnostics-panel,
   .export-panel,
-  .tiles-panel {
+  .tiles-panel,
+  .animation-config-panel,
+  .animation-palette-panel,
+  .animation-frame-panel,
+  .animation-preview-panel,
+  .animation-mapping-panel,
+  .animation-export-panel,
+  .animation-error-panel {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  .animation-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .animation-sprite-palettes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tiles-panel {
@@ -862,5 +1285,20 @@ input:focus-visible + label {
   .tile-toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .animation-fields,
+  .animation-orders,
+  .animation-stats,
+  .animation-sprite-palettes {
+    grid-template-columns: 1fr;
+  }
+
+  .animation-order-group li {
+    grid-template-columns: 1fr;
+  }
+
+  .animation-frame-duration {
+    justify-content: space-between;
   }
 }

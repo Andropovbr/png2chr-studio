@@ -3,3 +3,7 @@ node_modules/
 dist/
 coverage/
 pnpm-lock.yaml
+examples/**/*.inc
+examples/**/*.s
+examples/**/*.c
+examples/**/*.h

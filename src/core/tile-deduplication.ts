@@ -5,11 +5,11 @@ export interface TileDeduplicationResult {
   readonly originalToUnique: Uint32Array;
 }
 
-function tileKey(tile: Tile): string {
+export function tilePixelKey(tile: Tile): string {
   return tile.pixels.join(',');
 }
 
-function transformedTileKey(
+export function transformedTileKey(
   tile: Tile,
   horizontalFlip: boolean,
   verticalFlip: boolean,
@@ -51,7 +51,7 @@ export function deduplicateTileSet(
   const originalToUnique = new Uint32Array(tiles.length);
 
   tiles.forEach((tile, originalIndex) => {
-    const key = tileKey(tile);
+    const key = tilePixelKey(tile);
     const knownIndex = indicesByTile.get(key);
     if (knownIndex !== undefined) {
       originalToUnique[originalIndex] = knownIndex;
