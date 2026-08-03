@@ -4,7 +4,8 @@ PNG2CHR Studio is a static, browser-based tool for converting PNG artwork into N
 
 ## Current status
 
-Version 0.9 provides PNG/CHR/NROM import and playfield conversion flows:
+Version 0.10 provides PNG/CHR/NROM import, playfield conversion, and sprite
+animation authoring flows:
 
 - PNG selection and drag-and-drop import;
 - CHR tileset import with automatic 2bpp decoding;
@@ -27,6 +28,11 @@ Version 0.9 provides PNG/CHR/NROM import and playfield conversion flows:
 - `.col` collision-map export with two four-bit cell types per byte;
 - configurable random playfield generation with walls, platforms, clouds,
   stars, trees, stairs, and full-side borders;
+- sprite-sheet frame-grid configuration with ordered idle and movement lists;
+- metasprite generation with transparent 8x8-cell omission and configurable origin;
+- optional concatenation onto an existing destination CHR;
+- exact and H/V/HV flip-aware tile reuse with final index inspection;
+- versioned JSON, cc65-friendly C, and ca65 animation metadata exports;
 - Portuguese (Brazil) and English user interfaces;
 - responsive, keyboard-accessible controls and translated diagnostics.
 
@@ -70,7 +76,7 @@ Open the local URL printed by Vite. Do not open `index.html` directly with a `fi
 npm run test
 ```
 
-The test suite covers color mapping, transparency validation, tile extraction, exact and flip-aware deduplication, deduplication maps, bit direction, CHR encoding and decoding, nametable and Attribute Table generation, translation parity, file naming, and the complete RGBA-to-CHR pipeline.
+The test suite covers color mapping, transparency validation, tile extraction, exact and flip-aware deduplication, sprite-sheet ordering and metasprite generation, destination CHR concatenation, JSON/C/ca65 exporters, deduplication maps, bit direction, CHR encoding and decoding, nametable and Attribute Table generation, translation parity, file naming, and the complete RGBA-to-CHR pipeline.
 
 ## Build
 
@@ -146,6 +152,69 @@ In Playfield mode, the preview becomes a 32x30 collision editor. Select a collis
 
 The `.col` file stores the cells from left to right and top to bottom. Each cell is a four-bit value: 0 free, 1 solid, 2 damage, 3 bidirectional ladder, 4 move up, 5 water, 6 one-way platform, 7 ice, 8 conveyor left, 9 conveyor right, and 10 move down. Each byte stores the left cell in its high nibble and the following cell in its low nibble. Each 32-cell row therefore occupies 16 bytes, and the complete 30-row map occupies 480 bytes. Collision data remains separate so `.nam` and `.atr` preserve their standard NES layouts.
 
+### Sprite sheet animation mode
+
+Animation mode accepts a PNG whose width and height can be divided into a
+regular frame grid. Configure a frame width and height (positive multiples of
+8), choose **Idle** or **Movement**, then click frames in playback order. The
+configuration shows only the duration and ordered frame list for the active
+category. Frames can be removed or reordered, and every frame has an individual
+duration measured in game frames, from 1 to 255. The category default is used
+when a new frame is selected.
+
+All four sprite palettes are visible in animation mode. Select one of the three
+rendered colors in a palette and replace it using the 64-color NES master
+palette. Sprite color index 0 is displayed as transparent, matching NES OAM
+behavior. The active palette is used by the frame grid, animated preview, CHR
+conversion, and OAM attribute bits. A 16-byte sprite `.pal` file can be exported
+alongside the animation.
+
+Every selected frame is divided into 8x8 cells and represented as a metasprite.
+A fully empty cell (transparent/index 0) is omitted instead of consuming an OAM
+entry. Partially empty cells remain normal NES tiles. The origin is subtracted
+from each cell position, and every exported X/Y offset must fit an 8-bit signed
+value. The selected sprite palette occupies attribute bits 0-1.
+
+An optional destination `.chr` can be loaded before conversion. Its bytes and
+indexes are preserved. New tiles are appended after the existing tiles, while
+exact matches reuse their absolute destination index. With flip-aware reuse
+enabled, horizontal, vertical, and combined matches reuse the stored tile and
+set NES OAM attribute bits `$40`, `$80`, or `$C0`. The resulting sprite pattern
+table is limited to 256 tiles (4 KB), because every exported tile reference is
+an 8-bit OAM index. The UI reports destination reuse, imported-frame reuse, new
+tiles, append start, final size, and remaining capacity.
+
+The animated preview plays the active category at 60 game frames per second,
+respecting every individual duration, and provides play, pause, previous, and
+next controls. The mapping preview shows each frame's final tile index, reuse
+source, orientation, OAM attributes, and omitted cells. Animation mode exports:
+
+- the final concatenated `.chr`;
+- the four sprite palettes as `.pal`;
+- versioned JSON metadata (`format: png2chr-studio-animation`, `version: 1`);
+- a C header/source pair suitable for cc65;
+- a ca65 include/source pair.
+
+The JSON is the canonical interchange format. Its top-level `source` describes
+the grid, `chr` records allocation statistics and the referenced CHR file,
+`origin` stores the configured anchor, and `animations[].frames[].sprites[]`
+contains explicit X/Y offsets, final tile indexes, attributes, palette, flips,
+reuse classification, and source cell coordinates. Binary CHR bytes are not
+duplicated in JSON.
+
+The C and ca65 exports flatten the model into three ROM-friendly arrays:
+
+| Entry     | Bytes | Layout                                                    |
+| --------- | ----: | --------------------------------------------------------- |
+| Sprite    |     4 | signed X, signed Y, tile index, OAM attributes            |
+| Frame     |     4 | sprite offset (16-bit), count, duration                   |
+| Animation |     6 | frame offset (16-bit), count, width/height in tiles, type |
+
+Animation type 0 is idle and type 1 is movement. Offsets count array entries,
+not byte addresses. See [`examples/sprite-animation`](examples/sprite-animation)
+for matching JSON, C, and ca65 outputs with destination reuse, appended tiles,
+transparent cells, and flip flags.
+
 ## CHR format summary
 
 Each 8×8 tile produces 16 bytes:
@@ -171,11 +240,14 @@ npm run format:check
 npm run build
 ```
 
-## Version 0.9 limitations
+## Version 0.10 limitations
 
 - No manual tile removal
-- Collision cells support nine gameplay types; slopes and custom user-defined types are not supported
-- No metatiles, metasprites, or animations
+- Collision cells support ten gameplay types; slopes and custom user-defined types are not supported
+- Animation mode currently provides one idle and one movement sequence; named
+  actions and direct OAM playback code are not yet included
+- Animation exports target one 4 KB sprite pattern table (256 final tile indexes)
+- No metasprite hitboxes or runtime renderer generation
 - ROM graphics extraction is limited to iNES mapper 0 with one 8 KB CHR-ROM bank
 - No cloud storage or backend
 
@@ -196,4 +268,6 @@ The `core` directory does not access the DOM or Canvas API, which keeps conversi
 
 ## Roadmap
 
-Possible future versions may add custom collision types, slopes, rotation-aware analysis, metatiles, metasprites, and animation tooling.
+Possible future versions may add custom collision types, slopes, rotation-aware
+analysis, metatiles, named animation actions, preview zoom/background options,
+and a generated NES runtime renderer.
