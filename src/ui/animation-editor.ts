@@ -154,7 +154,7 @@ function createSpritePaletteEditor(
   const palettes = document.createElement('div');
   palettes.className = 'animation-sprite-palettes';
   const selectedColorIndex = Math.max(
-    1,
+    0,
     Math.min(3, options.paletteColorTarget.colorIndex),
   );
 
@@ -184,17 +184,6 @@ function createSpritePaletteEditor(
     const swatches = document.createElement('div');
     swatches.className = 'animation-sprite-swatches';
     palette.forEach((colorCode, colorIndex) => {
-      if (colorIndex === 0) {
-        const transparent = document.createElement('span');
-        transparent.className = 'animation-transparent-swatch';
-        transparent.title = t('animationTransparentSlot');
-        transparent.setAttribute(
-          'aria-label',
-          `${t('nesPaletteName', { index: paletteIndex })}, ${t('animationTransparentSlot')}`,
-        );
-        swatches.append(transparent);
-        return;
-      }
       const swatch = document.createElement('button');
       swatch.type = 'button';
       swatch.className = 'nes-palette-swatch';

@@ -5,6 +5,7 @@ import {
   type NesPaletteSet,
 } from '../core/nes-palette';
 import type { IndexedImage } from '../core/types';
+import type { ColorDistanceMode } from '../core/color-distance';
 import { t } from '../i18n';
 
 export interface PaletteColorTarget {
@@ -23,6 +24,7 @@ interface PaletteEditorOptions {
   readonly zoomedRegionIndex: number | null;
   readonly colorTarget: PaletteColorTarget;
   readonly pixelOverrides: Uint8Array;
+  readonly colorDistanceMode: ColorDistanceMode;
   readonly onActivePaletteChange: (paletteIndex: number) => void;
   readonly onActiveColorChange: (colorIndex: number) => void;
   readonly onShowPaletteNumbersChange: (show: boolean) => void;
@@ -145,6 +147,7 @@ function drawAssignmentCanvas(
   pixelOverrides: Uint8Array,
   showPaletteNumbers: boolean,
   keyboardPixelIndex: number,
+  colorDistanceMode: ColorDistanceMode,
 ): void {
   const context = canvas.getContext('2d');
   if (context === null) {
@@ -156,6 +159,8 @@ function drawAssignmentCanvas(
     assignments,
     regionSize,
     pixelOverrides,
+    false,
+    colorDistanceMode,
   );
   const preview = context.createImageData(image.width, image.height);
   const regionColumns = image.width / regionSize;
@@ -222,6 +227,7 @@ function drawZoomCanvas(
   regionSize: number,
   pixelOverrides: Uint8Array,
   regionIndex: number,
+  colorDistanceMode: ColorDistanceMode,
 ): void {
   const context = canvas.getContext('2d');
   if (context === null) return;
@@ -231,6 +237,8 @@ function drawZoomCanvas(
     assignments,
     regionSize,
     pixelOverrides,
+    false,
+    colorDistanceMode,
   );
   const regionColumns = image.width / regionSize;
   const regionColumn = regionIndex % regionColumns;
@@ -386,6 +394,7 @@ function createAssignmentEditor(
       pixelOverrides,
       options.showPaletteNumbers,
       keyboardPixelIndex,
+      options.colorDistanceMode,
     );
     updateStatus();
     redrawZoom();
@@ -431,6 +440,7 @@ function createAssignmentEditor(
         pixelOverrides,
         regionIndex,
         options.activePaletteIndex,
+        options.colorDistanceMode,
       );
       assignments.set(preserved.assignments);
       pixelOverrides.set(preserved.pixelOverrides);
@@ -454,6 +464,8 @@ function createAssignmentEditor(
       assignments,
       options.regionSize,
       pixelOverrides,
+      false,
+      options.colorDistanceMode,
     );
     const matchingColorIndex = mapped.pixels[pixelIndex] ?? 0;
     const regionIndex = regionFromPixel(pixelIndex);
@@ -661,6 +673,7 @@ function createAssignmentEditor(
         options.regionSize,
         pixelOverrides,
         zoomRegionIndex,
+        options.colorDistanceMode,
       );
     };
     const zoomBody = document.createElement('div');

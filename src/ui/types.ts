@@ -6,6 +6,7 @@ import type { NesPaletteSet } from '../core/nes-palette';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
+import type { QuantizationSettings } from '../core/quantization-settings';
 
 export interface DisplayError {
   readonly key: TranslationKey;
@@ -63,6 +64,7 @@ export interface ProjectView {
     readonly colorIndex: number;
   };
   readonly animation: AnimationSettings;
+  readonly quantizationSettings: QuantizationSettings;
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

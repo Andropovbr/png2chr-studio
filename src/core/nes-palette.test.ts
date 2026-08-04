@@ -33,6 +33,54 @@ describe('NES palettes', () => {
     expect(encodeNesBackgroundPalettes(palettes)).toHaveLength(16);
   });
 
+  it('renders the universal background as opaque black by default', () => {
+    const palettes = createDefaultNesPaletteSet();
+    const image: IndexedImage = {
+      width: 8,
+      height: 8,
+      pixels: new Uint8Array(64),
+      colors: [null],
+      transparentIndex: 0,
+      colorCount: 1,
+    };
+    const rgba = renderNesPaletteImage(image, palettes, Uint8Array.of(3), 8);
+
+    expect(palettes.map((palette) => palette[0])).toEqual([
+      0x0f, 0x0f, 0x0f, 0x0f,
+    ]);
+    expect(Array.from(rgba.slice(0, 4))).toEqual([0, 0, 0, 255]);
+  });
+
+  it('can reserve the universal color for transparent sprite pixels', () => {
+    const palettes = setNesPaletteColor(
+      createDefaultNesPaletteSet(),
+      0,
+      0,
+      0x30,
+    );
+    const image: IndexedImage = {
+      width: 8,
+      height: 8,
+      pixels: Uint8Array.from({ length: 64 }, (_, index) =>
+        index === 0 ? 0 : 1,
+      ),
+      colors: [null, NES_MASTER_PALETTE[0x30] ?? null],
+      transparentIndex: 0,
+      colorCount: 2,
+    };
+    const mapped = mapImageToNesPalettes(
+      image,
+      palettes,
+      Uint8Array.of(0),
+      8,
+      undefined,
+      true,
+    );
+
+    expect(mapped.pixels[0]).toBe(0);
+    expect(Array.from(mapped.pixels.slice(1))).not.toContain(0);
+  });
+
   it('starts palette 3 with a distinct purple color ramp', () => {
     const palettes = createDefaultNesPaletteSet();
     const earlierColorCodes = new Set(

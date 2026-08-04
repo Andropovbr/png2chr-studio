@@ -184,6 +184,31 @@ describe('animation project model', () => {
     expect(model.finalChr).toEqual(destination);
   });
 
+  it.each([
+    ['horizontal', tileWith([[7, 0]]), NES_SPRITE_FLIP_HORIZONTAL],
+    ['vertical', tileWith([[0, 7]]), NES_SPRITE_FLIP_VERTICAL],
+    [
+      'combined',
+      tileWith([[7, 7]]),
+      NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL,
+    ],
+  ])(
+    'deduplicates a %s flipped PNG tile against the destination CHR',
+    (_, importedTile, attributes) => {
+      const destination = encodeChr([tileWith([[0, 0]])]);
+      const model = build(sheetFromTiles([importedTile]), [0], destination);
+
+      expect(model.chr.reusedDestinationTiles).toBe(1);
+      expect(model.chr.newTileCount).toBe(0);
+      expect(model.finalChr).toEqual(destination);
+      expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+        tile: 0,
+        attributes,
+        reuse: 'destination',
+      });
+    },
+  );
+
   it('offsets newly appended tile indexes by destination tile count', () => {
     const destination = encodeChr([tileWith([[0, 0]])]);
     const imported = tileWith([[1, 1]]);

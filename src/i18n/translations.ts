@@ -32,8 +32,7 @@ const en = {
   animationSpritePalette: 'Sprite palette',
   animationSpritePalettesTitle: 'Sprite palettes',
   animationSpritePalettesHint:
-    'Select a palette and one of its three visible colors, then choose a supported NES color below. Slot 0 is transparent for sprites.',
-  animationTransparentSlot: 'transparent',
+    'Select any palette slot, then choose a supported NES color below. Slot 0 is the shared universal background color and starts black.',
   animationDownloadPalette: 'Download sprite palettes',
   animationPreviewTitle: 'Animation preview',
   animationPreviewHint:
@@ -49,7 +48,7 @@ const en = {
   animationOriginY: 'Origin Y',
   animationFlipDeduplication: 'Reuse tiles using H/V sprite flips',
   animationTransparencyHint:
-    'Transparent pixels and pixels mapped to CHR color index 0 are omitted from fully empty 8 × 8 cells.',
+    'Transparent source pixels map to universal color index 0. Fully empty 8 × 8 cells are still omitted from the metasprite.',
   animationDestinationTitle: 'Destination CHR',
   animationChooseDestination: 'Choose base CHR',
   animationClearDestination: 'Remove base CHR',
@@ -272,6 +271,38 @@ const en = {
     'The palette file contains four NES background palettes (16 PPU color codes).',
   collisionExportNote:
     'The collision map contains {count} marked cells and uses 480 bytes (two four-bit cell types per byte, left cell first).',
+  quantizationTitle: 'PNG color reduction',
+  quantizationHint:
+    'Choose how PNG colors are reduced before the existing NES palette and tile conversion.',
+  quantizationEmpty: 'Import a PNG to configure color reduction.',
+  quantizationModeLabel: 'Quantization',
+  quantizationNearest: 'Nearest',
+  quantizationMedianCut: 'Median Cut',
+  quantizationKMeans: 'K-Means',
+  quantizationNearestHint:
+    'Best for existing pixel art and images that already use few colors.',
+  quantizationMedianCutHint:
+    'Balanced default for illustrations and general-purpose artwork.',
+  quantizationKMeansHint:
+    'Deterministic clustering that can preserve dominant color groups.',
+  ditheringModeLabel: 'Dithering',
+  ditheringNone: 'None',
+  ditheringFloydSteinberg: 'Floyd-Steinberg',
+  ditheringAtkinson: 'Atkinson',
+  ditheringBayer4: 'Bayer 4 x 4',
+  ditheringBayer8: 'Bayer 8 x 8',
+  ditheringHint:
+    'None keeps clean pixels; diffusion smooths gradients; Bayer creates ordered retro patterns.',
+  quantizationAdvanced: 'Advanced options',
+  colorDistanceLabel: 'Color distance',
+  colorDistanceRgb: 'RGB Euclidean',
+  colorDistancePerceptual: 'Perceptual (OKLab)',
+  quantizationReset: 'Reset color-reduction defaults',
+  quantizationComparisonTitle: 'Preview comparison',
+  quantizationComparisonHint:
+    'Select a generated preview to make that quantizer active. Dithering and distance apply to every comparison.',
+  quantizationOriginal: 'Original',
+  quantizationPreviewLoading: 'Generating previews in the background…',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -356,8 +387,7 @@ const ptBr = {
   animationSpritePalette: 'Paleta de sprite',
   animationSpritePalettesTitle: 'Paletas de sprite',
   animationSpritePalettesHint:
-    'Selecione uma paleta e uma das três cores visíveis, depois escolha abaixo uma cor suportada pelo NES. O índice 0 é transparente para sprites.',
-  animationTransparentSlot: 'transparente',
+    'Selecione qualquer cor da paleta e escolha abaixo uma cor suportada pelo NES. O índice 0 é a cor universal compartilhada e começa preto.',
   animationDownloadPalette: 'Baixar paletas de sprite',
   animationPreviewTitle: 'Prévia da animação',
   animationPreviewHint:
@@ -374,7 +404,7 @@ const ptBr = {
   animationOriginY: 'Origem Y',
   animationFlipDeduplication: 'Reutilizar tiles usando flips H/V de sprite',
   animationTransparencyHint:
-    'Pixels transparentes e pixels mapeados para o índice CHR 0 são omitidos quando a célula 8 × 8 está totalmente vazia.',
+    'Pixels transparentes do PNG usam o índice universal 0. Células 8 × 8 totalmente vazias continuam omitidas do metasprite.',
   animationDestinationTitle: 'CHR de destino',
   animationChooseDestination: 'Selecionar CHR-base',
   animationClearDestination: 'Remover CHR-base',
@@ -559,6 +589,38 @@ const ptBr = {
     'A Attribute Table armazena a paleta selecionada para cada regi\u00e3o de 16 x 16 pixels.',
   paletteExportNote:
     'O arquivo de paletas cont\u00e9m quatro paletas de fundo do NES (16 c\u00f3digos de cor da PPU).',
+  quantizationTitle: 'Redução de cores do PNG',
+  quantizationHint:
+    'Escolha como reduzir as cores do PNG antes da conversão existente para paletas e tiles do NES.',
+  quantizationEmpty: 'Importe um PNG para configurar a redução de cores.',
+  quantizationModeLabel: 'Quantização',
+  quantizationNearest: 'Mais próxima (Nearest)',
+  quantizationMedianCut: 'Median Cut',
+  quantizationKMeans: 'K-Means',
+  quantizationNearestHint:
+    'Ideal para pixel art existente e imagens que já usam poucas cores.',
+  quantizationMedianCutHint:
+    'Opção padrão equilibrada para ilustrações e arte em geral.',
+  quantizationKMeansHint:
+    'Agrupamento determinístico que pode preservar grupos de cores dominantes.',
+  ditheringModeLabel: 'Dithering',
+  ditheringNone: 'Nenhum',
+  ditheringFloydSteinberg: 'Floyd-Steinberg',
+  ditheringAtkinson: 'Atkinson',
+  ditheringBayer4: 'Bayer 4 x 4',
+  ditheringBayer8: 'Bayer 8 x 8',
+  ditheringHint:
+    'Nenhum mantém pixels limpos; difusão suaviza gradientes; Bayer cria padrões retrô ordenados.',
+  quantizationAdvanced: 'Opções avançadas',
+  colorDistanceLabel: 'Distância entre cores',
+  colorDistanceRgb: 'RGB euclidiana',
+  colorDistancePerceptual: 'Perceptual (OKLab)',
+  quantizationReset: 'Restaurar padrões de redução',
+  quantizationComparisonTitle: 'Comparação de prévias',
+  quantizationComparisonHint:
+    'Selecione uma prévia gerada para ativar o quantizador. Dithering e distância valem para todas as comparações.',
+  quantizationOriginal: 'Original',
+  quantizationPreviewLoading: 'Gerando prévias em segundo plano…',
 } as const satisfies TranslationTable;
 
 export const translations = {

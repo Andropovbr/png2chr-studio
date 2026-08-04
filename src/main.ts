@@ -49,6 +49,13 @@ import {
 } from './core/tile-deduplication';
 import { extractTiles } from './core/tile-extraction';
 import { ImageAnalysisError, type IndexedImage } from './core/types';
+import { quantizeImageToNes } from './core/image-quantization';
+import {
+  QUANTIZATION_MODES,
+  loadQuantizationSettings,
+  saveQuantizationSettings,
+  type QuantizationSettings,
+} from './core/quantization-settings';
 import { getLocale, subscribeToLocale, t } from './i18n';
 import { createDiagnostics } from './ui/diagnostics';
 import { createAnimationEditor } from './ui/animation-editor';
@@ -57,6 +64,10 @@ import { createHeader } from './ui/header';
 import { createImageInput } from './ui/image-input';
 import { createImagePreview } from './ui/image-preview';
 import { createPaletteEditor } from './ui/palette-editor';
+import {
+  createQuantizationPanel,
+  type QuantizationPreview,
+} from './ui/quantization-panel';
 import { createTileGrid } from './ui/tile-grid';
 import {
   displayErrorFromAnalysis,
@@ -75,6 +86,10 @@ import {
   toNametableFileName,
   toPaletteFileName,
 } from './utils/file-name';
+import type {
+  QuantizationPreviewRequest,
+  QuantizationPreviewResponse,
+} from './workers/quantization-preview-worker';
 
 const appElement = document.querySelector<HTMLElement>('#app');
 if (appElement === null) {
@@ -104,6 +119,18 @@ function createDefaultAnimationSettings(): AnimationSettings {
 }
 
 let requestId = 0;
+let quantizationTaskId = 0;
+let quantizationPreviewRequestId = 0;
+let quantizationPreviewWorker: Worker | null = null;
+let quantizationPreviewKey: string | null = null;
+let quantizationPreviews: readonly QuantizationPreview[] = [];
+let quantizationPreviewsLoading = false;
+const quantizationPreviewCache = new Map<
+  string,
+  readonly QuantizationPreview[]
+>();
+const settingsStorage =
+  typeof localStorage === 'undefined' ? null : localStorage;
 let project: ProjectView = {
   fileName: null,
   sourceKind: null,
@@ -128,6 +155,7 @@ let project: ProjectView = {
   zoomedPaletteRegion: null,
   paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
   animation: createDefaultAnimationSettings(),
+  quantizationSettings: loadQuantizationSettings(settingsStorage),
   error: null,
   loading: false,
 };
@@ -150,6 +178,175 @@ function assignmentsForImage(
     image.height,
     paletteRegionSize(mode, image),
   );
+}
+
+function imageHasTransparency(image: ImageData): boolean {
+  for (let offset = 3; offset < image.data.length; offset += 4) {
+    if (image.data[offset] === 0) return true;
+  }
+  return false;
+}
+
+function quantizationColorLimit(mode: ProjectMode, image: ImageData): number {
+  if (mode === 'animation' && imageHasTransparency(image)) return 3;
+  return mode === 'animation' ? 4 : 13;
+}
+
+function quantizePngSource(
+  image: ImageData,
+  mode: ProjectMode,
+  settings: QuantizationSettings,
+): IndexedImage {
+  const reduced = quantizeImageToNes(
+    image,
+    NES_MASTER_PALETTE,
+    quantizationColorLimit(mode, image),
+    settings,
+  );
+  return analyzeImage(reduced.image);
+}
+
+function previewCacheKey(): string | null {
+  if (project.sourceImage === null || project.sourceKind !== 'png') return null;
+  return [
+    requestId,
+    project.mode,
+    project.sourceImage.width,
+    project.sourceImage.height,
+    project.quantizationSettings.ditheringMode,
+    project.quantizationSettings.colorDistanceMode,
+  ].join(':');
+}
+
+function ensureQuantizationPreviews(): void {
+  const key = previewCacheKey();
+  const source = project.sourceImage;
+  if (key === null || source === null || key === quantizationPreviewKey) {
+    return;
+  }
+  const cached = quantizationPreviewCache.get(key);
+  if (cached !== undefined) {
+    quantizationPreviewKey = key;
+    quantizationPreviews = cached;
+    quantizationPreviewsLoading = false;
+    return;
+  }
+  if (quantizationPreviewsLoading) return;
+  quantizationPreviewKey = key;
+  quantizationPreviews = [];
+  quantizationPreviewsLoading = true;
+  const id = ++quantizationPreviewRequestId;
+  quantizationPreviewWorker ??= new Worker(
+    new URL('./workers/quantization-preview-worker.ts', import.meta.url),
+    { type: 'module' },
+  );
+  quantizationPreviewWorker.onmessage = (
+    event: MessageEvent<QuantizationPreviewResponse>,
+  ) => {
+    const response = event.data;
+    if (response.id !== quantizationPreviewRequestId) return;
+    quantizationPreviewsLoading = false;
+    if ('error' in response) {
+      quantizationPreviews = [];
+    } else {
+      quantizationPreviews = response.previews.map(({ mode, data }) => ({
+        mode,
+        image: new ImageData(
+          new Uint8ClampedArray(data),
+          response.width,
+          response.height,
+        ),
+      }));
+      quantizationPreviewCache.set(key, quantizationPreviews);
+    }
+    render();
+  };
+  const request: QuantizationPreviewRequest = {
+    id,
+    width: source.width,
+    height: source.height,
+    data: source.data.slice().buffer,
+    availableColors: NES_MASTER_PALETTE,
+    maximumColors: quantizationColorLimit(project.mode, source),
+    settings: project.quantizationSettings,
+    modes: QUANTIZATION_MODES,
+  };
+  quantizationPreviewWorker.postMessage(request, [request.data]);
+}
+
+async function changeQuantizationSettings(
+  settings: QuantizationSettings,
+): Promise<void> {
+  saveQuantizationSettings(settingsStorage, settings);
+  const task = ++quantizationTaskId;
+  quantizationPreviewRequestId += 1;
+  quantizationPreviewKey = null;
+  quantizationPreviews = [];
+  quantizationPreviewsLoading = false;
+  const source = project.sourceImage;
+  if (source === null || project.sourceKind !== 'png') {
+    project = { ...project, quantizationSettings: settings };
+    render();
+    return;
+  }
+  project = { ...project, quantizationSettings: settings, loading: true };
+  render();
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+  if (task !== quantizationTaskId) return;
+  try {
+    const indexedImage = quantizePngSource(source, project.mode, settings);
+    const assignments =
+      project.paletteAssignments.length ===
+      assignmentsForImage(indexedImage, project.mode).length
+        ? project.paletteAssignments
+        : assignmentsForImage(indexedImage, project.mode);
+    const pixelOverrides =
+      project.pixelOverrides.length === indexedImage.pixels.length
+        ? project.pixelOverrides
+        : createPixelOverrides(indexedImage.width, indexedImage.height);
+    const mappedImage = mapImageToNesPalettes(
+      indexedImage,
+      project.paletteSet,
+      assignments,
+      paletteRegionSize(project.mode, indexedImage),
+      pixelOverrides,
+      project.mode === 'animation',
+      settings.colorDistanceMode,
+    );
+    project = {
+      ...project,
+      indexedImage,
+      tiles: extractTiles(mappedImage),
+      paletteAssignments: assignments,
+      pixelOverrides,
+      loading: false,
+      error: null,
+    };
+  } catch (error: unknown) {
+    project = {
+      ...project,
+      loading: false,
+      error:
+        error instanceof ImageAnalysisError
+          ? displayErrorFromAnalysis(error)
+          : { key: 'invalidPixelData' },
+    };
+  }
+  render();
+}
+
+function createProjectQuantizationPanel(): HTMLElement {
+  ensureQuantizationPreviews();
+  return createQuantizationPanel({
+    sourceImage: project.sourceImage,
+    pngActive: project.sourceKind === 'png',
+    settings: project.quantizationSettings,
+    previews: quantizationPreviews,
+    previewsLoading: quantizationPreviewsLoading,
+    onSettingsChange: (settings) => void changeQuantizationSettings(settings),
+  });
 }
 
 function changeMode(mode: ProjectMode): void {
@@ -193,7 +390,11 @@ function changeMode(mode: ProjectMode): void {
     paletteAssignments,
     zoomedPaletteRegion: null,
   };
-  render();
+  if (project.sourceKind === 'png' && project.sourceImage !== null) {
+    void changeQuantizationSettings(project.quantizationSettings);
+  } else {
+    render();
+  }
 }
 
 function createProjectImageInput(): HTMLElement {
@@ -360,6 +561,8 @@ function renderAnimationWorkspace(): void {
       assignments,
       TILESET_PALETTE_REGION_SIZE,
       project.pixelOverrides,
+      true,
+      project.quantizationSettings.colorDistanceMode,
     );
     const previewPixels = renderNesPaletteImage(
       mappedImage,
@@ -367,9 +570,6 @@ function renderAnimationWorkspace(): void {
       assignments,
       TILESET_PALETTE_REGION_SIZE,
     );
-    mappedImage.pixels.forEach((colorIndex, pixelIndex) => {
-      if (colorIndex === 0) previewPixels[pixelIndex * 4 + 3] = 0;
-    });
     previewImage = new ImageData(
       previewPixels,
       mappedImage.width,
@@ -479,6 +679,7 @@ function renderAnimationWorkspace(): void {
   };
   workspace.append(
     createProjectImageInput(),
+    createProjectQuantizationPanel(),
     ...createAnimationEditor(editorOptions),
   );
   if (project.error !== null) {
@@ -531,6 +732,8 @@ function render(): void {
           project.paletteAssignments,
           regionSize,
           project.pixelOverrides,
+          false,
+          project.quantizationSettings.colorDistanceMode,
         );
   const mappedTiles =
     mappedImage === null
@@ -658,6 +861,7 @@ function render(): void {
         render();
       },
       pixelOverrides: project.pixelOverrides,
+      colorDistanceMode: project.quantizationSettings.colorDistanceMode,
       onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
         project = { ...project, pixelOverrides, paletteAssignments };
         render();
@@ -666,6 +870,7 @@ function render(): void {
   );
   workspace.append(
     createProjectImageInput(),
+    createProjectQuantizationPanel(),
     editingWorkspace,
     createDiagnostics({
       width: project.width,
@@ -773,6 +978,11 @@ async function loadFile(file: File): Promise<void> {
   }
 
   const activeRequest = ++requestId;
+  quantizationPreviewRequestId += 1;
+  quantizationPreviewKey = null;
+  quantizationPreviews = [];
+  quantizationPreviewsLoading = false;
+  quantizationPreviewCache.clear();
   const mode = project.mode;
   const deduplicationEnabled = project.deduplicationEnabled;
   const flipDeduplicationEnabled = project.flipDeduplicationEnabled;
@@ -783,6 +993,7 @@ async function loadFile(file: File): Promise<void> {
   const showPaletteNumbers = project.showPaletteNumbers;
   const randomPlayfieldFeatures = project.randomPlayfieldFeatures;
   const animation = project.animation;
+  const quantizationSettings = project.quantizationSettings;
   project = {
     fileName: file.name,
     sourceKind: isChrFile
@@ -813,6 +1024,7 @@ async function loadFile(file: File): Promise<void> {
     zoomedPaletteRegion: null,
     paletteColorTarget,
     animation,
+    quantizationSettings,
     error: null,
     loading: true,
   };
@@ -894,7 +1106,11 @@ async function loadFile(file: File): Promise<void> {
   };
 
   try {
-    const indexedImage = analyzeImage(imageData);
+    const indexedImage = quantizePngSource(
+      imageData,
+      mode,
+      quantizationSettings,
+    );
     const paletteAssignments = assignmentsForImage(indexedImage, mode);
     const pixelOverrides = createPixelOverrides(
       indexedImage.width,
@@ -906,6 +1122,8 @@ async function loadFile(file: File): Promise<void> {
       paletteAssignments,
       paletteRegionSize(mode, indexedImage),
       pixelOverrides,
+      mode === 'animation',
+      quantizationSettings.colorDistanceMode,
     );
     const tiles = extractTiles(mappedImage);
     project = {
@@ -946,6 +1164,11 @@ function indexedImageToImageData(image: IndexedImage): ImageData {
 
 function generatePlayfield(): void {
   requestId += 1;
+  quantizationPreviewRequestId += 1;
+  quantizationPreviewKey = null;
+  quantizationPreviews = [];
+  quantizationPreviewsLoading = false;
+  quantizationPreviewCache.clear();
   const indexedImage = generateRandomPlayfield(Math.random, {
     features: project.randomPlayfieldFeatures,
   });
@@ -961,6 +1184,8 @@ function generatePlayfield(): void {
     paletteAssignments,
     PLAYFIELD_PALETTE_REGION_SIZE,
     pixelOverrides,
+    false,
+    project.quantizationSettings.colorDistanceMode,
   );
   project = {
     fileName: 'random-playfield.png',
@@ -986,6 +1211,7 @@ function generatePlayfield(): void {
     zoomedPaletteRegion: null,
     paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
     animation: project.animation,
+    quantizationSettings: project.quantizationSettings,
     error: null,
     loading: false,
   };

@@ -103,10 +103,32 @@ An imported PNG must:
 - be a PNG file;
 - have a width divisible by 8;
 - have a height divisible by 8;
-- use at most 256 distinct source color indices;
 - contain only fully opaque or fully transparent pixels.
 
-Fully transparent pixels always use source index 0. Their stored RGB channel values are ignored. Source colors are quantized to the four colors of the palette assigned to each region before CHR encoding. Partial transparency is rejected.
+Fully transparent pixels always use source index 0. Their stored RGB channel values are ignored. PNGs may contain more than 256 source colors because color reduction now happens before indexed-image analysis. The reduced colors are always selected from the NES master palette and are then mapped to the four colors assigned to each tile or playfield region before CHR encoding. Partial transparency is rejected.
+
+### PNG color reduction
+
+Every PNG workflow (Tileset, Playfield, and Sprite sheet / Animation) shares the same configurable color-reduction pipeline. The selected options are stored locally in the browser and older installations without these fields use **Median Cut + None + Perceptual** automatically.
+
+Available quantizers in this first increment are:
+
+- **Nearest** maps source pixels to the most frequently used nearest NES colors. It is recommended for existing pixel art and artwork that already has a small palette.
+- **Median Cut** divides the source color distribution into representative boxes before mapping their weighted averages to NES colors. It is the default general-purpose option.
+- **K-Means** uses deterministic farthest-point initialization and weighted clustering, so identical input and settings always produce identical output.
+
+Quantization and dithering are independent. **None** preserves clean pixel boundaries. **Floyd-Steinberg** and **Atkinson** diffuse clamped RGB errors only between opaque pixels. **Bayer 4x4** and **Bayer 8x8** apply deterministic ordered patterns. Both diffusion and ordered dithering preserve fully transparent pixels.
+
+Color matching can use RGB Euclidean distance or perceptual OKLab distance; OKLab is the default. The comparison panel generates Original, Nearest, Median Cut, and K-Means previews in a Web Worker, caches matching results, and lets a generated preview become the active conversion mode.
+
+Recommended starting points:
+
+- existing pixel art: Nearest + None;
+- general illustration: Median Cut + None;
+- photograph or smooth gradient: Median Cut + Floyd-Steinberg;
+- patterned retro shading: Median Cut + Bayer 4x4.
+
+Octree and the NES Pixel Art heuristic are reserved for the next increment. The quantizer interface is isolated so those strategies can be added without changing CHR, playfield, frame-selection, animation metadata, or export code.
 
 An imported CHR file must contain a positive multiple of 16 bytes. Each 16-byte block is decoded as one NES 2bpp tile. Because CHR files do not store dimensions or palette colors, imported tiles are arranged into rows of up to 16 and initially displayed with palette 0. Their original color indices are preserved, and exporting without deduplication reproduces the decoded tile sequence.
 
@@ -162,12 +184,13 @@ category. Frames can be removed or reordered, and every frame has an individual
 duration measured in game frames, from 1 to 255. The category default is used
 when a new frame is selected.
 
-All four sprite palettes are visible in animation mode. Select one of the three
-rendered colors in a palette and replace it using the 64-color NES master
-palette. Sprite color index 0 is displayed as transparent, matching NES OAM
-behavior. The active palette is used by the frame grid, animated preview, CHR
-conversion, and OAM attribute bits. A 16-byte sprite `.pal` file can be exported
-alongside the animation.
+All four sprite palettes are visible in animation mode. Select any slot and
+replace it using the 64-color NES master palette. Slot 0 is the shared universal
+background color: it starts black, changing it in one palette updates all four,
+and it fills the background of the static frames and animated preview. The
+active palette is used by the frame grid, animated preview, CHR conversion, and
+OAM attribute bits. A 16-byte sprite `.pal` file can be exported alongside the
+animation.
 
 Every selected frame is divided into 8x8 cells and represented as a metasprite.
 A fully empty cell (transparent/index 0) is omitted instead of consuming an OAM
@@ -251,7 +274,7 @@ npm run build
 - ROM graphics extraction is limited to iNES mapper 0 with one 8 KB CHR-ROM bank
 - No cloud storage or backend
 
-Color quantization uses nearest-color matching in sRGB. It does not simulate NTSC composite artifacts or color-emphasis bits. Flip-aware deduplication is limited to Tileset exports; rotated variants are still considered different.
+Color reduction does not simulate NTSC composite artifacts or color-emphasis bits. Octree and NES Pixel Art heuristic modes are not included in this first quantization increment. Flip-aware deduplication is limited to Tileset exports; rotated variants are still considered different.
 
 ## Project structure
 

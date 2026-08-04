@@ -6,9 +6,8 @@ import {
 } from './types';
 
 const CHANNELS_PER_PIXEL = 4;
-// Source PNG colors are quantized into the selected NES palettes later. An
-// 8-bit source index keeps analysis compact while allowing artwork to use far
-// more than the four colors available to any one NES background region.
+// Imported PNGs reach this mapper after configurable reduction to NES colors.
+// An 8-bit source index keeps the remaining analysis and tile pipeline compact.
 const MAX_COLOR_INDICES = 256;
 
 function colorKey(red: number, green: number, blue: number): string {
