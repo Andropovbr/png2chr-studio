@@ -119,32 +119,40 @@ select {
 .animation-preview-panel,
 .animation-mapping-panel,
 .animation-export-panel,
-.animation-error-panel {
+.animation-error-panel,
+.quantization-panel,
+.workspace > .quantization-panel,
+.animation-workspace > .quantization-panel {
   grid-column: 1 / -1;
 }
 
-.animation-palette-panel {
+.animation-workspace > .quantization-panel {
+  grid-column: 1 / -1;
   grid-row: 2;
 }
 
-.animation-frame-panel {
+.animation-palette-panel {
   grid-row: 3;
 }
 
-.animation-preview-panel {
+.animation-frame-panel {
   grid-row: 4;
 }
 
-.animation-mapping-panel {
+.animation-preview-panel {
   grid-row: 5;
 }
 
-.animation-export-panel {
+.animation-mapping-panel {
   grid-row: 6;
 }
 
-.animation-error-panel {
+.animation-export-panel {
   grid-row: 7;
+}
+
+.animation-error-panel {
+  grid-row: 8;
 }
 
 .animation-fields {
@@ -255,26 +263,6 @@ select {
 
 .animation-sprite-palette input {
   accent-color: var(--accent);
-}
-
-.animation-transparent-swatch {
-  width: 2.2rem;
-  height: 2.2rem;
-  flex: 0 0 auto;
-  border: 1px solid rgb(255 255 255 / 28%);
-  border-radius: 0.35rem;
-  background-color: #fff;
-  background-image:
-    linear-gradient(45deg, #aab2bb 25%, transparent 25%),
-    linear-gradient(-45deg, #aab2bb 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #aab2bb 75%),
-    linear-gradient(-45deg, transparent 75%, #aab2bb 75%);
-  background-position:
-    0 0,
-    0 0.55rem,
-    0.55rem -0.55rem,
-    -0.55rem 0;
-  background-size: 1.1rem 1.1rem;
 }
 
 .animation-sprite-master-palette {
@@ -415,18 +403,7 @@ select {
 .animation-preview-canvas,
 .animation-frame-button canvas,
 .animation-tile-cell canvas {
-  background-color: #fff;
-  background-image:
-    linear-gradient(45deg, #aab2bb 25%, transparent 25%),
-    linear-gradient(-45deg, #aab2bb 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #aab2bb 75%),
-    linear-gradient(-45deg, transparent 75%, #aab2bb 75%);
-  background-position:
-    0 0,
-    0 0.5rem,
-    0.5rem -0.5rem,
-    -0.5rem 0;
-  background-size: 1rem 1rem;
+  background: #000;
 }
 
 .animation-preview-canvas {
@@ -518,7 +495,93 @@ select {
   grid-template-columns: minmax(18rem, 0.8fr) minmax(32rem, 1.2fr);
   gap: 1rem;
   align-items: start;
+  grid-row: 3;
+}
+
+.workspace > .quantization-panel {
+  grid-column: 1 / -1;
   grid-row: 2;
+}
+
+.quantization-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.quantization-field {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.quantization-field select {
+  width: 100%;
+  color: #eaf0f5;
+  background: #0f161e;
+}
+
+.quantization-advanced {
+  margin-top: 0.8rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.7rem;
+}
+
+.quantization-advanced summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.quantization-advanced .quantization-field {
+  margin-top: 0.75rem;
+}
+
+.quantization-reset {
+  margin: 0.8rem 0 1.15rem;
+}
+
+.quantization-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.quantization-preview-card {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+  border: 2px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.55rem;
+  color: inherit;
+  text-align: left;
+  background: #0f161e;
+}
+
+button.quantization-preview-card {
+  cursor: pointer;
+}
+
+.quantization-preview-card.is-active {
+  border-color: var(--accent);
+  background: rgb(87 211 164 / 8%);
+}
+
+.quantization-preview-card canvas {
+  display: block;
+  width: 100%;
+  max-height: 14rem;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: #000;
+}
+
+.quantization-preview-loading {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .playfield-editing-workspace > .panel {
@@ -545,12 +608,12 @@ select {
 
 .export-panel {
   grid-column: 1 / -1;
-  grid-row: 4;
+  grid-row: 5;
 }
 
 .tiles-panel {
   grid-column: 1 / -1;
-  grid-row: 3;
+  grid-row: 4;
 }
 
 .tile-toolbar {
@@ -1238,7 +1301,8 @@ input:focus-visible + label {
   }
 
   .playfield-editing-workspace,
-  .palette-zoom-body {
+  .palette-zoom-body,
+  .quantization-controls {
     grid-template-columns: 1fr;
   }
 
@@ -1257,6 +1321,10 @@ input:focus-visible + label {
   .animation-error-panel {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  .quantization-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .animation-stats {
@@ -1279,6 +1347,10 @@ input:focus-visible + label {
   }
 
   .random-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quantization-preview-grid {
     grid-template-columns: 1fr;
   }
 

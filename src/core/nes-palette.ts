@@ -1,4 +1,5 @@
 import type { IndexedImage, RgbColor } from './types';
+import { colorDistanceFor, type ColorDistanceMode } from './color-distance';
 
 export const NES_COLOR_COUNT = 64;
 export const NES_BACKGROUND_PALETTE_COUNT = 4;
@@ -179,19 +180,14 @@ export function createPixelOverrides(
   return new Uint8Array(imageWidth * imageHeight).fill(NO_PIXEL_OVERRIDE);
 }
 
-function colorDistance(left: RgbColor, right: RgbColor): number {
-  const red = left.red - right.red;
-  const green = left.green - right.green;
-  const blue = left.blue - right.blue;
-  return red * red + green * green + blue * blue;
-}
-
 export function mapImageToNesPalettes(
   image: IndexedImage,
   paletteSet: NesPaletteSet,
   assignments: Uint8Array,
   regionSize: number,
   pixelOverrides?: Uint8Array,
+  reserveUniversalColorForTransparency = false,
+  colorDistanceMode: ColorDistanceMode = 'perceptual',
 ): IndexedImage {
   const regionColumns = image.width / regionSize;
   const regionRows = image.height / regionSize;
@@ -210,6 +206,7 @@ export function mapImageToNesPalettes(
   }
 
   const pixels = new Uint8Array(image.pixels.length);
+  const colorDistance = colorDistanceFor(colorDistanceMode);
   for (let y = 0; y < image.height; y += 1) {
     for (let x = 0; x < image.width; x += 1) {
       const pixelOffset = y * image.width + x;
@@ -238,9 +235,10 @@ export function mapImageToNesPalettes(
         throw new RangeError('Palette assignments must be between 0 and 3.');
       }
 
-      let nearestIndex = 0;
+      let nearestIndex = reserveUniversalColorForTransparency ? 1 : 0;
       let nearestDistance = Number.POSITIVE_INFINITY;
       palette.forEach((colorCode, colorIndex) => {
+        if (reserveUniversalColorForTransparency && colorIndex === 0) return;
         const nesColor = NES_MASTER_PALETTE[colorCode];
         if (nesColor === undefined) {
           throw new RangeError(
@@ -274,6 +272,7 @@ export function assignPalettePreservingPixelIndices(
   pixelOverrides: Uint8Array,
   regionIndex: number,
   paletteIndex: number,
+  colorDistanceMode: ColorDistanceMode = 'perceptual',
 ): { assignments: Uint8Array; pixelOverrides: Uint8Array } {
   const regionColumns = image.width / regionSize;
   const regionRows = image.height / regionSize;
@@ -300,6 +299,8 @@ export function assignPalettePreservingPixelIndices(
     assignments,
     regionSize,
     pixelOverrides,
+    false,
+    colorDistanceMode,
   );
   const regionColumn = regionIndex % regionColumns;
   const regionRow = Math.floor(regionIndex / regionColumns);
