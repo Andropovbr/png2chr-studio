@@ -9,7 +9,7 @@ import {
 import { buildAnimationProjectModel } from './animation-model';
 import type { IndexedImage } from './types';
 
-function model() {
+function model(directional = false) {
   const pixels = new Uint8Array(128);
   pixels[0] = 1;
   pixels[8 + 7] = 1;
@@ -34,6 +34,12 @@ function model() {
         category: 'movement',
         frameIndices: [1],
         frameDuration: 6,
+        ...(directional
+          ? {
+              direction: 'right' as const,
+              exportMirroredDirection: true,
+            }
+          : {}),
       },
     ],
   });
@@ -58,9 +64,15 @@ describe('animation exporters', () => {
     expect(first).toBe(second);
     expect(parsed).toMatchObject({
       format: 'png2chr-studio-animation',
-      version: 1,
+      version: 2,
       name: 'Hero Player',
       chr: { base_tile_count: 0, final_tile_count: 1 },
+      animation_flags: {
+        direction_mask: 3,
+        direction_left: 1,
+        direction_right: 2,
+        generated_horizontal_flip: 128,
+      },
     });
     expect(first).not.toContain('finalChr');
     expect(first).toContain('"attributes": 64');
@@ -77,7 +89,7 @@ describe('animation exporters', () => {
     expect(output.source).toContain(
       'const uint8_t hero_player_animation_count = 2;',
     );
-    expect(output.estimatedRomBytes).toBe(29);
+    expect(output.estimatedRomBytes).toBe(31);
   });
 
   it('generates deterministic ca65 data with documented layouts', () => {
@@ -91,6 +103,36 @@ describe('animation exporters', () => {
     expect(first.source).not.toContain('.include');
     expect(first.source).toContain('.byte $00, $00, $00, $40');
     expect(first.source).toContain('hero_player_animation_count:');
-    expect(first.estimatedRomBytes).toBe(29);
+    expect(first.estimatedRomBytes).toBe(31);
+  });
+
+  it('exports directional metadata and compact flags for both movement directions', () => {
+    const directional = model(true);
+    const parsed = JSON.parse(serializeAnimationMetadata(directional)) as {
+      animations: {
+        name: string;
+        direction: string;
+        generated_by_horizontal_flip: boolean;
+      }[];
+    };
+    const c = generateCAnimationExport(directional);
+    const asm = generateCa65AnimationExport(directional);
+
+    expect(
+      parsed.animations.map(({ name, direction }) => ({ name, direction })),
+    ).toEqual([
+      { name: 'idle', direction: 'none' },
+      { name: 'movement_right', direction: 'right' },
+      { name: 'movement_left', direction: 'left' },
+    ]);
+    expect(parsed.animations[2]?.generated_by_horizontal_flip).toBe(true);
+    expect(c.header).toContain('uint8_t direction_flags;');
+    expect(c.header).toContain('DIRECTION_MASK 0x03');
+    expect(c.source).toContain('{ 1, 1, 1, 1, 1, 0x02 }');
+    expect(c.source).toContain('{ 2, 1, 1, 1, 1, 0x81 }');
+    expect(asm.include).toContain('Animation entry (7 bytes)');
+    expect(asm.include).toContain('DIRECTION_MASK = $03');
+    expect(asm.source).toContain('.byte 1, 1, 1, 1, $81');
+    expect(c.estimatedRomBytes).toBe(46);
   });
 });

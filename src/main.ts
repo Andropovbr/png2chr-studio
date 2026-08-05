@@ -109,6 +109,9 @@ function createDefaultAnimationSettings(): AnimationSettings {
     movementDuration: 6,
     idleFrameDurations: [],
     movementFrameDurations: [],
+    movementDirection: 'right',
+    movementPreviewDirection: 'right',
+    exportMirroredMovement: false,
     flipDeduplication: true,
     spritePalette: 0,
     originX: 0,
@@ -593,6 +596,8 @@ function renderAnimationWorkspace(): void {
           frameIndices: project.animation.movementFrames,
           frameDuration: project.animation.movementDuration,
           frameDurations: project.animation.movementFrameDurations,
+          direction: project.animation.movementDirection,
+          exportMirroredDirection: project.animation.exportMirroredMovement,
         });
       }
       const safeName = sanitizeCIdentifier(project.animation.name);

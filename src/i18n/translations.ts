@@ -25,6 +25,15 @@ const en = {
   animationSelectionTarget: 'Add selected frames to',
   animationIdle: 'Idle',
   animationMovement: 'Movement',
+  animationMovementDirection: 'Primary movement direction',
+  animationDirectionLeft: 'Left',
+  animationDirectionRight: 'Right',
+  animationExportMirroredMovement:
+    'Also export the opposite direction using horizontal flip',
+  animationExportMirroredHint:
+    'Exports two movement animations. The opposite direction mirrors sprite positions and toggles the NES H-flip attribute.',
+  animationExportSingleDirectionHint:
+    'Exports only the primary direction without changing the artwork orientation. Useful for ships and direction-neutral objects.',
   animationIdleDuration: 'Default idle duration',
   animationMovementDuration: 'Default movement duration',
   animationFrameDurationLabel: 'Duration of frame {index}',
@@ -44,6 +53,10 @@ const en = {
   animationPreviewNext: 'Next frame',
   animationPreviewCurrent:
     '{animation} · frame {index} · {duration} game frames',
+  animationPreviewCurrentDirection:
+    '{animation} · {direction} · frame {index} · {duration} game frames',
+  animationPreviewDirection: 'Preview direction',
+  animationGeneratedByFlip: 'generated with H-flip',
   animationOriginX: 'Origin X',
   animationOriginY: 'Origin Y',
   animationFlipDeduplication: 'Reuse tiles using H/V sprite flips',
@@ -380,6 +393,15 @@ const ptBr = {
   animationSelectionTarget: 'Adicionar os frames selecionados a',
   animationIdle: 'Parado',
   animationMovement: 'Movimento',
+  animationMovementDirection: 'Direção principal do movimento',
+  animationDirectionLeft: 'Esquerda',
+  animationDirectionRight: 'Direita',
+  animationExportMirroredMovement:
+    'Exportar também o sentido oposto usando flip horizontal',
+  animationExportMirroredHint:
+    'Exporta duas animações de movimento. O sentido oposto espelha as posições dos sprites e alterna o atributo H-flip do NES.',
+  animationExportSingleDirectionHint:
+    'Exporta somente a direção principal sem alterar a orientação da arte. Útil para naves e objetos sem direção visual.',
   animationIdleDuration: 'Duração padrão — Parado',
   animationMovementDuration: 'Duração padrão — Movimento',
   animationFrameDurationLabel: 'Duração do frame {index}',
@@ -400,6 +422,10 @@ const ptBr = {
   animationPreviewNext: 'Próximo frame',
   animationPreviewCurrent:
     '{animation} · frame {index} · {duration} frames do jogo',
+  animationPreviewCurrentDirection:
+    '{animation} · {direction} · frame {index} · {duration} frames do jogo',
+  animationPreviewDirection: 'Direção da prévia',
+  animationGeneratedByFlip: 'gerada com H-flip',
   animationOriginX: 'Origem X',
   animationOriginY: 'Origem Y',
   animationFlipDeduplication: 'Reutilizar tiles usando flips H/V de sprite',
