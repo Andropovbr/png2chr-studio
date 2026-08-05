@@ -184,6 +184,7 @@ select {
 }
 
 .animation-target,
+.animation-direction-settings,
 .animation-destination {
   display: flex;
   flex-wrap: wrap;
@@ -195,6 +196,7 @@ select {
 }
 
 .animation-target legend,
+.animation-direction-settings legend,
 .animation-destination legend {
   padding-inline: 0.3rem;
   font-size: 0.85rem;
@@ -208,8 +210,32 @@ select {
 }
 
 .animation-target input,
+.animation-direction-settings input,
 .animation-flip-control input {
   accent-color: var(--accent);
+}
+
+.animation-direction-settings {
+  display: grid;
+}
+
+.animation-direction-choices,
+.animation-preview-directions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.animation-direction-choices label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.animation-direction-settings small {
+  display: block;
+  margin-top: 0.2rem;
 }
 
 .animation-flip-control {
@@ -416,6 +442,12 @@ select {
 .animation-preview-controls {
   display: flex;
   gap: 0.55rem;
+}
+
+.animation-preview-directions .button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgb(87 211 164 / 8%);
 }
 
 .animation-mapping-group + .animation-mapping-group,

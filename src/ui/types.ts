@@ -1,5 +1,8 @@
 import type { PlayfieldEncodingError } from '../core/playfield-encoder';
-import type { AnimationCategory } from '../core/animation-model';
+import type {
+  AnimationCategory,
+  AnimationDirection,
+} from '../core/animation-model';
 import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
@@ -29,6 +32,9 @@ export interface AnimationSettings {
   readonly movementDuration: number;
   readonly idleFrameDurations: readonly number[];
   readonly movementFrameDurations: readonly number[];
+  readonly movementDirection: AnimationDirection;
+  readonly movementPreviewDirection: AnimationDirection;
+  readonly exportMirroredMovement: boolean;
   readonly flipDeduplication: boolean;
   readonly spritePalette: number;
   readonly originX: number;

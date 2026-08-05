@@ -7,6 +7,11 @@
 #define NES_SPRITE_FLIP_VERTICAL 0x80
 #define HERO_ANIMATION_IDLE 0
 #define HERO_ANIMATION_MOVEMENT 1
+#define HERO_DIRECTION_NONE 0x00
+#define HERO_DIRECTION_LEFT 0x01
+#define HERO_DIRECTION_RIGHT 0x02
+#define HERO_DIRECTION_MASK 0x03
+#define HERO_GENERATED_H_FLIP 0x80
 
 typedef struct {
     int8_t x;
@@ -27,6 +32,7 @@ typedef struct {
     uint8_t width_tiles;
     uint8_t height_tiles;
     uint8_t type;
+    uint8_t direction_flags;
 } HeroAnimation;
 
 extern const HeroMetaspriteTile hero_animation_sprites[];

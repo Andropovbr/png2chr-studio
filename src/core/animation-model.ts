@@ -4,7 +4,7 @@ import { tilePixelKey, transformedTileKey } from './tile-deduplication';
 import type { IndexedImage, Tile } from './types';
 
 export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
-export const ANIMATION_METADATA_VERSION = 1;
+export const ANIMATION_METADATA_VERSION = 2;
 export const NES_SPRITE_FLIP_HORIZONTAL = 0x40;
 export const NES_SPRITE_FLIP_VERTICAL = 0x80;
 export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 256;
@@ -13,6 +13,7 @@ const TILE_SIZE = 8;
 const BYTES_PER_TILE = 16;
 
 export type AnimationCategory = 'idle' | 'movement';
+export type AnimationDirection = 'left' | 'right';
 export type TileReuse = 'destination' | 'imported' | 'new';
 
 export interface AnimationDefinitionInput {
@@ -21,6 +22,8 @@ export interface AnimationDefinitionInput {
   readonly frameIndices: readonly number[];
   readonly frameDuration: number;
   readonly frameDurations?: readonly number[];
+  readonly direction?: AnimationDirection;
+  readonly exportMirroredDirection?: boolean;
 }
 
 export interface BuildAnimationModelOptions {
@@ -66,6 +69,8 @@ export interface AnimationFrameModel {
 export interface AnimationModel {
   readonly name: string;
   readonly category: AnimationCategory;
+  readonly direction: AnimationDirection | 'none';
+  readonly generatedByHorizontalFlip: boolean;
   readonly defaultFrameDuration: number;
   readonly width: number;
   readonly height: number;
@@ -115,6 +120,7 @@ export type AnimationModelErrorCode =
   | 'duplicate-frame-selection'
   | 'no-selected-frames'
   | 'invalid-frame-duration'
+  | 'invalid-animation-direction'
   | 'invalid-origin'
   | 'invalid-sprite-palette'
   | 'invalid-destination-chr'
@@ -135,6 +141,31 @@ export class AnimationModelError extends Error {
 interface TileMatch {
   readonly index: number;
   readonly attributes: number;
+}
+
+function oppositeDirection(direction: AnimationDirection): AnimationDirection {
+  return direction === 'left' ? 'right' : 'left';
+}
+
+function mirrorMetaspriteTileHorizontally(
+  sprite: MetaspriteTile,
+): MetaspriteTile {
+  const attributes = sprite.attributes ^ NES_SPRITE_FLIP_HORIZONTAL;
+  return {
+    ...sprite,
+    x: -sprite.x - TILE_SIZE,
+    attributes,
+    horizontalFlip: !sprite.horizontalFlip,
+  };
+}
+
+export function mirrorAnimationFrameHorizontally(
+  frame: AnimationFrameModel,
+): AnimationFrameModel {
+  return {
+    ...frame,
+    sprites: frame.sprites.map(mirrorMetaspriteTileHorizontally),
+  };
 }
 
 function validateName(name: string): void {
@@ -275,6 +306,15 @@ export function buildAnimationProjectModel(
   for (const animation of options.animations) {
     validateName(animation.name);
     if (
+      animation.category === 'idle'
+        ? animation.direction !== undefined ||
+          animation.exportMirroredDirection === true
+        : animation.exportMirroredDirection === true &&
+          animation.direction === undefined
+    ) {
+      throw new AnimationModelError('invalid-animation-direction');
+    }
+    if (
       !Number.isInteger(animation.frameDuration) ||
       animation.frameDuration <= 0 ||
       animation.frameDuration > 255
@@ -321,7 +361,7 @@ export function buildAnimationProjectModel(
   const widthTiles = frameWidth / TILE_SIZE;
   const heightTiles = frameHeight / TILE_SIZE;
 
-  const animations = options.animations.map((animation): AnimationModel => {
+  const baseAnimations = options.animations.map((animation): AnimationModel => {
     const frames = animation.frameIndices.map(
       (sourceIndex, frameOrder): AnimationFrameModel => {
         const sourceX = (sourceIndex % frameColumns) * frameWidth;
@@ -402,6 +442,8 @@ export function buildAnimationProjectModel(
     return {
       name: animation.name,
       category: animation.category,
+      direction: animation.direction ?? 'none',
+      generatedByHorizontalFlip: false,
       defaultFrameDuration: animation.frameDuration,
       width: frameWidth,
       height: frameHeight,
@@ -409,6 +451,34 @@ export function buildAnimationProjectModel(
       heightTiles,
       frames,
     };
+  });
+
+  const animations = baseAnimations.flatMap((animation, index) => {
+    const definition = options.animations[index];
+    if (
+      definition === undefined ||
+      animation.category !== 'movement' ||
+      definition.direction === undefined ||
+      definition.exportMirroredDirection !== true
+    ) {
+      return [animation];
+    }
+    const baseDirection = definition.direction;
+    const mirroredDirection = oppositeDirection(baseDirection);
+    return [
+      {
+        ...animation,
+        name: `${animation.name}_${baseDirection}`,
+        direction: baseDirection,
+      },
+      {
+        ...animation,
+        name: `${animation.name}_${mirroredDirection}`,
+        direction: mirroredDirection,
+        generatedByHorizontalFlip: true,
+        frames: animation.frames.map(mirrorAnimationFrameHorizontally),
+      },
+    ];
   });
 
   const appended = allocated.slice(baseTiles.length);

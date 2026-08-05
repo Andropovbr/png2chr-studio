@@ -6,6 +6,7 @@ import {
 } from '../core/animation-exporters';
 import type {
   AnimationCategory,
+  AnimationDirection,
   AnimationModelError,
   AnimationProjectModel,
   MetaspriteTile,
@@ -359,6 +360,64 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
     target.append(label);
   });
 
+  let movementDirection: HTMLElement | null = null;
+  if (options.settings.selectionTarget === 'movement') {
+    movementDirection = document.createElement('fieldset');
+    movementDirection.className = 'animation-direction-settings';
+    const directionLegend = document.createElement('legend');
+    directionLegend.textContent = t('animationMovementDirection');
+    const directionChoices = document.createElement('div');
+    directionChoices.className = 'animation-direction-choices';
+    const directions: readonly [AnimationDirection, TranslationKey][] = [
+      ['left', 'animationDirectionLeft'],
+      ['right', 'animationDirectionRight'],
+    ];
+    directions.forEach(([direction, labelKey]) => {
+      const label = document.createElement('label');
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'animation-movement-direction';
+      radio.checked = options.settings.movementDirection === direction;
+      radio.addEventListener('change', () => {
+        if (!radio.checked) return;
+        options.onSettingsChange({
+          ...options.settings,
+          movementDirection: direction,
+          movementPreviewDirection: direction,
+        });
+      });
+      label.append(radio, t(labelKey));
+      directionChoices.append(label);
+    });
+    const mirroredLabel = document.createElement('label');
+    mirroredLabel.className = 'checkbox-control';
+    const mirroredCheckbox = document.createElement('input');
+    mirroredCheckbox.type = 'checkbox';
+    mirroredCheckbox.checked = options.settings.exportMirroredMovement;
+    mirroredCheckbox.addEventListener('change', () => {
+      options.onSettingsChange({
+        ...options.settings,
+        exportMirroredMovement: mirroredCheckbox.checked,
+      });
+    });
+    mirroredLabel.append(
+      mirroredCheckbox,
+      t('animationExportMirroredMovement'),
+    );
+    const directionHint = document.createElement('small');
+    directionHint.textContent = t(
+      options.settings.exportMirroredMovement
+        ? 'animationExportMirroredHint'
+        : 'animationExportSingleDirectionHint',
+    );
+    movementDirection.append(
+      directionLegend,
+      directionChoices,
+      mirroredLabel,
+      directionHint,
+    );
+  }
+
   const flipLabel = document.createElement('label');
   flipLabel.className = 'checkbox-control animation-flip-control';
   const flipCheckbox = document.createElement('input');
@@ -416,6 +475,7 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
     heading,
     hint,
     target,
+    ...(movementDirection === null ? [] : [movementDirection]),
     fields,
     flipLabel,
     transparencyHint,
@@ -661,6 +721,39 @@ function createAnimationPreview(options: AnimationEditorOptions): HTMLElement {
   next.textContent = '→';
   next.setAttribute('aria-label', t('animationPreviewNext'));
   controls.append(previous, play, next);
+  if (category === 'movement') {
+    const directionControls = document.createElement('div');
+    directionControls.className = 'animation-preview-directions';
+    const directionLabel = document.createElement('strong');
+    directionLabel.textContent = t('animationPreviewDirection');
+    directionControls.append(directionLabel);
+    const directions: readonly [AnimationDirection, TranslationKey][] = [
+      ['left', 'animationDirectionLeft'],
+      ['right', 'animationDirectionRight'],
+    ];
+    directions.forEach(([direction, labelKey]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'button secondary-button';
+      button.classList.toggle(
+        'is-active',
+        settings.movementPreviewDirection === direction,
+      );
+      button.setAttribute(
+        'aria-pressed',
+        String(settings.movementPreviewDirection === direction),
+      );
+      button.textContent = t(labelKey);
+      button.addEventListener('click', () => {
+        options.onSettingsChange({
+          ...settings,
+          movementPreviewDirection: direction,
+        });
+      });
+      directionControls.append(button);
+    });
+    stage.append(directionControls);
+  }
   stage.append(canvas, meta, controls);
   section.append(stage);
 
@@ -674,13 +767,44 @@ function createAnimationPreview(options: AnimationEditorOptions): HTMLElement {
       Math.floor(sourceIndex / frameColumns) * settings.frameHeight;
     const context = canvas.getContext('2d');
     context?.clearRect(0, 0, canvas.width, canvas.height);
-    context?.putImageData(image, -sourceX, -sourceY);
+    if (context !== null) {
+      const frameCanvas = cropCanvas(
+        image,
+        sourceX,
+        sourceY,
+        settings.frameWidth,
+        settings.frameHeight,
+      );
+      const mirror =
+        category === 'movement' &&
+        settings.exportMirroredMovement &&
+        settings.movementPreviewDirection !== settings.movementDirection;
+      context.save();
+      if (mirror) {
+        context.translate(canvas.width, 0);
+        context.scale(-1, 1);
+      }
+      context.drawImage(frameCanvas, 0, 0);
+      context.restore();
+    }
     const duration = durations[current] ?? defaultDuration;
-    meta.textContent = t('animationPreviewCurrent', {
-      animation: t(category === 'idle' ? 'animationIdle' : 'animationMovement'),
-      index: sourceIndex,
-      duration,
-    });
+    meta.textContent = t(
+      category === 'movement'
+        ? 'animationPreviewCurrentDirection'
+        : 'animationPreviewCurrent',
+      {
+        animation: t(
+          category === 'idle' ? 'animationIdle' : 'animationMovement',
+        ),
+        direction: t(
+          settings.movementPreviewDirection === 'left'
+            ? 'animationDirectionLeft'
+            : 'animationDirectionRight',
+        ),
+        index: sourceIndex,
+        duration,
+      },
+    );
     play.textContent = t(
       playing ? 'animationPreviewPause' : 'animationPreviewPlay',
     );
@@ -756,9 +880,17 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
     const animationSection = document.createElement('section');
     animationSection.className = 'animation-mapping-group';
     const title = document.createElement('h3');
+    const directionLabel =
+      animation.direction === 'none'
+        ? ''
+        : ` · ${t(
+            animation.direction === 'left'
+              ? 'animationDirectionLeft'
+              : 'animationDirectionRight',
+          )}${animation.generatedByHorizontalFlip ? ` · ${t('animationGeneratedByFlip')}` : ''}`;
     title.textContent = `${animation.name} · ${t(
       animation.category === 'idle' ? 'animationIdle' : 'animationMovement',
-    )}`;
+    )}${directionLabel}`;
     animationSection.append(title);
     animation.frames.forEach((frame, frameOrder) => {
       const article = document.createElement('article');

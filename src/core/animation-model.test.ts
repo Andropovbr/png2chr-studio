@@ -111,6 +111,116 @@ describe('animation project model', () => {
     expect(model.animations[0]?.defaultFrameDuration).toBe(12);
   });
 
+  it('exports both movement directions by mirroring metasprite positions and H-flip bits', () => {
+    const sheet = sheetFromTiles([
+      tileWith([
+        [0, 0],
+        [1, 1],
+      ]),
+      tileWith([
+        [2, 0],
+        [4, 3],
+        [7, 7],
+      ]),
+    ]);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheet,
+      frameWidth: 16,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'movement',
+          category: 'movement',
+          frameIndices: [0],
+          frameDuration: 6,
+          direction: 'right',
+          exportMirroredDirection: true,
+        },
+      ],
+      originX: 8,
+      flipDeduplication: false,
+    });
+
+    expect(
+      model.animations.map(({ name, direction }) => ({ name, direction })),
+    ).toEqual([
+      { name: 'movement_right', direction: 'right' },
+      { name: 'movement_left', direction: 'left' },
+    ]);
+    expect(model.animations[0]?.generatedByHorizontalFlip).toBe(false);
+    expect(model.animations[1]?.generatedByHorizontalFlip).toBe(true);
+    expect(model.animations[0]?.frames[0]?.sprites.map(({ x }) => x)).toEqual([
+      -8, 0,
+    ]);
+    expect(model.animations[1]?.frames[0]?.sprites.map(({ x }) => x)).toEqual([
+      0, -8,
+    ]);
+    expect(
+      model.animations[1]?.frames[0]?.sprites.every(
+        ({ attributes, horizontalFlip }) =>
+          (attributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0 && horizontalFlip,
+      ),
+    ).toBe(true);
+    expect(model.chr.newTileCount).toBe(2);
+  });
+
+  it('keeps original sprite orientation when exporting only one movement direction', () => {
+    const sheet = sheetFromTiles([tileWith([[0, 0]])]);
+    const model = buildAnimationProjectModel({
+      name: 'ship',
+      sourceImageName: 'ship.png',
+      image: sheet,
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'movement',
+          category: 'movement',
+          frameIndices: [0],
+          frameDuration: 6,
+          direction: 'left',
+          exportMirroredDirection: false,
+        },
+      ],
+    });
+
+    expect(model.animations).toHaveLength(1);
+    expect(model.animations[0]).toMatchObject({
+      name: 'movement',
+      direction: 'left',
+      generatedByHorizontalFlip: false,
+    });
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      x: 0,
+      horizontalFlip: false,
+      attributes: 0,
+    });
+  });
+
+  it('rejects directional settings on idle animations', () => {
+    const sheet = sheetFromTiles([tileWith([[0, 0]])]);
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheet,
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'idle',
+            category: 'idle',
+            frameIndices: [0],
+            frameDuration: 8,
+            direction: 'right',
+          },
+        ],
+      }),
+    ).toThrow(new AnimationModelError('invalid-animation-direction'));
+  });
+
   it('rejects missing or invalid individual frame durations', () => {
     const sheet = sheetFromTiles([tileWith([[0, 0]]), tileWith([[1, 0]])]);
     const animation = {
