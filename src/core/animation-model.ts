@@ -1,10 +1,15 @@
 import { decodeChr } from './chr-decoder';
 import { encodeChr } from './chr-encoder';
+import {
+  combineCIdentifiers,
+  isValidCIdentifier,
+  normalizeCIdentifier,
+} from './c-identifier';
 import { tilePixelKey, transformedTileKey } from './tile-deduplication';
 import type { IndexedImage, Tile } from './types';
 
 export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
-export const ANIMATION_METADATA_VERSION = 2;
+export const ANIMATION_METADATA_VERSION = 3;
 export const NES_SPRITE_FLIP_HORIZONTAL = 0x40;
 export const NES_SPRITE_FLIP_VERTICAL = 0x80;
 export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 256;
@@ -28,6 +33,7 @@ export interface AnimationDefinitionInput {
 
 export interface BuildAnimationModelOptions {
   readonly name: string;
+  readonly symbolPrefix?: string;
   readonly sourceImageName: string;
   readonly image: IndexedImage;
   readonly frameWidth: number;
@@ -95,6 +101,8 @@ export interface AnimationProjectModel {
   readonly format: typeof ANIMATION_METADATA_FORMAT;
   readonly version: typeof ANIMATION_METADATA_VERSION;
   readonly name: string;
+  readonly symbolPrefix: string;
+  readonly symbolBase: string;
   readonly source: {
     readonly image: string;
     readonly imageWidth: number;
@@ -114,6 +122,7 @@ export interface AnimationProjectModel {
 
 export type AnimationModelErrorCode =
   | 'invalid-name'
+  | 'invalid-symbol-prefix'
   | 'invalid-frame-dimensions'
   | 'invalid-frame-grid'
   | 'invalid-frame-selection'
@@ -173,9 +182,19 @@ function validateName(name: string): void {
     const code = character.charCodeAt(0);
     return code < 0x20 || code === 0x7f;
   });
-  if (!name.trim() || containsControlCharacter) {
+  if (
+    !name.trim() ||
+    containsControlCharacter ||
+    normalizeCIdentifier(name).length === 0
+  ) {
     throw new AnimationModelError('invalid-name');
   }
+}
+
+function defaultSymbolPrefix(sourceImageName: string): string {
+  const fileName = sourceImageName.split(/[\\/]/).pop() ?? sourceImageName;
+  const withoutExtension = fileName.replace(/\.[^.]*$/, '');
+  return normalizeCIdentifier(withoutExtension) || 'asset';
 }
 
 function extractFrameTile(
@@ -235,6 +254,17 @@ export function buildAnimationProjectModel(
   options: BuildAnimationModelOptions,
 ): AnimationProjectModel {
   validateName(options.name);
+  const symbolPrefix = normalizeCIdentifier(
+    options.symbolPrefix ?? defaultSymbolPrefix(options.sourceImageName),
+  );
+  const symbolBase = combineCIdentifiers(symbolPrefix, options.name);
+  if (
+    symbolPrefix.length === 0 ||
+    symbolBase.length === 0 ||
+    !isValidCIdentifier(symbolBase)
+  ) {
+    throw new AnimationModelError('invalid-symbol-prefix');
+  }
   const { image, frameWidth, frameHeight } = options;
   const originX = options.originX ?? 0;
   const originY = options.originY ?? 0;
@@ -492,6 +522,8 @@ export function buildAnimationProjectModel(
     format: ANIMATION_METADATA_FORMAT,
     version: ANIMATION_METADATA_VERSION,
     name: options.name.trim(),
+    symbolPrefix,
+    symbolBase,
     source: {
       image: options.sourceImageName,
       imageWidth: image.width,
@@ -504,7 +536,7 @@ export function buildAnimationProjectModel(
       frameRows,
     },
     chr: {
-      output: options.chrOutputName ?? `${options.name.trim()}.chr`,
+      output: options.chrOutputName ?? `${symbolBase}.chr`,
       capacityTiles,
       baseTileCount: baseTiles.length,
       reusedDestinationTiles,

@@ -162,8 +162,29 @@ select {
   margin-bottom: 1rem;
 }
 
-.animation-name-field {
+.animation-symbol-preview {
   grid-column: 1 / -1;
+}
+
+.animation-symbol-preview {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.7rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  background: #0f161e;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.animation-symbol-preview code {
+  white-space: pre-wrap;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.animation-symbol-preview.is-invalid code {
+  color: var(--danger);
 }
 
 .animation-field {

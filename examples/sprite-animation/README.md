@@ -6,7 +6,9 @@ form the original `movement_right` sequence. `movement_left` is generated from
 the same frames by reflecting sprite positions and toggling the horizontal-flip
 attribute, so it consumes no additional CHR tiles.
 
-The example starts with a destination CHR containing two tiles. Two new tiles
+The example uses `hero` as its symbol prefix and `animation` as its animation
+name, producing the shared `hero_animation` filename and symbol base. The
+example starts with a destination CHR containing two tiles. Two new tiles
 are appended at indexes `$02` and `$03`. Repeated artwork reuses those indexes,
 and the final frame demonstrates the NES horizontal (`$40`) and vertical
 (`$80`) OAM attribute flags. Transparent 8x8 cells are absent from the sprite
@@ -17,7 +19,7 @@ bit `$80` marking the generated mirrored direction.
 - `hero_animation.json` is the portable, versioned metadata.
 - `hero_animation.h` and `hero_animation.c` are the cc65-friendly C export.
 - `hero_animation.inc` and `hero_animation.s` are the ca65 export.
-- `hero.chr` would be the final binary CHR selected by `chr.output`; it is not
+- `hero_animation.chr` would be the final binary CHR selected by `chr.output`; it is not
   checked in because this example focuses on the metadata layouts.
 
 All tile indexes are absolute positions in the final concatenated CHR.

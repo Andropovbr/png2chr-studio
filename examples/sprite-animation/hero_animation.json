@@ -1,7 +1,9 @@
 {
   "format": "png2chr-studio-animation",
-  "version": 2,
-  "name": "hero",
+  "version": 3,
+  "name": "animation",
+  "symbol_prefix": "hero",
+  "symbol_base": "hero_animation",
   "source": {
     "image": "hero.png",
     "image_width": 32,
@@ -14,7 +16,7 @@
     "frame_rows": 2
   },
   "chr": {
-    "output": "hero.chr",
+    "output": "hero_animation.chr",
     "capacity_tiles": 256,
     "base_tile_count": 2,
     "reused_destination_tiles": 4,
@@ -22,7 +24,7 @@
     "new_tile_count": 2,
     "appended_tile_start": 2,
     "final_tile_count": 4,
-    "final_size_bytes": 64,
+    "final_size_bytes": 8192,
     "remaining_tiles": 252
   },
   "attribute_flags": {

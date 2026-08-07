@@ -23,6 +23,7 @@ export type SourceKind = 'png' | 'chr' | 'nes';
 
 export interface AnimationSettings {
   readonly name: string;
+  readonly symbolPrefix: string;
   readonly frameWidth: number;
   readonly frameHeight: number;
   readonly selectionTarget: AnimationCategory;
@@ -37,6 +38,8 @@ export interface AnimationSettings {
   readonly exportMirroredMovement: boolean;
   readonly flipDeduplication: boolean;
   readonly spritePalette: number;
+  readonly spriteColorIndex: number;
+  readonly colorIndices: Uint8Array;
   readonly originX: number;
   readonly originY: number;
   readonly destinationChrName: string | null;

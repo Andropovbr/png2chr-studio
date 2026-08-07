@@ -1,9 +1,10 @@
 import {
   generateCAnimationExport,
   generateCa65AnimationExport,
-  sanitizeCIdentifier,
   serializeAnimationMetadata,
 } from '../core/animation-exporters';
+import { combineCIdentifiers } from '../core/c-identifier';
+import { padChrRom } from '../core/chr-rom';
 import type {
   AnimationCategory,
   AnimationDirection,
@@ -26,10 +27,6 @@ interface AnimationEditorOptions {
   readonly model: AnimationProjectModel | null;
   readonly modelError: AnimationModelError | null;
   readonly paletteSet: NesPaletteSet;
-  readonly paletteColorTarget: {
-    readonly paletteIndex: number;
-    readonly colorIndex: number;
-  };
   readonly onSettingsChange: (settings: AnimationSettings) => void;
   readonly onFrameToggle: (frameIndex: number) => void;
   readonly onFrameMove: (
@@ -99,6 +96,8 @@ function errorTranslation(error: AnimationModelError | null): TranslationKey {
       return 'animationErrorFrameGrid';
     case 'invalid-name':
       return 'animationErrorName';
+    case 'invalid-symbol-prefix':
+      return 'animationErrorSymbolPrefix';
     case 'invalid-frame-duration':
       return 'animationErrorDuration';
     case 'invalid-origin':
@@ -156,7 +155,7 @@ function createSpritePaletteEditor(
   palettes.className = 'animation-sprite-palettes';
   const selectedColorIndex = Math.max(
     0,
-    Math.min(3, options.paletteColorTarget.colorIndex),
+    Math.min(3, options.settings.spriteColorIndex),
   );
 
   options.paletteSet.forEach((palette, paletteIndex) => {
@@ -263,19 +262,59 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
 
   const fields = document.createElement('div');
   fields.className = 'animation-fields';
+
+  const prefixLabel = document.createElement('label');
+  prefixLabel.className = 'animation-field';
+  const prefixText = document.createElement('span');
+  prefixText.textContent = t('animationSymbolPrefixLabel');
+  const prefixInput = document.createElement('input');
+  prefixInput.type = 'text';
+  prefixInput.value = options.settings.symbolPrefix;
+
   const nameLabel = document.createElement('label');
-  nameLabel.className = 'animation-field animation-name-field';
+  nameLabel.className = 'animation-field';
   const nameText = document.createElement('span');
   nameText.textContent = t('animationNameLabel');
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.value = options.settings.name;
+
+  const symbolPreview = document.createElement('div');
+  symbolPreview.className = 'animation-symbol-preview';
+  const symbolPreviewTitle = document.createElement('strong');
+  symbolPreviewTitle.textContent = t('animationSymbolPreviewTitle');
+  const symbolPreviewCode = document.createElement('code');
+  const updateSymbolPreview = (): void => {
+    const symbolBase = combineCIdentifiers(prefixInput.value, nameInput.value);
+    symbolPreview.classList.toggle('is-invalid', symbolBase.length === 0);
+    symbolPreviewCode.textContent = symbolBase
+      ? [
+          `${symbolBase}_sprites`,
+          `${symbolBase}_frames`,
+          `${symbolBase}_animations`,
+          `${symbolBase}_animation_count`,
+        ].join('\n')
+      : t('animationSymbolPreviewInvalid');
+  };
+  prefixInput.addEventListener('input', updateSymbolPreview);
+  nameInput.addEventListener('input', updateSymbolPreview);
+  prefixInput.addEventListener('change', () => {
+    options.onSettingsChange({
+      ...options.settings,
+      symbolPrefix: prefixInput.value,
+    });
+  });
   nameInput.addEventListener('change', () => {
     options.onSettingsChange({ ...options.settings, name: nameInput.value });
   });
+  prefixLabel.append(prefixText, prefixInput);
   nameLabel.append(nameText, nameInput);
+  symbolPreview.append(symbolPreviewTitle, symbolPreviewCode);
+  updateSymbolPreview();
   fields.append(
+    prefixLabel,
     nameLabel,
+    symbolPreview,
     numberInput(
       t('animationFrameWidthLabel'),
       options.settings.frameWidth,
@@ -986,6 +1025,7 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
     return section;
   }
   const model = options.model;
+  const exportedChr = padChrRom(model.finalChr);
   const statsHeading = document.createElement('h3');
   statsHeading.textContent = t('animationStatsTitle');
   const stats = document.createElement('dl');
@@ -1004,31 +1044,25 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
     ),
     stat(t('animationFinalTiles'), String(model.chr.finalTileCount)),
     stat(t('animationRemainingTiles'), String(model.chr.remainingTiles)),
-    stat(
-      t('animationFinalChrSize'),
-      `${String(model.chr.finalSizeBytes)} bytes`,
-    ),
+    stat(t('animationFinalChrSize'), `${String(exportedChr.length)} bytes`),
   );
-  const id = sanitizeCIdentifier(model.name);
+  const id = model.symbolBase;
   const c = generateCAnimationExport(model);
   const asm = generateCa65AnimationExport(model);
   const actions = document.createElement('div');
   actions.className = 'export-actions';
   actions.append(
     downloadButton(t('animationDownloadChr'), () => {
-      options.onDownloadBytes(model.finalChr, model.chr.output);
+      options.onDownloadBytes(exportedChr, model.chr.output);
     }),
     downloadButton(t('animationDownloadPalette'), () => {
       options.onDownloadBytes(
         encodeNesBackgroundPalettes(options.paletteSet),
-        `${id}_sprite.pal`,
+        `${id}.pal`,
       );
     }),
     downloadButton(t('animationDownloadJson'), () => {
-      options.onDownloadText(
-        serializeAnimationMetadata(model),
-        `${id}_animation.json`,
-      );
+      options.onDownloadText(serializeAnimationMetadata(model), `${id}.json`);
     }),
     downloadButton(t('animationDownloadCHeader'), () => {
       options.onDownloadText(c.header, c.headerFileName);
