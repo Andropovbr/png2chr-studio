@@ -221,7 +221,7 @@ orientation, OAM attributes, and omitted cells. Animation mode exports:
 
 - the final concatenated `.chr`;
 - the four sprite palettes as `.pal`;
-- versioned JSON metadata (`format: png2chr-studio-animation`, `version: 2`);
+- versioned JSON metadata (`format: png2chr-studio-animation`, `version: 3`);
 - a C header/source pair suitable for cc65;
 - a ca65 include/source pair.
 
@@ -231,6 +231,25 @@ the grid, `chr` records allocation statistics and the referenced CHR file,
 contains explicit X/Y offsets, final tile indexes, attributes, palette, flips,
 reuse classification, and source cell coordinates. Binary CHR bytes are not
 duplicated in JSON.
+
+Animation exports use an editable **C symbol prefix** together with the
+animation name. Both values are normalized to lowercase C identifiers, so
+`Soldier` plus `Idle State` produces the base `soldier_idle_state`, matching
+filenames such as `soldier_idle_state.c` and globals such as
+`soldier_idle_state_sprites`. Unsupported punctuation becomes an underscore,
+repeated underscores are collapsed, a leading digit receives a leading
+underscore, and a reserved C keyword receives the deterministic suffix
+`_animation`. The generated-symbol preview reports invalid empty results before
+export. Header guards use the uppercase base, for example `SOLDIER_IDLE_H`.
+When the prefix is omitted by an API caller it is derived from the source image
+filename (falling back to `asset`); when a PNG is loaded in the UI, that derived
+prefix remains editable. JSON metadata version 3 records both `symbol_prefix`
+and `symbol_base`.
+
+Every downloaded `.chr` is padded with zero bytes to at least 8 KiB, the size
+of one NES CHR-ROM bank. Tile indexes and allocation statistics still describe
+the populated data before padding, and CHR data larger than 8 KiB is never
+truncated.
 
 The C and ca65 exports flatten the model into three ROM-friendly arrays:
 

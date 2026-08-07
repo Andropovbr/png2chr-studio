@@ -465,6 +465,61 @@ describe('animation project model', () => {
     ).toThrow(new AnimationModelError('invalid-origin'));
   });
 
+  it('normalizes the configured symbol prefix and animation name', () => {
+    const model = buildAnimationProjectModel({
+      name: 'Idle State',
+      symbolPrefix: 'Soldier #1',
+      sourceImageName: 'unused.png',
+      image: sheetFromTiles([tileWith([[0, 0]])]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+    });
+
+    expect(model.symbolPrefix).toBe('soldier_1');
+    expect(model.symbolBase).toBe('soldier_1_idle_state');
+    expect(model.chr.output).toBe('soldier_1_idle_state.chr');
+  });
+
+  it('derives a safe prefix from the source filename when omitted', () => {
+    const model = buildAnimationProjectModel({
+      name: 'Idle',
+      sourceImageName: 'assets/Bee-Bot 01.png',
+      image: sheetFromTiles([tileWith([[0, 0]])]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+    });
+
+    expect(model.symbolPrefix).toBe('bee_bot_01');
+    expect(model.symbolBase).toBe('bee_bot_01_idle');
+  });
+
+  it('rejects a configured prefix without identifier characters', () => {
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'idle',
+        symbolPrefix: '---',
+        sourceImageName: 'player.png',
+        image: sheetFromTiles([tileWith([[0, 0]])]),
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'idle',
+            category: 'idle',
+            frameIndices: [0],
+            frameDuration: 8,
+          },
+        ],
+      }),
+    ).toThrow(new AnimationModelError('invalid-symbol-prefix'));
+  });
+
   it('is deterministic for identical input', () => {
     const sheet = sheetFromTiles([tileWith([[0, 0]]), tileWith([[7, 0]])]);
     const first = build(sheet);

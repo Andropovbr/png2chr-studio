@@ -19,7 +19,11 @@ const en = {
   animationEditorTitle: 'Sprite animation setup',
   animationEditorHint:
     'Define the frame grid, choose idle or movement, then click frames in their playback order.',
-  animationNameLabel: 'Character name',
+  animationSymbolPrefixLabel: 'C symbol prefix',
+  animationNameLabel: 'Animation name',
+  animationSymbolPreviewTitle: 'Generated C symbols',
+  animationSymbolPreviewInvalid:
+    'Enter a prefix and animation name that contain letters or numbers.',
   animationFrameWidthLabel: 'Frame width (px)',
   animationFrameHeightLabel: 'Frame height (px)',
   animationSelectionTarget: 'Add selected frames to',
@@ -41,7 +45,7 @@ const en = {
   animationSpritePalette: 'Sprite palette',
   animationSpritePalettesTitle: 'Sprite palettes',
   animationSpritePalettesHint:
-    'Select any palette slot, then choose a supported NES color below. Slot 0 is the shared universal background color and starts black.',
+    'Select any palette slot, then choose a supported NES color below. Changing a slot recolors only pixels already mapped to that index. Slot 0 is the shared universal background color and starts black.',
   animationDownloadPalette: 'Download sprite palettes',
   animationPreviewTitle: 'Animation preview',
   animationPreviewHint:
@@ -113,6 +117,8 @@ const en = {
   animationErrorFrameGrid:
     'Frame dimensions must divide the complete sprite sheet.',
   animationErrorName: 'Use a non-empty name without control characters.',
+  animationErrorSymbolPrefix:
+    'Use a C symbol prefix containing at least one letter or number.',
   animationErrorDuration: 'Frame duration must be between 1 and 255.',
   animationErrorOrigin:
     'The origin must keep every metasprite offset within the signed 8-bit range (-128 to 127).',
@@ -387,7 +393,11 @@ const ptBr = {
   animationEditorTitle: 'Configuração da animação de sprite',
   animationEditorHint:
     'Defina a grade, escolha parado ou movimento e clique nos frames na ordem de reprodução.',
-  animationNameLabel: 'Nome do personagem',
+  animationSymbolPrefixLabel: 'Prefixo dos símbolos C',
+  animationNameLabel: 'Nome da animação',
+  animationSymbolPreviewTitle: 'Símbolos C gerados',
+  animationSymbolPreviewInvalid:
+    'Informe um prefixo e um nome de animação que contenham letras ou números.',
   animationFrameWidthLabel: 'Largura do frame (px)',
   animationFrameHeightLabel: 'Altura do frame (px)',
   animationSelectionTarget: 'Adicionar os frames selecionados a',
@@ -409,7 +419,7 @@ const ptBr = {
   animationSpritePalette: 'Paleta de sprite',
   animationSpritePalettesTitle: 'Paletas de sprite',
   animationSpritePalettesHint:
-    'Selecione qualquer cor da paleta e escolha abaixo uma cor suportada pelo NES. O índice 0 é a cor universal compartilhada e começa preto.',
+    'Selecione um índice da paleta e escolha abaixo uma cor suportada pelo NES. Alterar um índice recolore somente os pixels já mapeados para ele. O índice 0 é a cor universal compartilhada e começa preto.',
   animationDownloadPalette: 'Baixar paletas de sprite',
   animationPreviewTitle: 'Prévia da animação',
   animationPreviewHint:
@@ -482,6 +492,8 @@ const ptBr = {
   animationErrorFrameGrid:
     'As dimensões do frame devem dividir todo o sprite sheet.',
   animationErrorName: 'Use um nome não vazio e sem caracteres de controle.',
+  animationErrorSymbolPrefix:
+    'Use um prefixo de símbolo C com pelo menos uma letra ou um número.',
   animationErrorDuration: 'A duração deve estar entre 1 e 255 frames.',
   animationErrorOrigin:
     'A origem deve manter todos os deslocamentos do metasprite no intervalo de 8 bits com sinal (-128 a 127).',

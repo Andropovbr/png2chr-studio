@@ -4,12 +4,14 @@ import {
   AnimationModelError,
   buildAnimationProjectModel,
 } from './core/animation-model';
+import { mapAnimationImageToNesPalette } from './core/animation-palette';
 import type {
   AnimationDefinitionInput,
   AnimationProjectModel,
 } from './core/animation-model';
-import { sanitizeCIdentifier } from './core/animation-exporters';
 import { encodeChr } from './core/chr-encoder';
+import { padChrRom } from './core/chr-rom';
+import { normalizeCIdentifier } from './core/c-identifier';
 import {
   ChrDecodingError,
   chrTilesToIndexedImage,
@@ -99,7 +101,8 @@ const app: HTMLElement = appElement;
 
 function createDefaultAnimationSettings(): AnimationSettings {
   return {
-    name: 'player',
+    name: 'idle',
+    symbolPrefix: 'asset',
     frameWidth: 16,
     frameHeight: 16,
     selectionTarget: 'idle',
@@ -114,6 +117,8 @@ function createDefaultAnimationSettings(): AnimationSettings {
     exportMirroredMovement: false,
     flipDeduplication: true,
     spritePalette: 0,
+    spriteColorIndex: 1,
+    colorIndices: new Uint8Array(),
     originX: 0,
     originY: 0,
     destinationChrName: null,
@@ -300,7 +305,7 @@ async function changeQuantizationSettings(
   if (task !== quantizationTaskId) return;
   try {
     const indexedImage = quantizePngSource(source, project.mode, settings);
-    const assignments =
+    let assignments =
       project.paletteAssignments.length ===
       assignmentsForImage(indexedImage, project.mode).length
         ? project.paletteAssignments
@@ -309,21 +314,41 @@ async function changeQuantizationSettings(
       project.pixelOverrides.length === indexedImage.pixels.length
         ? project.pixelOverrides
         : createPixelOverrides(indexedImage.width, indexedImage.height);
-    const mappedImage = mapImageToNesPalettes(
-      indexedImage,
-      project.paletteSet,
-      assignments,
-      paletteRegionSize(project.mode, indexedImage),
-      pixelOverrides,
-      project.mode === 'animation',
-      settings.colorDistanceMode,
-    );
+    let animation = project.animation;
+    let mappedImage: IndexedImage;
+    if (project.mode === 'animation') {
+      const mapping = mapAnimationImageToNesPalette(
+        indexedImage,
+        project.paletteSet,
+        project.animation.spritePalette,
+        TILESET_PALETTE_REGION_SIZE,
+        undefined,
+        settings.colorDistanceMode,
+      );
+      mappedImage = mapping.image;
+      assignments = mapping.assignments;
+      animation = {
+        ...project.animation,
+        colorIndices: mapping.colorIndices,
+      };
+    } else {
+      mappedImage = mapImageToNesPalettes(
+        indexedImage,
+        project.paletteSet,
+        assignments,
+        paletteRegionSize(project.mode, indexedImage),
+        pixelOverrides,
+        false,
+        settings.colorDistanceMode,
+      );
+    }
     project = {
       ...project,
       indexedImage,
       tiles: extractTiles(mappedImage),
       paletteAssignments: assignments,
       pixelOverrides,
+      animation,
       loading: false,
       error: null,
     };
@@ -555,22 +580,24 @@ function renderAnimationWorkspace(): void {
   let modelError: AnimationModelError | null = null;
 
   if (project.indexedImage !== null) {
-    const assignments = new Uint8Array(project.paletteAssignments.length).fill(
-      project.animation.spritePalette,
-    );
-    mappedImage = mapImageToNesPalettes(
+    const stableColorIndices =
+      project.animation.colorIndices.length ===
+      project.indexedImage.pixels.length
+        ? project.animation.colorIndices
+        : undefined;
+    const paletteMapping = mapAnimationImageToNesPalette(
       project.indexedImage,
       project.paletteSet,
-      assignments,
+      project.animation.spritePalette,
       TILESET_PALETTE_REGION_SIZE,
-      project.pixelOverrides,
-      true,
+      stableColorIndices,
       project.quantizationSettings.colorDistanceMode,
     );
+    mappedImage = paletteMapping.image;
     const previewPixels = renderNesPaletteImage(
       mappedImage,
       project.paletteSet,
-      assignments,
+      paletteMapping.assignments,
       TILESET_PALETTE_REGION_SIZE,
     );
     previewImage = new ImageData(
@@ -600,16 +627,15 @@ function renderAnimationWorkspace(): void {
           exportMirroredDirection: project.animation.exportMirroredMovement,
         });
       }
-      const safeName = sanitizeCIdentifier(project.animation.name);
       model = buildAnimationProjectModel({
         name: project.animation.name,
+        symbolPrefix: project.animation.symbolPrefix,
         sourceImageName: project.fileName ?? 'sprites.png',
         image: mappedImage,
         frameWidth: project.animation.frameWidth,
         frameHeight: project.animation.frameHeight,
         animations: definitions,
         baseChr: project.animation.destinationChr,
-        chrOutputName: `${safeName}.chr`,
         capacityTiles: 256,
         flipDeduplication: project.animation.flipDeduplication,
         spritePalette: project.animation.spritePalette,
@@ -628,7 +654,6 @@ function renderAnimationWorkspace(): void {
     model,
     modelError,
     paletteSet: project.paletteSet,
-    paletteColorTarget: project.paletteColorTarget,
     onSettingsChange: (animation: AnimationSettings) => {
       project = { ...project, animation, error: null };
       render();
@@ -642,8 +667,11 @@ function renderAnimationWorkspace(): void {
     ) => {
       project = {
         ...project,
-        animation: { ...project.animation, spritePalette: paletteIndex },
-        paletteColorTarget: { paletteIndex, colorIndex },
+        animation: {
+          ...project.animation,
+          spritePalette: paletteIndex,
+          spriteColorIndex: colorIndex,
+        },
         error: null,
       };
       render();
@@ -661,7 +689,11 @@ function renderAnimationWorkspace(): void {
           colorIndex,
           colorCode,
         ),
-        paletteColorTarget: { paletteIndex, colorIndex },
+        animation: {
+          ...project.animation,
+          spritePalette: paletteIndex,
+          spriteColorIndex: colorIndex,
+        },
         error: null,
       };
       render();
@@ -771,7 +803,7 @@ function render(): void {
     }
   }
 
-  const chr = mappedImage === null ? null : encodeChr(visibleTiles);
+  const chr = mappedImage === null ? null : padChrRom(encodeChr(visibleTiles));
   const workspace = document.createElement('div');
   workspace.className = 'workspace';
   const editingWorkspace = document.createElement('div');
@@ -997,7 +1029,16 @@ async function loadFile(file: File): Promise<void> {
   const activeColorIndex = project.activeColorIndex;
   const showPaletteNumbers = project.showPaletteNumbers;
   const randomPlayfieldFeatures = project.randomPlayfieldFeatures;
-  const animation = project.animation;
+  const sourceSymbolPrefix = normalizeCIdentifier(
+    file.name.replace(/\.[^.]*$/, ''),
+  );
+  const animation =
+    mode === 'animation' && isPngFile
+      ? {
+          ...project.animation,
+          symbolPrefix: sourceSymbolPrefix || 'asset',
+        }
+      : project.animation;
   const quantizationSettings = project.quantizationSettings;
   project = {
     fileName: file.name,
@@ -1116,20 +1157,36 @@ async function loadFile(file: File): Promise<void> {
       mode,
       quantizationSettings,
     );
-    const paletteAssignments = assignmentsForImage(indexedImage, mode);
+    let paletteAssignments = assignmentsForImage(indexedImage, mode);
     const pixelOverrides = createPixelOverrides(
       indexedImage.width,
       indexedImage.height,
     );
-    const mappedImage = mapImageToNesPalettes(
-      indexedImage,
-      paletteSet,
-      paletteAssignments,
-      paletteRegionSize(mode, indexedImage),
-      pixelOverrides,
-      mode === 'animation',
-      quantizationSettings.colorDistanceMode,
-    );
+    let nextAnimation = animation;
+    let mappedImage: IndexedImage;
+    if (mode === 'animation') {
+      const mapping = mapAnimationImageToNesPalette(
+        indexedImage,
+        paletteSet,
+        animation.spritePalette,
+        TILESET_PALETTE_REGION_SIZE,
+        undefined,
+        quantizationSettings.colorDistanceMode,
+      );
+      mappedImage = mapping.image;
+      paletteAssignments = mapping.assignments;
+      nextAnimation = { ...animation, colorIndices: mapping.colorIndices };
+    } else {
+      mappedImage = mapImageToNesPalettes(
+        indexedImage,
+        paletteSet,
+        paletteAssignments,
+        paletteRegionSize(mode, indexedImage),
+        pixelOverrides,
+        false,
+        quantizationSettings.colorDistanceMode,
+      );
+    }
     const tiles = extractTiles(mappedImage);
     project = {
       ...project,
@@ -1137,6 +1194,7 @@ async function loadFile(file: File): Promise<void> {
       tiles,
       paletteAssignments,
       pixelOverrides,
+      animation: nextAnimation,
       error: null,
       loading: false,
     };

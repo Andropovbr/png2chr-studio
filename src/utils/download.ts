@@ -1,6 +1,16 @@
+import { padChrRom } from '../core/chr-rom';
+
+export function prepareBinaryDownload(
+  bytes: Uint8Array,
+  fileName: string,
+): Uint8Array {
+  return fileName.toLowerCase().endsWith('.chr') ? padChrRom(bytes) : bytes;
+}
+
 export function downloadBytes(bytes: Uint8Array, fileName: string): void {
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
+  const prepared = prepareBinaryDownload(bytes, fileName);
+  const buffer = new ArrayBuffer(prepared.byteLength);
+  new Uint8Array(buffer).set(prepared);
   const blob = new Blob([buffer], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
