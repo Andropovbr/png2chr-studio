@@ -9,7 +9,7 @@ import { tilePixelKey, transformedTileKey } from './tile-deduplication';
 import type { IndexedImage, Tile } from './types';
 
 export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
-export const ANIMATION_METADATA_VERSION = 3;
+export const ANIMATION_METADATA_VERSION = 4;
 export const NES_SPRITE_FLIP_HORIZONTAL = 0x40;
 export const NES_SPRITE_FLIP_VERTICAL = 0x80;
 export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 256;
@@ -17,16 +17,26 @@ export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 256;
 const TILE_SIZE = 8;
 const BYTES_PER_TILE = 16;
 
+export type AnimationPlayback = 'loop' | 'once';
 export type AnimationCategory = 'idle' | 'movement';
 export type AnimationDirection = 'left' | 'right';
 export type TileReuse = 'destination' | 'imported' | 'new';
 
 export interface AnimationDefinitionInput {
   readonly name: string;
-  readonly category: AnimationCategory;
+  readonly sourceImageName?: string;
+  readonly image?: IndexedImage;
+  readonly frameWidth?: number;
+  readonly frameHeight?: number;
+  readonly originX?: number;
+  readonly originY?: number;
   readonly frameIndices: readonly number[];
   readonly frameDuration: number;
   readonly frameDurations?: readonly number[];
+  readonly playback?: AnimationPlayback;
+  readonly flipH?: boolean;
+  readonly flipV?: boolean;
+  readonly category?: AnimationCategory;
   readonly direction?: AnimationDirection;
   readonly exportMirroredDirection?: boolean;
 }
@@ -34,18 +44,18 @@ export interface AnimationDefinitionInput {
 export interface BuildAnimationModelOptions {
   readonly name: string;
   readonly symbolPrefix?: string;
-  readonly sourceImageName: string;
-  readonly image: IndexedImage;
-  readonly frameWidth: number;
-  readonly frameHeight: number;
+  readonly sourceImageName?: string;
+  readonly image?: IndexedImage;
+  readonly frameWidth?: number;
+  readonly frameHeight?: number;
+  readonly originX?: number;
+  readonly originY?: number;
   readonly animations: readonly AnimationDefinitionInput[];
   readonly baseChr?: Uint8Array;
   readonly chrOutputName?: string;
   readonly capacityTiles?: number;
   readonly flipDeduplication?: boolean;
   readonly spritePalette?: number;
-  readonly originX?: number;
-  readonly originY?: number;
 }
 
 export interface MetaspriteTile {
@@ -74,15 +84,21 @@ export interface AnimationFrameModel {
 
 export interface AnimationModel {
   readonly name: string;
-  readonly category: AnimationCategory;
-  readonly direction: AnimationDirection | 'none';
-  readonly generatedByHorizontalFlip: boolean;
+  readonly sourceFile: string;
+  readonly playback: AnimationPlayback;
+  readonly flipH: boolean;
+  readonly flipV: boolean;
   readonly defaultFrameDuration: number;
+  readonly originX: number;
+  readonly originY: number;
   readonly width: number;
   readonly height: number;
   readonly widthTiles: number;
   readonly heightTiles: number;
   readonly frames: readonly AnimationFrameModel[];
+  readonly category?: AnimationCategory;
+  readonly direction?: AnimationDirection | 'none';
+  readonly generatedByHorizontalFlip?: boolean;
 }
 
 export interface AnimationChrStatistics {
@@ -103,7 +119,7 @@ export interface AnimationProjectModel {
   readonly name: string;
   readonly symbolPrefix: string;
   readonly symbolBase: string;
-  readonly source: {
+  readonly source?: {
     readonly image: string;
     readonly imageWidth: number;
     readonly imageHeight: number;
@@ -115,7 +131,7 @@ export interface AnimationProjectModel {
     readonly frameRows: number;
   };
   readonly chr: AnimationChrStatistics & { readonly output: string };
-  readonly origin: { readonly x: number; readonly y: number };
+  readonly origin?: { readonly x: number; readonly y: number };
   readonly animations: readonly AnimationModel[];
   readonly finalChr: Uint8Array;
 }
@@ -130,6 +146,9 @@ export type AnimationModelErrorCode =
   | 'no-selected-frames'
   | 'invalid-frame-duration'
   | 'invalid-animation-direction'
+  | 'duplicate-animation-name'
+  | 'duplicate-animation-identifier'
+  | 'invalid-playback'
   | 'invalid-origin'
   | 'invalid-sprite-palette'
   | 'invalid-destination-chr'
@@ -254,8 +273,12 @@ export function buildAnimationProjectModel(
   options: BuildAnimationModelOptions,
 ): AnimationProjectModel {
   validateName(options.name);
+  const fallbackSourceImageName =
+    options.sourceImageName ??
+    options.animations[0]?.sourceImageName ??
+    'sprites.png';
   const symbolPrefix = normalizeCIdentifier(
-    options.symbolPrefix ?? defaultSymbolPrefix(options.sourceImageName),
+    options.symbolPrefix ?? defaultSymbolPrefix(fallbackSourceImageName),
   );
   const symbolBase = combineCIdentifiers(symbolPrefix, options.name);
   if (
@@ -264,34 +287,6 @@ export function buildAnimationProjectModel(
     !isValidCIdentifier(symbolBase)
   ) {
     throw new AnimationModelError('invalid-symbol-prefix');
-  }
-  const { image, frameWidth, frameHeight } = options;
-  const originX = options.originX ?? 0;
-  const originY = options.originY ?? 0;
-  if (
-    frameWidth <= 0 ||
-    frameHeight <= 0 ||
-    frameWidth % TILE_SIZE !== 0 ||
-    frameHeight % TILE_SIZE !== 0
-  ) {
-    throw new AnimationModelError('invalid-frame-dimensions');
-  }
-  if (
-    image.width % frameWidth !== 0 ||
-    image.height % frameHeight !== 0 ||
-    image.pixels.length !== image.width * image.height
-  ) {
-    throw new AnimationModelError('invalid-frame-grid');
-  }
-  if (
-    !Number.isInteger(originX) ||
-    !Number.isInteger(originY) ||
-    -originX < -128 ||
-    frameWidth - TILE_SIZE - originX > 127 ||
-    -originY < -128 ||
-    frameHeight - TILE_SIZE - originY > 127
-  ) {
-    throw new AnimationModelError('invalid-origin');
   }
   if (options.animations.length === 0) {
     throw new AnimationModelError('no-selected-frames');
@@ -329,12 +324,80 @@ export function buildAnimationProjectModel(
     });
   }
 
-  const frameColumns = image.width / frameWidth;
-  const frameRows = image.height / frameHeight;
-  const frameCount = frameColumns * frameRows;
-  const selected = new Set<number>();
+  const animationNames = new Set<string>();
+  const animationIdentifiers = new Set<string>();
+
   for (const animation of options.animations) {
     validateName(animation.name);
+    const trimmedName = animation.name.trim();
+    const lowerName = trimmedName.toLowerCase();
+    if (animationNames.has(lowerName)) {
+      throw new AnimationModelError('duplicate-animation-name', {
+        name: trimmedName,
+      });
+    }
+    animationNames.add(lowerName);
+
+    const identifier = normalizeCIdentifier(trimmedName);
+    if (identifier.length === 0) {
+      throw new AnimationModelError('invalid-name', { name: trimmedName });
+    }
+    if (animationIdentifiers.has(identifier)) {
+      throw new AnimationModelError('duplicate-animation-identifier', {
+        name: trimmedName,
+        identifier,
+      });
+    }
+    animationIdentifiers.add(identifier);
+
+    const playbackVal = animation.playback as unknown;
+    if (
+      playbackVal !== undefined &&
+      playbackVal !== 'loop' &&
+      playbackVal !== 'once'
+    ) {
+      throw new AnimationModelError('invalid-playback', {
+        playback: String(animation.playback),
+      });
+    }
+
+    const animImage = animation.image ?? options.image;
+    if (animImage === undefined) {
+      throw new AnimationModelError('invalid-frame-grid');
+    }
+
+    const animFrameWidth = animation.frameWidth ?? options.frameWidth ?? 16;
+    const animFrameHeight = animation.frameHeight ?? options.frameHeight ?? 16;
+
+    if (
+      animFrameWidth <= 0 ||
+      animFrameHeight <= 0 ||
+      animFrameWidth % TILE_SIZE !== 0 ||
+      animFrameHeight % TILE_SIZE !== 0
+    ) {
+      throw new AnimationModelError('invalid-frame-dimensions');
+    }
+    if (
+      animImage.width % animFrameWidth !== 0 ||
+      animImage.height % animFrameHeight !== 0 ||
+      animImage.pixels.length !== animImage.width * animImage.height
+    ) {
+      throw new AnimationModelError('invalid-frame-grid');
+    }
+
+    const animOriginX = animation.originX ?? options.originX ?? 0;
+    const animOriginY = animation.originY ?? options.originY ?? 0;
+    if (
+      !Number.isInteger(animOriginX) ||
+      !Number.isInteger(animOriginY) ||
+      -animOriginX < -128 ||
+      animFrameWidth - TILE_SIZE - animOriginX > 127 ||
+      -animOriginY < -128 ||
+      animFrameHeight - TILE_SIZE - animOriginY > 127
+    ) {
+      throw new AnimationModelError('invalid-origin');
+    }
+
     if (
       animation.category === 'idle'
         ? animation.direction !== undefined ||
@@ -365,22 +428,21 @@ export function buildAnimationProjectModel(
     if (animation.frameIndices.length === 0) {
       throw new AnimationModelError('no-selected-frames');
     }
+
+    const animColumns = animImage.width / animFrameWidth;
+    const animRows = animImage.height / animFrameHeight;
+    const animFrameCount = animColumns * animRows;
+
     for (const frameIndex of animation.frameIndices) {
       if (
         !Number.isInteger(frameIndex) ||
         frameIndex < 0 ||
-        frameIndex >= frameCount
+        frameIndex >= animFrameCount
       ) {
         throw new AnimationModelError('invalid-frame-selection', {
           frameIndex,
         });
       }
-      if (selected.has(frameIndex)) {
-        throw new AnimationModelError('duplicate-frame-selection', {
-          frameIndex,
-        });
-      }
-      selected.add(frameIndex);
     }
   }
 
@@ -388,20 +450,41 @@ export function buildAnimationProjectModel(
   let reusedDestinationTiles = 0;
   let reusedImportedTiles = 0;
   let newTileCount = 0;
-  const widthTiles = frameWidth / TILE_SIZE;
-  const heightTiles = frameHeight / TILE_SIZE;
 
   const baseAnimations = options.animations.map((animation): AnimationModel => {
+    const animFlipH = animation.flipH === true;
+    const animFlipV = animation.flipV === true;
+    const playback = animation.playback ?? 'loop';
+    const animImage = animation.image ?? options.image;
+    if (animImage === undefined) {
+      throw new AnimationModelError('invalid-frame-grid');
+    }
+    const animFrameWidth = animation.frameWidth ?? options.frameWidth ?? 16;
+    const animFrameHeight = animation.frameHeight ?? options.frameHeight ?? 16;
+    const animOriginX = animation.originX ?? options.originX ?? 0;
+    const animOriginY = animation.originY ?? options.originY ?? 0;
+    const animWidthTiles = animFrameWidth / TILE_SIZE;
+    const animHeightTiles = animFrameHeight / TILE_SIZE;
+    const animColumns = animImage.width / animFrameWidth;
+    const sourceFile =
+      animation.sourceImageName ??
+      options.sourceImageName ??
+      fallbackSourceImageName;
+
     const frames = animation.frameIndices.map(
       (sourceIndex, frameOrder): AnimationFrameModel => {
-        const sourceX = (sourceIndex % frameColumns) * frameWidth;
-        const sourceY = Math.floor(sourceIndex / frameColumns) * frameHeight;
+        const sourceX = (sourceIndex % animColumns) * animFrameWidth;
+        const sourceY = Math.floor(sourceIndex / animColumns) * animFrameHeight;
         const sprites: MetaspriteTile[] = [];
         let omittedTileCount = 0;
-        for (let tileRow = 0; tileRow < heightTiles; tileRow += 1) {
-          for (let tileColumn = 0; tileColumn < widthTiles; tileColumn += 1) {
+        for (let tileRow = 0; tileRow < animHeightTiles; tileRow += 1) {
+          for (
+            let tileColumn = 0;
+            tileColumn < animWidthTiles;
+            tileColumn += 1
+          ) {
             const candidate = extractFrameTile(
-              image,
+              animImage,
               sourceX,
               sourceY,
               tileColumn,
@@ -441,18 +524,31 @@ export function buildAnimationProjectModel(
                 tileIndex,
               });
             }
+
+            const finalCol = animFlipH
+              ? animWidthTiles - 1 - tileColumn
+              : tileColumn;
+            const finalRow = animFlipV
+              ? animHeightTiles - 1 - tileRow
+              : tileRow;
+            const finalFlipAttributes =
+              flipAttributes ^
+              (animFlipH ? NES_SPRITE_FLIP_HORIZONTAL : 0) ^
+              (animFlipV ? NES_SPRITE_FLIP_VERTICAL : 0);
+
             sprites.push({
-              x: tileColumn * TILE_SIZE - originX,
-              y: tileRow * TILE_SIZE - originY,
+              x: finalCol * TILE_SIZE - animOriginX,
+              y: finalRow * TILE_SIZE - animOriginY,
               tile: tileIndex,
-              attributes: spritePalette | flipAttributes,
+              attributes: spritePalette | finalFlipAttributes,
               palette: spritePalette,
               horizontalFlip:
-                (flipAttributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0,
-              verticalFlip: (flipAttributes & NES_SPRITE_FLIP_VERTICAL) !== 0,
+                (finalFlipAttributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0,
+              verticalFlip:
+                (finalFlipAttributes & NES_SPRITE_FLIP_VERTICAL) !== 0,
               reuse,
-              sourceTileColumn: tileColumn,
-              sourceTileRow: tileRow,
+              sourceTileColumn: finalCol,
+              sourceTileRow: finalRow,
             });
           }
         }
@@ -462,8 +558,8 @@ export function buildAnimationProjectModel(
           sourceY,
           duration:
             animation.frameDurations?.[frameOrder] ?? animation.frameDuration,
-          width: frameWidth,
-          height: frameHeight,
+          width: animFrameWidth,
+          height: animFrameHeight,
           omittedTileCount,
           sprites,
         };
@@ -471,14 +567,20 @@ export function buildAnimationProjectModel(
     );
     return {
       name: animation.name,
+      sourceFile,
+      playback,
+      flipH: animFlipH,
+      flipV: animFlipV,
       category: animation.category,
       direction: animation.direction ?? 'none',
       generatedByHorizontalFlip: false,
       defaultFrameDuration: animation.frameDuration,
-      width: frameWidth,
-      height: frameHeight,
-      widthTiles,
-      heightTiles,
+      originX: animOriginX,
+      originY: animOriginY,
+      width: animFrameWidth,
+      height: animFrameHeight,
+      widthTiles: animWidthTiles,
+      heightTiles: animHeightTiles,
       frames,
     };
   });
@@ -495,60 +597,291 @@ export function buildAnimationProjectModel(
     }
     const baseDirection = definition.direction;
     const mirroredDirection = oppositeDirection(baseDirection);
-    return [
-      {
-        ...animation,
-        name: `${animation.name}_${baseDirection}`,
-        direction: baseDirection,
-      },
-      {
-        ...animation,
-        name: `${animation.name}_${mirroredDirection}`,
-        direction: mirroredDirection,
-        generatedByHorizontalFlip: true,
-        frames: animation.frames.map(mirrorAnimationFrameHorizontally),
-      },
-    ];
+    const mirroredFrames = animation.frames.map(
+      (frame): AnimationFrameModel => ({
+        ...frame,
+        sprites: frame.sprites.map((sprite) => {
+          const mirroredCol =
+            animation.widthTiles - 1 - sprite.sourceTileColumn;
+          const horizontalFlip = !sprite.horizontalFlip;
+          const attributes =
+            (sprite.attributes & ~NES_SPRITE_FLIP_HORIZONTAL) |
+            (horizontalFlip ? NES_SPRITE_FLIP_HORIZONTAL : 0);
+          return {
+            ...sprite,
+            x: mirroredCol * TILE_SIZE - animation.originX,
+            attributes,
+            horizontalFlip,
+          };
+        }),
+      }),
+    );
+    const mirroredAnimation: AnimationModel = {
+      ...animation,
+      name: `${animation.name}_${mirroredDirection}`,
+      direction: mirroredDirection,
+      generatedByHorizontalFlip: true,
+      frames: mirroredFrames,
+    };
+    const primaryAnimation: AnimationModel = {
+      ...animation,
+      name: `${animation.name}_${baseDirection}`,
+      direction: baseDirection,
+    };
+    return [primaryAnimation, mirroredAnimation];
   });
 
-  const appended = allocated.slice(baseTiles.length);
-  const appendedBytes = encodeChr(appended);
-  const finalChr = new Uint8Array(baseChr.length + appendedBytes.length);
-  finalChr.set(baseChr);
-  finalChr.set(appendedBytes, baseChr.length);
   const finalTileCount = allocated.length;
+  const finalChr = encodeChr(allocated);
+  const remainingTiles = capacityTiles - finalTileCount;
+  const appendedTileStart = baseTiles.length;
+  const output = options.chrOutputName ?? `${symbolBase}.chr`;
+
+  const sourceProp =
+    options.image && options.frameWidth && options.frameHeight
+      ? {
+          image: fallbackSourceImageName,
+          imageWidth: options.image.width,
+          imageHeight: options.image.height,
+          frameWidth: options.frameWidth,
+          frameHeight: options.frameHeight,
+          tileWidth: 8 as const,
+          tileHeight: 8 as const,
+          frameColumns: options.image.width / options.frameWidth,
+          frameRows: options.image.height / options.frameHeight,
+        }
+      : undefined;
 
   return {
     format: ANIMATION_METADATA_FORMAT,
     version: ANIMATION_METADATA_VERSION,
-    name: options.name.trim(),
+    name: options.name,
     symbolPrefix,
     symbolBase,
-    source: {
-      image: options.sourceImageName,
-      imageWidth: image.width,
-      imageHeight: image.height,
-      frameWidth,
-      frameHeight,
-      tileWidth: 8,
-      tileHeight: 8,
-      frameColumns,
-      frameRows,
-    },
+    source: sourceProp,
     chr: {
-      output: options.chrOutputName ?? `${symbolBase}.chr`,
       capacityTiles,
       baseTileCount: baseTiles.length,
       reusedDestinationTiles,
       reusedImportedTiles,
       newTileCount,
-      appendedTileStart: baseTiles.length,
+      appendedTileStart,
       finalTileCount,
       finalSizeBytes: finalChr.length,
-      remainingTiles: capacityTiles - finalTileCount,
+      remainingTiles,
+      output,
     },
-    origin: { x: originX, y: originY },
+    origin: {
+      x: options.originX ?? 0,
+      y: options.originY ?? 0,
+    },
     animations,
     finalChr,
+  };
+}
+
+export interface DeserializedAnimationEntry {
+  readonly name: string;
+  readonly sourceFile: string;
+  readonly frameWidth: number;
+  readonly frameHeight: number;
+  readonly originX: number;
+  readonly originY: number;
+  readonly playback: AnimationPlayback;
+  readonly flipH: boolean;
+  readonly flipV: boolean;
+  readonly defaultFrameDuration: number;
+  readonly frameIndices: readonly number[];
+  readonly frameDurations: readonly number[];
+}
+
+export interface DeserializedAnimationProject {
+  readonly format: string;
+  readonly version: number;
+  readonly name: string;
+  readonly symbolPrefix: string;
+  readonly symbolBase: string;
+  readonly source?: {
+    readonly image: string;
+    readonly frameWidth: number;
+    readonly frameHeight: number;
+  };
+  readonly origin?: { readonly x: number; readonly y: number };
+  readonly animations: readonly DeserializedAnimationEntry[];
+}
+
+interface RawFrameEntry {
+  readonly source_index?: unknown;
+  readonly sourceIndex?: unknown;
+  readonly duration?: unknown;
+}
+
+interface RawAnimationEntry {
+  readonly name?: unknown;
+  readonly source_file?: unknown;
+  readonly sourceFile?: unknown;
+  readonly frame_width?: unknown;
+  readonly frameWidth?: unknown;
+  readonly width?: unknown;
+  readonly frame_height?: unknown;
+  readonly frameHeight?: unknown;
+  readonly height?: unknown;
+  readonly origin_x?: unknown;
+  readonly originX?: unknown;
+  readonly origin_y?: unknown;
+  readonly originY?: unknown;
+  readonly playback?: unknown;
+  readonly flip_h?: unknown;
+  readonly flipH?: unknown;
+  readonly generated_by_horizontal_flip?: unknown;
+  readonly flip_v?: unknown;
+  readonly flipV?: unknown;
+  readonly default_frame_duration?: unknown;
+  readonly defaultFrameDuration?: unknown;
+  readonly frames?: readonly RawFrameEntry[];
+}
+
+interface RawSourceMetadata {
+  readonly image?: unknown;
+  readonly frame_width?: unknown;
+  readonly frameWidth?: unknown;
+  readonly frame_height?: unknown;
+  readonly frameHeight?: unknown;
+}
+
+interface RawOriginMetadata {
+  readonly x?: unknown;
+  readonly y?: unknown;
+}
+
+interface RawMetadataProject {
+  readonly format?: unknown;
+  readonly version?: unknown;
+  readonly name?: unknown;
+  readonly symbol_prefix?: unknown;
+  readonly symbolPrefix?: unknown;
+  readonly symbol_base?: unknown;
+  readonly symbolBase?: unknown;
+  readonly source?: RawSourceMetadata;
+  readonly origin?: RawOriginMetadata;
+  readonly animations?: readonly RawAnimationEntry[];
+}
+
+function asString(val: unknown, fallback: string): string {
+  return typeof val === 'string' ? val : fallback;
+}
+
+function asNumber(val: unknown, fallback: number): number {
+  return typeof val === 'number' && !Number.isNaN(val) ? val : fallback;
+}
+
+function asBoolean(val: unknown, fallback: boolean): boolean {
+  return typeof val === 'boolean' ? val : fallback;
+}
+
+export function deserializeAnimationMetadata(
+  jsonText: string,
+): DeserializedAnimationProject {
+  const raw = JSON.parse(jsonText) as unknown as RawMetadataProject;
+
+  if (raw.format !== ANIMATION_METADATA_FORMAT) {
+    throw new Error('Unsupported animation metadata format');
+  }
+  const version = asNumber(raw.version, 1);
+  const name = asString(raw.name, 'animation');
+  const symbolPrefix = asString(raw.symbol_prefix ?? raw.symbolPrefix, 'asset');
+  const symbolBase = asString(raw.symbol_base ?? raw.symbolBase, 'asset');
+  const source = raw.source;
+  const origin = raw.origin;
+  const rawAnimations: readonly RawAnimationEntry[] = Array.isArray(
+    raw.animations,
+  )
+    ? raw.animations
+    : [];
+
+  const defaultImage = asString(source?.image, 'sprites.png');
+  const defaultFrameWidth = asNumber(
+    source?.frame_width ?? source?.frameWidth,
+    16,
+  );
+  const defaultFrameHeight = asNumber(
+    source?.frame_height ?? source?.frameHeight,
+    16,
+  );
+  const defaultOriginX = asNumber(origin?.x, 0);
+  const defaultOriginY = asNumber(origin?.y, 0);
+
+  const animations: DeserializedAnimationEntry[] = rawAnimations.map(
+    (anim: RawAnimationEntry): DeserializedAnimationEntry => {
+      const animName = asString(anim.name, 'anim');
+      const sourceFile = asString(
+        anim.source_file ?? anim.sourceFile,
+        defaultImage,
+      );
+      const frameWidth = asNumber(
+        anim.frame_width ?? anim.frameWidth ?? anim.width,
+        defaultFrameWidth,
+      );
+      const frameHeight = asNumber(
+        anim.frame_height ?? anim.frameHeight ?? anim.height,
+        defaultFrameHeight,
+      );
+      const originX = asNumber(anim.origin_x ?? anim.originX, defaultOriginX);
+      const originY = asNumber(anim.origin_y ?? anim.originY, defaultOriginY);
+      const playback: AnimationPlayback =
+        anim.playback === 'once' ? 'once' : 'loop';
+      const flipH = asBoolean(
+        anim.flip_h ?? anim.flipH ?? anim.generated_by_horizontal_flip,
+        false,
+      );
+      const flipV = asBoolean(anim.flip_v ?? anim.flipV, false);
+      const defaultDuration = asNumber(
+        anim.default_frame_duration ?? anim.defaultFrameDuration,
+        12,
+      );
+      const frames: readonly RawFrameEntry[] = Array.isArray(anim.frames)
+        ? anim.frames
+        : [];
+      const frameIndices: number[] = frames.map((f: RawFrameEntry) =>
+        asNumber(f.source_index ?? f.sourceIndex, 0),
+      );
+      const frameDurations: number[] = frames.map((f: RawFrameEntry) =>
+        asNumber(f.duration, defaultDuration),
+      );
+      return {
+        name: animName,
+        sourceFile,
+        frameWidth,
+        frameHeight,
+        originX,
+        originY,
+        playback,
+        flipH,
+        flipV,
+        defaultFrameDuration: defaultDuration,
+        frameIndices,
+        frameDurations,
+      };
+    },
+  );
+
+  return {
+    format: ANIMATION_METADATA_FORMAT,
+    version,
+    name,
+    symbolPrefix,
+    symbolBase,
+    source: source?.image
+      ? {
+          image: defaultImage,
+          frameWidth: defaultFrameWidth,
+          frameHeight: defaultFrameHeight,
+        }
+      : undefined,
+    origin: {
+      x: defaultOriginX,
+      y: defaultOriginY,
+    },
+    animations,
   };
 }

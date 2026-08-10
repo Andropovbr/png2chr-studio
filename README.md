@@ -176,95 +176,49 @@ The `.col` file stores the cells from left to right and top to bottom. Each cell
 
 ### Sprite sheet animation mode
 
-Animation mode accepts a PNG whose width and height can be divided into a
-regular frame grid. Configure a frame width and height (positive multiples of
-8), choose **Idle** or **Movement**, then click frames in playback order. The
-configuration shows only the duration and ordered frame list for the active
-category. Frames can be removed or reordered, and every frame has an individual
-duration measured in game frames, from 1 to 255. The category default is used
-when a new frame is selected.
+Animation mode enables configuring multiple generic animations for a character or game asset, where each animation can have its own source PNG spritesheet, frame dimensions, origin anchor, playback mode, and flip flags.
 
-All four sprite palettes are visible in animation mode. Select any slot and
-replace it using the 64-color NES master palette. Slot 0 is the shared universal
-background color: it starts black, changing it in one palette updates all four,
-and it fills the background of the static frames and animated preview. The
-active palette is used by the frame grid, animated preview, CHR conversion, and
-OAM attribute bits. A 16-byte sprite `.pal` file can be exported alongside the
-animation.
+An asset can contain any number of arbitrary animations (`idle`, `walk`, `attack`, `hurt`, `death`, `reload`, `cast`, etc.). For each animation, the user can:
 
-Every selected frame is divided into 8x8 cells and represented as a metasprite.
-A fully empty cell (transparent/index 0) is omitted instead of consuming an OAM
-entry. Partially empty cells remain normal NES tiles. The origin is subtracted
-from each cell position, and every exported X/Y offset must fit an 8-bit signed
-value. The selected sprite palette occupies attribute bits 0-1.
+- set a descriptive animation name;
+- choose or change its individual source PNG spritesheet;
+- configure independent frame width and height (positive multiples of 8);
+- set independent signed origin X and Y offsets;
+- select playback mode: **Loop** (`0`) or **Once** (`1`);
+- toggle global horizontal (`flipH`) or vertical (`flipV`) flips;
+- configure default and per-frame durations in game frames (1 to 255);
+- select frames directly from that animation's own spritesheet grid;
+- preview that animation independently with playback controls.
 
-An optional destination `.chr` can be loaded before conversion. Its bytes and
-indexes are preserved. New tiles are appended after the existing tiles, while
-exact matches reuse their absolute destination index. With flip-aware reuse
-enabled, horizontal, vertical, and combined matches reuse the stored tile and
-set NES OAM attribute bits `$40`, `$80`, or `$C0`. The resulting sprite pattern
-table is limited to 256 tiles (4 KB), because every exported tile reference is
-an 8-bit OAM index. The UI reports destination reuse, imported-frame reuse, new
-tiles, append start, final size, and remaining capacity.
+All four sprite palettes are visible in animation mode. Select any slot and replace it using the 64-color NES master palette. Slot 0 is the shared universal background color: it starts black, changing it in one palette updates all four, and it fills the background of the static frames and animated preview. The active palette is used by the frame grid, animated preview, CHR conversion, and OAM attribute bits. A 16-byte sprite `.pal` file can be exported alongside the animation.
 
-The animated preview plays the active category at 60 game frames per second,
-respecting every individual duration, and provides play, pause, previous, and
-next controls. Movement also has independent left/right preview controls. Choose
-the primary movement direction to describe the original artwork. Optionally,
-export the opposite direction by mirroring every metasprite: sprite positions
-are reflected around the configured origin and the NES horizontal-flip bit is
-toggled without allocating duplicate CHR tiles. With this option disabled, only
-the primary direction is exported and the artwork is never mirrored, which is
-useful for ships and other sprites whose visual orientation does not change.
-The mapping preview shows each frame's final tile index, reuse source,
-orientation, OAM attributes, and omitted cells. Animation mode exports:
+Every selected frame is divided into 8x8 cells and represented as a metasprite. A fully empty cell (transparent/index 0) is omitted instead of consuming an OAM entry. Partially empty cells remain normal NES tiles. The origin is subtracted from each cell position, and every exported X/Y offset must fit an 8-bit signed value. The selected sprite palette occupies attribute bits 0-1.
 
-- the final concatenated `.chr`;
+An optional destination `.chr` can be loaded before conversion. Its bytes and indexes are preserved. New tiles extracted across all animation sources are appended after the existing tiles, while exact matches reuse their absolute destination index or previously allocated tile index. With flip-aware reuse enabled, horizontal, vertical, and combined matches across any source PNG reuse the stored tile and set NES OAM attribute bits `$40`, `$80`, or `$C0`. The resulting sprite pattern table supports up to 256 tiles (4 KB pattern table capacity). The UI reports destination reuse, imported-frame reuse, new tiles, append start, final size, and remaining capacity.
+
+The mapping preview shows each frame's final tile index, reuse source, orientation, OAM attributes, and omitted cells for each animation. Animation mode exports:
+
+- the final consolidated `.chr`;
 - the four sprite palettes as `.pal`;
-- versioned JSON metadata (`format: png2chr-studio-animation`, `version: 3`);
+- versioned JSON metadata (`format: png2chr-studio-animation`, `version: 4`);
 - a C header/source pair suitable for cc65;
 - a ca65 include/source pair.
 
-The JSON is the canonical interchange format. Its top-level `source` describes
-the grid, `chr` records allocation statistics and the referenced CHR file,
-`origin` stores the configured anchor, and `animations[].frames[].sprites[]`
-contains explicit X/Y offsets, final tile indexes, attributes, palette, flips,
-reuse classification, and source cell coordinates. Binary CHR bytes are not
-duplicated in JSON.
+The JSON is the canonical interchange format. It describes asset properties, consolidated CHR statistics, and each animation's `source_file`, `frame_width`, `frame_height`, `origin_x`, `origin_y`, `playback`, `flip_h`, `flip_v`, `default_frame_duration`, and `frames[].sprites[]` with explicit X/Y offsets, final tile indexes, attributes, palette, flips, reuse classification, and source cell coordinates. Binary CHR bytes and raw images are not duplicated in JSON.
 
-Animation exports use an editable **C symbol prefix** together with the
-animation name. Both values are normalized to lowercase C identifiers, so
-`Soldier` plus `Idle State` produces the base `soldier_idle_state`, matching
-filenames such as `soldier_idle_state.c` and globals such as
-`soldier_idle_state_sprites`. Unsupported punctuation becomes an underscore,
-repeated underscores are collapsed, a leading digit receives a leading
-underscore, and a reserved C keyword receives the deterministic suffix
-`_animation`. The generated-symbol preview reports invalid empty results before
-export. Header guards use the uppercase base, for example `SOLDIER_IDLE_H`.
-When the prefix is omitted by an API caller it is derived from the source image
-filename (falling back to `asset`); when a PNG is loaded in the UI, that derived
-prefix remains editable. JSON metadata version 3 records both `symbol_prefix`
-and `symbol_base`.
+Animation exports use an editable **C symbol prefix** together with the asset name. Both values are normalized to lowercase C identifiers, so `Soldier` plus `Asset` produces the base `soldier_asset`, matching filenames such as `soldier_asset.c` and globals such as `soldier_asset_sprites`, `soldier_asset_frames`, `soldier_asset_animations`, and the enum `${PascalCase}AnimationId` (e.g. `SoldierAssetAnimationId`).
 
-Every downloaded `.chr` is padded with zero bytes to at least 8 KiB, the size
-of one NES CHR-ROM bank. Tile indexes and allocation statistics still describe
-the populated data before padding, and CHR data larger than 8 KiB is never
-truncated.
+Every downloaded `.chr` is padded with zero bytes to at least 8 KiB, the standard size of one NES CHR-ROM bank (such as on NROM carts). Tile indexes and allocation statistics describe the populated pattern table data before padding, and CHR data larger than 8 KiB is never truncated.
 
 The C and ca65 exports flatten the model into three ROM-friendly arrays:
 
-| Entry     | Bytes | Layout                                                         |
-| --------- | ----: | -------------------------------------------------------------- |
-| Sprite    |     4 | signed X, signed Y, tile index, OAM attributes                 |
-| Frame     |     4 | sprite offset (16-bit), count, duration                        |
-| Animation |     7 | frame offset (16-bit), count, size, type, direction/flip flags |
+| Entry     | Bytes | Layout                                                                        |
+| --------- | ----: | ----------------------------------------------------------------------------- |
+| Sprite    |     4 | signed X, signed Y, tile index, OAM attributes                                |
+| Frame     |     4 | sprite offset (16-bit), count, duration                                       |
+| Animation |     7 | frame offset (16-bit), count, width tiles, height tiles, playback, flip flags |
 
-Animation type 0 is idle and type 1 is movement. In `direction_flags`, bits 0-1
-encode none (`0`), left (`1`), or right (`2`), and bit 7 (`$80`) marks a
-direction generated by horizontal mirroring. Offsets count array entries, not
-byte addresses. See [`examples/sprite-animation`](examples/sprite-animation)
-for matching JSON, C, and ca65 outputs with destination reuse, appended tiles,
-transparent cells, directional movement, and flip flags.
+See [`examples/sprite-animation`](examples/sprite-animation) for matching JSON, C, and ca65 outputs.
 
 ## CHR format summary
 
@@ -295,10 +249,7 @@ npm run build
 
 - No manual tile removal
 - Collision cells support ten gameplay types; slopes and custom user-defined types are not supported
-- Animation mode currently provides one idle and one movement source sequence;
-  movement can export one direction or a generated mirrored pair, but named
-  actions and direct OAM playback code are not yet included
-- Animation exports target one 4 KB sprite pattern table (256 final tile indexes)
+- Animation exports target one 256-tile sprite pattern table (8-bit tile indexes)
 - No metasprite hitboxes or runtime renderer generation
 - ROM graphics extraction is limited to iNES mapper 0 with one 8 KB CHR-ROM bank
 - No cloud storage or backend

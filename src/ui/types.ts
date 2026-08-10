@@ -1,8 +1,5 @@
 import type { PlayfieldEncodingError } from '../core/playfield-encoder';
-import type {
-  AnimationCategory,
-  AnimationDirection,
-} from '../core/animation-model';
+import type { AnimationPlayback } from '../core/animation-model';
 import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
@@ -21,27 +18,37 @@ export type ProjectMode = 'tileset' | 'playfield' | 'animation';
 export type PreviewTool = 'palette' | 'paint-collision' | 'erase-collision';
 export type SourceKind = 'png' | 'chr' | 'nes';
 
+export interface AnimationSourceData {
+  readonly fileName: string;
+  readonly sourceImage: ImageData;
+  readonly indexedImage: IndexedImage;
+}
+
+export interface AnimationItemSetting {
+  readonly id: string;
+  readonly name: string;
+  readonly source: AnimationSourceData | null;
+  readonly frameWidth: number;
+  readonly frameHeight: number;
+  readonly originX: number;
+  readonly originY: number;
+  readonly playback: AnimationPlayback;
+  readonly flipH: boolean;
+  readonly flipV: boolean;
+  readonly defaultDuration: number;
+  readonly frameIndices: readonly number[];
+  readonly frameDurations: readonly number[];
+  readonly collapsed?: boolean;
+}
+
 export interface AnimationSettings {
   readonly name: string;
   readonly symbolPrefix: string;
-  readonly frameWidth: number;
-  readonly frameHeight: number;
-  readonly selectionTarget: AnimationCategory;
-  readonly idleFrames: readonly number[];
-  readonly movementFrames: readonly number[];
-  readonly idleDuration: number;
-  readonly movementDuration: number;
-  readonly idleFrameDurations: readonly number[];
-  readonly movementFrameDurations: readonly number[];
-  readonly movementDirection: AnimationDirection;
-  readonly movementPreviewDirection: AnimationDirection;
-  readonly exportMirroredMovement: boolean;
+  readonly animations: readonly AnimationItemSetting[];
   readonly flipDeduplication: boolean;
   readonly spritePalette: number;
   readonly spriteColorIndex: number;
   readonly colorIndices: Uint8Array;
-  readonly originX: number;
-  readonly originY: number;
   readonly destinationChrName: string | null;
   readonly destinationChr: Uint8Array;
 }

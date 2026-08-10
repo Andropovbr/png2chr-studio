@@ -22,31 +22,22 @@ export interface Ca65AnimationExport {
   readonly estimatedRomBytes: number;
 }
 
-const ANIMATION_DIRECTION_NONE = 0;
-const ANIMATION_DIRECTION_LEFT = 1;
-const ANIMATION_DIRECTION_RIGHT = 2;
-const ANIMATION_DIRECTION_MASK = 0x03;
-const ANIMATION_GENERATED_HORIZONTAL_FLIP = 0x80;
-
-function animationDirectionFlags(
-  animation: AnimationProjectModel['animations'][number],
-): number {
-  const direction =
-    animation.direction === 'left'
-      ? ANIMATION_DIRECTION_LEFT
-      : animation.direction === 'right'
-        ? ANIMATION_DIRECTION_RIGHT
-        : ANIMATION_DIRECTION_NONE;
-  return (
-    direction |
-    (animation.generatedByHorizontalFlip
-      ? ANIMATION_GENERATED_HORIZONTAL_FLIP
-      : 0)
-  );
-}
+export const ANIMATION_PLAYBACK_LOOP = 0;
+export const ANIMATION_PLAYBACK_ONCE = 1;
+export const ANIMATION_FLIP_H = NES_SPRITE_FLIP_HORIZONTAL;
+export const ANIMATION_FLIP_V = NES_SPRITE_FLIP_VERTICAL;
 
 export function sanitizeCIdentifier(name: string): string {
   return normalizeCIdentifier(name) || 'animation';
+}
+
+function toPascalCase(name: string): string {
+  const normalized = normalizeCIdentifier(name) || 'asset';
+  return normalized
+    .split('_')
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join('');
 }
 
 function hex(value: number): string {
@@ -73,8 +64,8 @@ function flatten(model: AnimationProjectModel): {
     frameCount: number;
     widthTiles: number;
     heightTiles: number;
-    category: number;
-    directionFlags: number;
+    playback: number;
+    flags: number;
   }[];
 } {
   const sprites: MetaspriteTile[] = [];
@@ -88,8 +79,8 @@ function flatten(model: AnimationProjectModel): {
     frameCount: number;
     widthTiles: number;
     heightTiles: number;
-    category: number;
-    directionFlags: number;
+    playback: number;
+    flags: number;
   }[] = [];
   model.animations.forEach((animation) => {
     const frameOffset = frames.length;
@@ -102,13 +93,20 @@ function flatten(model: AnimationProjectModel): {
         duration: frame.duration,
       });
     });
+    const playback =
+      animation.playback === 'once'
+        ? ANIMATION_PLAYBACK_ONCE
+        : ANIMATION_PLAYBACK_LOOP;
+    const flags =
+      (animation.flipH ? ANIMATION_FLIP_H : 0) |
+      (animation.flipV ? ANIMATION_FLIP_V : 0);
     animations.push({
       frameOffset,
       frameCount: animation.frames.length,
       widthTiles: animation.widthTiles,
       heightTiles: animation.heightTiles,
-      category: animation.category === 'idle' ? 0 : 1,
-      directionFlags: animationDirectionFlags(animation),
+      playback,
+      flags,
     });
   });
   return { sprites, frames, animations };
@@ -133,17 +131,19 @@ export function serializeAnimationMetadata(
     name: model.name,
     symbol_prefix: model.symbolPrefix,
     symbol_base: model.symbolBase,
-    source: {
-      image: model.source.image,
-      image_width: model.source.imageWidth,
-      image_height: model.source.imageHeight,
-      frame_width: model.source.frameWidth,
-      frame_height: model.source.frameHeight,
-      tile_width: model.source.tileWidth,
-      tile_height: model.source.tileHeight,
-      frame_columns: model.source.frameColumns,
-      frame_rows: model.source.frameRows,
-    },
+    source: model.source
+      ? {
+          image: model.source.image,
+          image_width: model.source.imageWidth,
+          image_height: model.source.imageHeight,
+          frame_width: model.source.frameWidth,
+          frame_height: model.source.frameHeight,
+          tile_width: model.source.tileWidth,
+          tile_height: model.source.tileHeight,
+          frame_columns: model.source.frameColumns,
+          frame_rows: model.source.frameRows,
+        }
+      : undefined,
     chr: {
       output: model.chr.output,
       capacity_tiles: model.chr.capacityTiles,
@@ -161,19 +161,21 @@ export function serializeAnimationMetadata(
       flip_vertical: NES_SPRITE_FLIP_VERTICAL,
       palette_mask: 0x03,
     },
-    animation_flags: {
-      direction_mask: ANIMATION_DIRECTION_MASK,
-      direction_none: ANIMATION_DIRECTION_NONE,
-      direction_left: ANIMATION_DIRECTION_LEFT,
-      direction_right: ANIMATION_DIRECTION_RIGHT,
-      generated_horizontal_flip: ANIMATION_GENERATED_HORIZONTAL_FLIP,
+    playback_constants: {
+      loop: ANIMATION_PLAYBACK_LOOP,
+      once: ANIMATION_PLAYBACK_ONCE,
     },
     origin: model.origin,
     animations: model.animations.map((animation) => ({
       name: animation.name,
-      type: animation.category,
-      direction: animation.direction,
-      generated_by_horizontal_flip: animation.generatedByHorizontalFlip,
+      source_file: animation.sourceFile,
+      frame_width: animation.width,
+      frame_height: animation.height,
+      origin_x: animation.originX,
+      origin_y: animation.originY,
+      playback: animation.playback,
+      flip_h: animation.flipH,
+      flip_v: animation.flipV,
       default_frame_duration: animation.defaultFrameDuration,
       width: animation.width,
       height: animation.height,
@@ -209,10 +211,16 @@ export function generateCAnimationExport(
   model: AnimationProjectModel,
 ): CAnimationExport {
   const id = model.symbolBase;
+  const idUpper = sanitizeCIdentifier(id).toUpperCase();
+  const enumName = `${toPascalCase(id)}AnimationId`;
   const guard = `${id.toUpperCase()}_H`;
   const flat = flatten(model);
   const headerFileName = `${id}.h`;
   const sourceFileName = `${id}.c`;
+  const enumEntries = model.animations.map(
+    (anim, idx) =>
+      `    ${idUpper}_ANIM_${sanitizeCIdentifier(anim.name).toUpperCase()} = ${String(idx)},`,
+  );
   const header = `#ifndef ${guard}
 #define ${guard}
 
@@ -222,13 +230,10 @@ export function generateCAnimationExport(
 #define PNG2CHR_ANIMATION_FORMAT_CONSTANTS
 #define NES_SPRITE_FLIP_HORIZONTAL ${hex(NES_SPRITE_FLIP_HORIZONTAL)}
 #define NES_SPRITE_FLIP_VERTICAL ${hex(NES_SPRITE_FLIP_VERTICAL)}
-#define ANIMATION_TYPE_IDLE 0
-#define ANIMATION_TYPE_MOVEMENT 1
-#define ANIMATION_DIRECTION_NONE ${hex(ANIMATION_DIRECTION_NONE)}
-#define ANIMATION_DIRECTION_LEFT ${hex(ANIMATION_DIRECTION_LEFT)}
-#define ANIMATION_DIRECTION_RIGHT ${hex(ANIMATION_DIRECTION_RIGHT)}
-#define ANIMATION_DIRECTION_MASK ${hex(ANIMATION_DIRECTION_MASK)}
-#define ANIMATION_GENERATED_H_FLIP ${hex(ANIMATION_GENERATED_HORIZONTAL_FLIP)}
+#define ANIMATION_PLAYBACK_LOOP ${String(ANIMATION_PLAYBACK_LOOP)}
+#define ANIMATION_PLAYBACK_ONCE ${String(ANIMATION_PLAYBACK_ONCE)}
+#define ANIMATION_FLIP_H ${hex(ANIMATION_FLIP_H)}
+#define ANIMATION_FLIP_V ${hex(ANIMATION_FLIP_V)}
 #endif
 
 #ifndef PNG2CHR_ANIMATION_FORMAT_TYPES
@@ -251,10 +256,14 @@ typedef struct {
     uint8_t frame_count;
     uint8_t width_tiles;
     uint8_t height_tiles;
-    uint8_t type;
-    uint8_t direction_flags;
+    uint8_t playback;
+    uint8_t flags;
 } Png2ChrAnimation;
 #endif
+
+typedef enum {
+${enumEntries.join('\n')}
+} ${enumName};
 
 extern const Png2ChrAnimationMetaspriteTile ${id}_sprites[];
 extern const Png2ChrAnimationFrame ${id}_frames[];
@@ -277,7 +286,7 @@ extern const uint8_t ${id}_animation_count;
     : ['    { 0, 0, 0 },'];
   const animationRows = flat.animations.map(
     (animation) =>
-      `    { ${String(animation.frameOffset)}, ${String(animation.frameCount)}, ${String(animation.widthTiles)}, ${String(animation.heightTiles)}, ${String(animation.category)}, ${hex(animation.directionFlags)} },`,
+      `    { ${String(animation.frameOffset)}, ${String(animation.frameCount)}, ${String(animation.widthTiles)}, ${String(animation.heightTiles)}, ${String(animation.playback)}, ${hex(animation.flags)} },`,
   );
   const source = `#include "${headerFileName}"
 
@@ -291,7 +300,7 @@ const Png2ChrAnimationFrame ${id}_frames[] = {
 ${frameRows.join('\n')}
 };
 
-/* Animation entry: frame offset, count, size, type, direction/flip flags. */
+/* Animation entry: frame offset, count, size, playback mode, flip flags. */
 const Png2ChrAnimation ${id}_animations[] = {
 ${animationRows.join('\n')}
 };
@@ -311,26 +320,30 @@ export function generateCa65AnimationExport(
   model: AnimationProjectModel,
 ): Ca65AnimationExport {
   const id = model.symbolBase;
+  const idUpper = sanitizeCIdentifier(id).toUpperCase();
   const flat = flatten(model);
   const includeFileName = `${id}.inc`;
   const sourceFileName = `${id}.s`;
+  const constEntries = model.animations.map(
+    (anim, idx) =>
+      `${idUpper}_ANIM_${sanitizeCIdentifier(anim.name).toUpperCase()} = ${String(idx)}`,
+  );
   const include = `; Generated by PNG2CHR Studio animation metadata v${String(model.version)}.
 ; Sprite entry (4 bytes): signed X, signed Y, CHR tile, NES OAM attributes.
 ; Frame entry (4 bytes): sprite offset word, sprite count, duration.
 ; Animation entry (7 bytes): frame offset word, frame count, width tiles,
-;                            height tiles, type, direction/flip flags.
+;                            height tiles, playback mode, flip flags.
 .ifndef PNG2CHR_ANIMATION_FORMAT_CONSTANTS
 PNG2CHR_ANIMATION_FORMAT_CONSTANTS = 1
 NES_SPRITE_FLIP_HORIZONTAL = $40
 NES_SPRITE_FLIP_VERTICAL = $80
-ANIMATION_TYPE_IDLE = 0
-ANIMATION_TYPE_MOVEMENT = 1
-ANIMATION_DIRECTION_NONE = ${asmHex(ANIMATION_DIRECTION_NONE)}
-ANIMATION_DIRECTION_LEFT = ${asmHex(ANIMATION_DIRECTION_LEFT)}
-ANIMATION_DIRECTION_RIGHT = ${asmHex(ANIMATION_DIRECTION_RIGHT)}
-ANIMATION_DIRECTION_MASK = ${asmHex(ANIMATION_DIRECTION_MASK)}
-ANIMATION_GENERATED_H_FLIP = ${asmHex(ANIMATION_GENERATED_HORIZONTAL_FLIP)}
+ANIMATION_PLAYBACK_LOOP = ${String(ANIMATION_PLAYBACK_LOOP)}
+ANIMATION_PLAYBACK_ONCE = ${String(ANIMATION_PLAYBACK_ONCE)}
+ANIMATION_FLIP_H = $40
+ANIMATION_FLIP_V = $80
 .endif
+
+${constEntries.join('\n')}
 
 .import ${id}_sprites
 .import ${id}_frames
@@ -349,7 +362,7 @@ ANIMATION_GENERATED_H_FLIP = ${asmHex(ANIMATION_GENERATED_HORIZONTAL_FLIP)}
   );
   const animationRows = flat.animations.map(
     (animation) =>
-      `    .word ${String(animation.frameOffset)}\n    .byte ${String(animation.frameCount)}, ${String(animation.widthTiles)}, ${String(animation.heightTiles)}, ${String(animation.category)}, ${asmHex(animation.directionFlags)}`,
+      `    .word ${String(animation.frameOffset)}\n    .byte ${String(animation.frameCount)}, ${String(animation.widthTiles)}, ${String(animation.heightTiles)}, ${String(animation.playback)}, ${asmHex(animation.flags)}`,
   );
   const source = `; Generated by PNG2CHR Studio animation metadata v${String(model.version)}.
 .export ${id}_sprites

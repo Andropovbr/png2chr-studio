@@ -7,6 +7,8 @@ import {
   NES_SPRITE_FLIP_HORIZONTAL,
   NES_SPRITE_FLIP_VERTICAL,
   buildAnimationProjectModel,
+  deserializeAnimationMetadata,
+  type AnimationPlayback,
 } from './animation-model';
 import type { IndexedImage, Tile } from './types';
 
@@ -86,7 +88,7 @@ describe('animation project model', () => {
     ]);
   });
 
-  it('stores an individual duration for every selected frame', () => {
+  it('stores playback mode and individual duration for every selected frame', () => {
     const sheet = sheetFromTiles([tileWith([[0, 0]]), tileWith([[1, 0]])]);
     const model = buildAnimationProjectModel({
       name: 'player',
@@ -96,8 +98,8 @@ describe('animation project model', () => {
       frameHeight: 8,
       animations: [
         {
-          name: 'idle',
-          category: 'idle',
+          name: 'attack',
+          playback: 'once',
           frameIndices: [1, 0],
           frameDuration: 12,
           frameDurations: [4, 20],
@@ -105,10 +107,166 @@ describe('animation project model', () => {
       ],
     });
 
+    expect(model.animations[0]?.playback).toBe('once');
     expect(model.animations[0]?.frames.map((frame) => frame.duration)).toEqual([
       4, 20,
     ]);
     expect(model.animations[0]?.defaultFrameDuration).toBe(12);
+  });
+
+  it('supports multiple arbitrary animations with custom names and playback modes', () => {
+    const sheet = sheetFromTiles([
+      tileWith([[0, 0]]),
+      tileWith([[1, 0]]),
+      tileWith([[2, 0]]),
+      tileWith([[3, 0]]),
+      tileWith([[4, 0]]),
+    ]);
+    const model = buildAnimationProjectModel({
+      name: 'soldier',
+      sourceImageName: 'soldier.png',
+      image: sheet,
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          playback: 'loop',
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+        { name: 'walk', playback: 'loop', frameIndices: [1], frameDuration: 8 },
+        {
+          name: 'attack',
+          playback: 'once',
+          frameIndices: [2],
+          frameDuration: 6,
+        },
+        { name: 'hurt', playback: 'once', frameIndices: [3], frameDuration: 4 },
+        {
+          name: 'death',
+          playback: 'once',
+          frameIndices: [4],
+          frameDuration: 12,
+        },
+      ],
+    });
+
+    expect(model.animations).toHaveLength(5);
+    expect(model.animations.map((a) => a.name)).toEqual([
+      'idle',
+      'walk',
+      'attack',
+      'hurt',
+      'death',
+    ]);
+    expect(model.animations.map((a) => a.playback)).toEqual([
+      'loop',
+      'loop',
+      'once',
+      'once',
+      'once',
+    ]);
+  });
+
+  it('supports horizontal and vertical flips on generic animations', () => {
+    const sheet = sheetFromTiles([tileWith([[0, 0]]), tileWith([[1, 1]])]);
+    const model = buildAnimationProjectModel({
+      name: 'hero',
+      sourceImageName: 'hero.png',
+      image: sheet,
+      frameWidth: 16,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'cast_flipped',
+          playback: 'once',
+          flipH: true,
+          flipV: true,
+          frameIndices: [0],
+          frameDuration: 8,
+        },
+      ],
+      originX: 8,
+      flipDeduplication: false,
+    });
+
+    const anim = model.animations[0];
+    expect(anim?.flipH).toBe(true);
+    expect(anim?.flipV).toBe(true);
+    const sprites = anim?.frames[0]?.sprites ?? [];
+    expect(sprites).toHaveLength(2);
+    // Metasprite x is flipped
+    expect(sprites.map((s) => s.x)).toEqual([0, -8]);
+    expect(
+      sprites.every(
+        (s) =>
+          (s.attributes &
+            (NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL)) ===
+          (NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL),
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects duplicate animation names and duplicate sanitized C identifiers', () => {
+    const sheet = sheetFromTiles([tileWith([[0, 0]]), tileWith([[1, 0]])]);
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheet,
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          { name: 'walk', frameIndices: [0], frameDuration: 8 },
+          { name: 'Walk', frameIndices: [1], frameDuration: 8 },
+        ],
+      }),
+    ).toThrow(
+      new AnimationModelError('duplicate-animation-name', { name: 'Walk' }),
+    );
+
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheet,
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          { name: 'walk left', frameIndices: [0], frameDuration: 8 },
+          { name: 'walk-left', frameIndices: [1], frameDuration: 8 },
+        ],
+      }),
+    ).toThrow(
+      new AnimationModelError('duplicate-animation-identifier', {
+        name: 'walk-left',
+        identifier: 'walk_left',
+      }),
+    );
+  });
+
+  it('rejects invalid playback modes', () => {
+    const sheet = sheetFromTiles([tileWith([[0, 0]])]);
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheet,
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'walk',
+            playback: 'invalid' as unknown as AnimationPlayback,
+            frameIndices: [0],
+            frameDuration: 8,
+          },
+        ],
+      }),
+    ).toThrow(
+      new AnimationModelError('invalid-playback', { playback: 'invalid' }),
+    );
   });
 
   it('exports both movement directions by mirroring metasprite positions and H-flip bits', () => {
@@ -392,20 +550,13 @@ describe('animation project model', () => {
         animations: [
           {
             name: 'idle',
-            category: 'idle',
-            frameIndices: [0],
+            frameIndices: [10],
             frameDuration: 8,
-          },
-          {
-            name: 'walk',
-            category: 'movement',
-            frameIndices: [0],
-            frameDuration: 6,
           },
         ],
       }),
     ).toThrow(
-      new AnimationModelError('duplicate-frame-selection', { frameIndex: 0 }),
+      new AnimationModelError('invalid-frame-selection', { frameIndex: 10 }),
     );
     expect(() =>
       buildAnimationProjectModel({
@@ -417,7 +568,6 @@ describe('animation project model', () => {
         animations: [
           {
             name: 'idle',
-            category: 'idle',
             frameIndices: [0],
             frameDuration: 8,
           },
@@ -520,10 +670,391 @@ describe('animation project model', () => {
     ).toThrow(new AnimationModelError('invalid-symbol-prefix'));
   });
 
-  it('is deterministic for identical input', () => {
-    const sheet = sheetFromTiles([tileWith([[0, 0]]), tileWith([[7, 0]])]);
-    const first = build(sheet);
-    const second = build(sheet);
-    expect(first).toEqual(second);
+  it('deserializes and migrates legacy v3 JSON to generic animations', () => {
+    const legacyJson = JSON.stringify({
+      format: 'png2chr-studio-animation',
+      version: 3,
+      name: 'hero',
+      symbol_prefix: 'hero',
+      symbol_base: 'hero_idle',
+      source: {
+        image: 'hero.png',
+        frame_width: 16,
+        frame_height: 16,
+      },
+      animations: [
+        {
+          name: 'idle',
+          type: 'idle',
+          default_frame_duration: 12,
+          frames: [{ source_index: 0, duration: 12 }],
+        },
+        {
+          name: 'movement_left',
+          type: 'movement',
+          generated_by_horizontal_flip: true,
+          default_frame_duration: 6,
+          frames: [{ source_index: 1, duration: 6 }],
+        },
+      ],
+    });
+
+    const parsed = deserializeAnimationMetadata(legacyJson);
+    expect(parsed.version).toBe(3);
+    expect(parsed.animations).toHaveLength(2);
+    expect(parsed.animations[0]).toMatchObject({
+      name: 'idle',
+      playback: 'loop',
+      flipH: false,
+      flipV: false,
+      frameIndices: [0],
+    });
+    expect(parsed.animations[1]).toMatchObject({
+      name: 'movement_left',
+      playback: 'loop',
+      flipH: true,
+      flipV: false,
+      frameIndices: [1],
+    });
+  });
+
+  it('deserializes v4 JSON metadata correctly', () => {
+    const v4Json = JSON.stringify({
+      format: 'png2chr-studio-animation',
+      version: 4,
+      name: 'soldier',
+      symbol_prefix: 'soldier',
+      symbol_base: 'soldier',
+      source: {
+        image: 'soldier.png',
+        frame_width: 8,
+        frame_height: 8,
+      },
+      animations: [
+        {
+          name: 'attack',
+          playback: 'once',
+          flip_h: true,
+          flip_v: false,
+          default_frame_duration: 4,
+          frames: [{ source_index: 2, duration: 4 }],
+        },
+      ],
+    });
+
+    const parsed = deserializeAnimationMetadata(v4Json);
+    expect(parsed.version).toBe(4);
+    expect(parsed.animations[0]).toMatchObject({
+      name: 'attack',
+      playback: 'once',
+      flipH: true,
+      flipV: false,
+      frameIndices: [2],
+      frameDurations: [4],
+    });
+  });
+
+  it('supports multiple animations with independent PNG sources, frame sizes, and origins', () => {
+    const idleTile = tileWith([[1, 1]]);
+    const attackTile1 = tileWith([[2, 2]]);
+    const attackTile2 = tileWith([[3, 3]]);
+
+    const idleSheet = sheetFromTiles([idleTile]); // 8x8
+    const attackSheet = sheetFromTiles([attackTile1, attackTile2]); // 16x8 (two 8x8 tiles)
+
+    const model = buildAnimationProjectModel({
+      name: 'soldier',
+      symbolPrefix: 'soldier',
+      animations: [
+        {
+          name: 'idle',
+          sourceImageName: 'soldier_idle.png',
+          image: idleSheet,
+          frameWidth: 8,
+          frameHeight: 8,
+          originX: 4,
+          originY: 4,
+          playback: 'loop',
+          frameIndices: [0],
+          frameDuration: 12,
+        },
+        {
+          name: 'attack',
+          sourceImageName: 'soldier_attack.png',
+          image: attackSheet,
+          frameWidth: 16,
+          frameHeight: 8,
+          originX: 8,
+          originY: 0,
+          playback: 'once',
+          frameIndices: [0],
+          frameDuration: 6,
+        },
+      ],
+    });
+
+    expect(model.animations).toHaveLength(2);
+    expect(model.animations[0]).toMatchObject({
+      name: 'idle',
+      sourceFile: 'soldier_idle.png',
+      width: 8,
+      height: 8,
+      originX: 4,
+      originY: 4,
+      playback: 'loop',
+    });
+    expect(model.animations[1]).toMatchObject({
+      name: 'attack',
+      sourceFile: 'soldier_attack.png',
+      width: 16,
+      height: 8,
+      originX: 8,
+      originY: 0,
+      playback: 'once',
+    });
+    // CHR has 3 distinct tiles
+    expect(model.chr.finalTileCount).toBe(3);
+  });
+
+  it('deduplicates identical tiles across different PNG sources', () => {
+    const sharedTile = tileWith([
+      [1, 2],
+      [3, 4],
+    ]);
+    const uniqueTile = tileWith([[5, 6]]);
+
+    const sheet1 = sheetFromTiles([sharedTile]);
+    const sheet2 = sheetFromTiles([sharedTile, uniqueTile]);
+
+    const model = buildAnimationProjectModel({
+      name: 'hero',
+      symbolPrefix: 'hero',
+      animations: [
+        {
+          name: 'idle',
+          sourceImageName: 'idle.png',
+          image: sheet1,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+        {
+          name: 'walk',
+          sourceImageName: 'walk.png',
+          image: sheet2,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0, 1],
+          frameDuration: 8,
+        },
+      ],
+    });
+
+    expect(model.chr.newTileCount).toBe(2);
+    expect(model.chr.reusedImportedTiles).toBe(1);
+    expect(model.chr.finalTileCount).toBe(2);
+  });
+
+  it('supports flip deduplication across different PNG sources', () => {
+    const normalTile = tileWith([[0, 0]]);
+    const flippedTile = tileWith([[7, 0]]); // H-flipped version of normalTile
+
+    const sheet1 = sheetFromTiles([normalTile]);
+    const sheet2 = sheetFromTiles([flippedTile]);
+
+    const model = buildAnimationProjectModel({
+      name: 'hero',
+      symbolPrefix: 'hero',
+      flipDeduplication: true,
+      animations: [
+        {
+          name: 'idle',
+          sourceImageName: 'idle.png',
+          image: sheet1,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+        {
+          name: 'cast',
+          sourceImageName: 'cast.png',
+          image: sheet2,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDuration: 8,
+        },
+      ],
+    });
+
+    expect(model.chr.newTileCount).toBe(1);
+    expect(model.chr.reusedImportedTiles).toBe(1);
+    expect(model.animations[1]?.frames[0]?.sprites[0]?.attributes).toBe(
+      NES_SPRITE_FLIP_HORIZONTAL,
+    );
+  });
+
+  it('deserializes per-animation source v4 JSON metadata correctly', () => {
+    const v4Json = JSON.stringify({
+      format: 'png2chr-studio-animation',
+      version: 4,
+      name: 'soldier',
+      symbol_prefix: 'soldier',
+      symbol_base: 'soldier',
+      animations: [
+        {
+          name: 'idle',
+          source_file: 'soldier_idle.png',
+          frame_width: 16,
+          frame_height: 24,
+          origin_x: 8,
+          origin_y: 23,
+          playback: 'loop',
+          flip_h: false,
+          flip_v: false,
+          default_frame_duration: 12,
+          frames: [{ source_index: 0, duration: 12 }],
+        },
+        {
+          name: 'attack',
+          source_file: 'soldier_attack.png',
+          frame_width: 24,
+          frame_height: 24,
+          origin_x: 12,
+          origin_y: 23,
+          playback: 'once',
+          flip_h: true,
+          flip_v: false,
+          default_frame_duration: 6,
+          frames: [{ source_index: 1, duration: 6 }],
+        },
+      ],
+    });
+
+    const parsed = deserializeAnimationMetadata(v4Json);
+    expect(parsed.version).toBe(4);
+    expect(parsed.animations).toHaveLength(2);
+    expect(parsed.animations[0]).toMatchObject({
+      name: 'idle',
+      sourceFile: 'soldier_idle.png',
+      frameWidth: 16,
+      frameHeight: 24,
+      originX: 8,
+      originY: 23,
+      playback: 'loop',
+    });
+    expect(parsed.animations[1]).toMatchObject({
+      name: 'attack',
+      sourceFile: 'soldier_attack.png',
+      frameWidth: 24,
+      frameHeight: 24,
+      originX: 12,
+      originY: 23,
+      playback: 'once',
+      flipH: true,
+    });
+  });
+
+  it('supports full multi-source asset scenario: idle, walk, attack, death with independent PNGs', () => {
+    const idleSheet = image(
+      16,
+      16,
+      Array.from({ length: 256 }, (_, i) => (i % 3) + 1),
+    );
+    const walkSheet = image(
+      32,
+      16,
+      Array.from({ length: 512 }, (_, i) => (i % 2) + 1),
+    );
+    const attackSheet = image(
+      24,
+      24,
+      Array.from({ length: 576 }, () => 2),
+    );
+    const deathSheet = image(
+      16,
+      32,
+      Array.from({ length: 512 }, () => 1),
+    );
+
+    const model = buildAnimationProjectModel({
+      name: 'hero',
+      symbolPrefix: 'hero',
+      animations: [
+        {
+          name: 'idle',
+          sourceImageName: 'idle.png',
+          image: idleSheet,
+          frameWidth: 16,
+          frameHeight: 16,
+          originX: 8,
+          originY: 15,
+          playback: 'loop',
+          frameIndices: [0],
+          frameDuration: 12,
+        },
+        {
+          name: 'walk',
+          sourceImageName: 'walk.png',
+          image: walkSheet,
+          frameWidth: 16,
+          frameHeight: 16,
+          originX: 8,
+          originY: 15,
+          playback: 'loop',
+          frameIndices: [0, 1],
+          frameDuration: 8,
+        },
+        {
+          name: 'attack',
+          sourceImageName: 'attack.png',
+          image: attackSheet,
+          frameWidth: 24,
+          frameHeight: 24,
+          originX: 12,
+          originY: 23,
+          playback: 'once',
+          frameIndices: [0],
+          frameDuration: 6,
+        },
+        {
+          name: 'death',
+          sourceImageName: 'death.png',
+          image: deathSheet,
+          frameWidth: 16,
+          frameHeight: 16,
+          originX: 8,
+          originY: 15,
+          playback: 'once',
+          frameIndices: [0, 1],
+          frameDuration: 10,
+        },
+      ],
+    });
+
+    expect(model.animations).toHaveLength(4);
+    expect(model.animations[0]?.name).toBe('idle');
+    expect(model.animations[0]?.sourceFile).toBe('idle.png');
+    expect(model.animations[0]?.playback).toBe('loop');
+
+    expect(model.animations[1]?.name).toBe('walk');
+    expect(model.animations[1]?.sourceFile).toBe('walk.png');
+    expect(model.animations[1]?.playback).toBe('loop');
+
+    expect(model.animations[2]?.name).toBe('attack');
+    expect(model.animations[2]?.sourceFile).toBe('attack.png');
+    expect(model.animations[2]?.playback).toBe('once');
+    expect(model.animations[2]?.width).toBe(24);
+    expect(model.animations[2]?.height).toBe(24);
+
+    expect(model.animations[3]?.name).toBe('death');
+    expect(model.animations[3]?.sourceFile).toBe('death.png');
+    expect(model.animations[3]?.playback).toBe('once');
+
+    // Consolidated CHR contains all unique tiles from all 4 animations
+    expect(model.finalChr.length).toBeGreaterThan(0);
+    expect(model.chr.finalTileCount).toBeGreaterThan(0);
   });
 });

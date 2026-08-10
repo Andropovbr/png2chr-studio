@@ -60,7 +60,10 @@ import {
 } from './core/quantization-settings';
 import { getLocale, subscribeToLocale, t } from './i18n';
 import { createDiagnostics } from './ui/diagnostics';
-import { createAnimationEditor } from './ui/animation-editor';
+import {
+  createAnimationEditor,
+  type AnimationEditorOptions,
+} from './ui/animation-editor';
 import { createExportPanel } from './ui/export-panel';
 import { createHeader } from './ui/header';
 import { createImageInput } from './ui/image-input';
@@ -76,7 +79,9 @@ import {
   displayErrorFromInes,
   displayErrorFromPlayfield,
   type DisplayError,
+  type AnimationItemSetting,
   type AnimationSettings,
+  type AnimationSourceData,
   type ProjectMode,
   type ProjectView,
 } from './ui/types';
@@ -99,28 +104,38 @@ if (appElement === null) {
 }
 const app: HTMLElement = appElement;
 
+let nextAnimationIdCounter = 1;
+function generateAnimationId(): string {
+  return `anim_${String(nextAnimationIdCounter++)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
 function createDefaultAnimationSettings(): AnimationSettings {
+  const initialId = generateAnimationId();
   return {
-    name: 'idle',
+    name: 'soldier',
     symbolPrefix: 'asset',
-    frameWidth: 16,
-    frameHeight: 16,
-    selectionTarget: 'idle',
-    idleFrames: [],
-    movementFrames: [],
-    idleDuration: 12,
-    movementDuration: 6,
-    idleFrameDurations: [],
-    movementFrameDurations: [],
-    movementDirection: 'right',
-    movementPreviewDirection: 'right',
-    exportMirroredMovement: false,
+    animations: [
+      {
+        id: initialId,
+        name: 'idle',
+        source: null,
+        frameWidth: 16,
+        frameHeight: 16,
+        originX: 0,
+        originY: 0,
+        playback: 'loop',
+        flipH: false,
+        flipV: false,
+        defaultDuration: 12,
+        frameIndices: [],
+        frameDurations: [],
+        collapsed: false,
+      },
+    ],
     flipDeduplication: true,
     spritePalette: 0,
     spriteColorIndex: 1,
     colorIndices: new Uint8Array(),
-    originX: 0,
-    originY: 0,
     destinationChrName: null,
     destinationChr: new Uint8Array(),
   };
@@ -443,47 +458,182 @@ function createProjectImageInput(): HTMLElement {
   );
 }
 
-function toggleAnimationFrame(frameIndex: number): void {
-  const animation = project.animation;
-  const inIdle = animation.idleFrames.includes(frameIndex);
-  const inMovement = animation.movementFrames.includes(frameIndex);
-  const idleFrames: number[] = [];
-  const idleFrameDurations: number[] = [];
-  animation.idleFrames.forEach((index, order) => {
-    if (index === frameIndex) return;
-    idleFrames.push(index);
-    idleFrameDurations.push(
-      animation.idleFrameDurations[order] ?? animation.idleDuration,
-    );
-  });
-  const movementFrames: number[] = [];
-  const movementFrameDurations: number[] = [];
-  animation.movementFrames.forEach((index, order) => {
-    if (index === frameIndex) return;
-    movementFrames.push(index);
-    movementFrameDurations.push(
-      animation.movementFrameDurations[order] ?? animation.movementDuration,
-    );
-  });
-  const alreadyInTarget =
-    animation.selectionTarget === 'idle' ? inIdle : inMovement;
-  if (!alreadyInTarget) {
-    if (animation.selectionTarget === 'idle') {
-      idleFrames.push(frameIndex);
-      idleFrameDurations.push(animation.idleDuration);
-    } else {
-      movementFrames.push(frameIndex);
-      movementFrameDurations.push(animation.movementDuration);
-    }
-  }
+function addAnimation(): void {
+  const count = project.animation.animations.length + 1;
+  const newId = generateAnimationId();
+  const lastAnim =
+    project.animation.animations[project.animation.animations.length - 1];
+  const newAnim: AnimationItemSetting = {
+    id: newId,
+    name: `anim_${String(count)}`,
+    source: lastAnim?.source ?? null,
+    frameWidth: lastAnim?.frameWidth ?? 16,
+    frameHeight: lastAnim?.frameHeight ?? 16,
+    originX: lastAnim?.originX ?? 0,
+    originY: lastAnim?.originY ?? 0,
+    playback: 'loop',
+    flipH: false,
+    flipV: false,
+    defaultDuration: 12,
+    frameIndices: [],
+    frameDurations: [],
+    collapsed: false,
+  };
   project = {
     ...project,
     animation: {
-      ...animation,
-      idleFrames,
-      movementFrames,
-      idleFrameDurations,
-      movementFrameDurations,
+      ...project.animation,
+      animations: [...project.animation.animations, newAnim],
+    },
+    error: null,
+  };
+  render();
+}
+
+function duplicateAnimation(animId: string): void {
+  const index = project.animation.animations.findIndex((a) => a.id === animId);
+  if (index < 0) return;
+  const original = project.animation.animations[index];
+  if (original === undefined) return;
+  const newId = generateAnimationId();
+  const copy: AnimationItemSetting = {
+    ...original,
+    id: newId,
+    name: `${original.name}_copy`,
+    frameIndices: [...original.frameIndices],
+    frameDurations: [...original.frameDurations],
+    collapsed: false,
+  };
+  const list = [...project.animation.animations];
+  list.splice(index + 1, 0, copy);
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations: list,
+    },
+    error: null,
+  };
+  render();
+}
+
+function removeAnimation(animId: string): void {
+  if (project.animation.animations.length <= 1) return;
+  const remaining = project.animation.animations.filter((a) => a.id !== animId);
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations: remaining,
+    },
+    error: null,
+  };
+  render();
+}
+
+function toggleAnimationCollapse(animId: string): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations: project.animation.animations.map((a) =>
+        a.id === animId ? { ...a, collapsed: !a.collapsed } : a,
+      ),
+    },
+  };
+  render();
+}
+
+function updateAnimation(
+  animId: string,
+  patch: Partial<AnimationItemSetting>,
+): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations: project.animation.animations.map((a) =>
+        a.id === animId ? { ...a, ...patch } : a,
+      ),
+    },
+    error: null,
+  };
+  render();
+}
+
+async function loadAnimationSourceFile(
+  animId: string,
+  file: File,
+): Promise<void> {
+  try {
+    const imageData = await decodeImage(file);
+    const indexedImage = quantizePngSource(
+      imageData,
+      'animation',
+      project.quantizationSettings,
+    );
+    const source: AnimationSourceData = {
+      fileName: file.name,
+      sourceImage: imageData,
+      indexedImage,
+    };
+    const animations = project.animation.animations.map((anim) => {
+      if (anim.id !== animId) return anim;
+      const columns = Math.floor(imageData.width / anim.frameWidth);
+      const rows = Math.floor(imageData.height / anim.frameHeight);
+      const totalFrames = columns * rows;
+      const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
+      const validDurations = anim.frameDurations.slice(0, validIndices.length);
+      return {
+        ...anim,
+        source,
+        frameIndices: validIndices,
+        frameDurations: validDurations,
+      };
+    });
+    project = {
+      ...project,
+      animation: {
+        ...project.animation,
+        animations,
+      },
+      error: null,
+    };
+  } catch {
+    project = {
+      ...project,
+      error: { key: 'invalidPixelData' },
+    };
+  }
+  render();
+}
+
+function toggleAnimationFrame(animId: string, frameIndex: number): void {
+  const animations = project.animation.animations.map((anim) => {
+    if (anim.id !== animId) return anim;
+    const existsIndex = anim.frameIndices.indexOf(frameIndex);
+    if (existsIndex >= 0) {
+      const nextFrames = anim.frameIndices.filter((_, i) => i !== existsIndex);
+      const nextDurations = anim.frameDurations.filter(
+        (_, i) => i !== existsIndex,
+      );
+      return {
+        ...anim,
+        frameIndices: nextFrames,
+        frameDurations: nextDurations,
+      };
+    }
+    return {
+      ...anim,
+      frameIndices: [...anim.frameIndices, frameIndex],
+      frameDurations: [...anim.frameDurations, anim.defaultDuration],
+    };
+  });
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations,
     },
     error: null,
   };
@@ -491,58 +641,89 @@ function toggleAnimationFrame(frameIndex: number): void {
 }
 
 function moveAnimationFrame(
-  category: 'idle' | 'movement',
+  animId: string,
   frameIndex: number,
   direction: -1 | 1,
 ): void {
-  const key = category === 'idle' ? 'idleFrames' : 'movementFrames';
-  const durationKey =
-    category === 'idle' ? 'idleFrameDurations' : 'movementFrameDurations';
-  const frames = [...project.animation[key]];
-  const durations = [...project.animation[durationKey]];
-  const current = frames.indexOf(frameIndex);
-  const target = current + direction;
-  if (current < 0 || target < 0 || target >= frames.length) return;
-  [frames[current], frames[target]] = [
-    frames[target] ?? 0,
-    frames[current] ?? 0,
-  ];
-  [durations[current], durations[target]] = [
-    durations[target] ??
-      (category === 'idle'
-        ? project.animation.idleDuration
-        : project.animation.movementDuration),
-    durations[current] ??
-      (category === 'idle'
-        ? project.animation.idleDuration
-        : project.animation.movementDuration),
-  ];
+  const animations = project.animation.animations.map((anim) => {
+    if (anim.id !== animId) return anim;
+    const current = anim.frameIndices.indexOf(frameIndex);
+    const target = current + direction;
+    if (current < 0 || target < 0 || target >= anim.frameIndices.length) {
+      return anim;
+    }
+    const frames = [...anim.frameIndices];
+    const durations = [...anim.frameDurations];
+    [frames[current], frames[target]] = [
+      frames[target] ?? 0,
+      frames[current] ?? 0,
+    ];
+    [durations[current], durations[target]] = [
+      durations[target] ?? anim.defaultDuration,
+      durations[current] ?? anim.defaultDuration,
+    ];
+    return {
+      ...anim,
+      frameIndices: frames,
+      frameDurations: durations,
+    };
+  });
   project = {
     ...project,
     animation: {
       ...project.animation,
-      [key]: frames,
-      [durationKey]: durations,
+      animations,
     },
   };
   render();
 }
 
 function setAnimationFrameDuration(
-  category: 'idle' | 'movement',
+  animId: string,
   frameIndex: number,
   duration: number,
 ): void {
-  const frameKey = category === 'idle' ? 'idleFrames' : 'movementFrames';
-  const durationKey =
-    category === 'idle' ? 'idleFrameDurations' : 'movementFrameDurations';
-  const order = project.animation[frameKey].indexOf(frameIndex);
-  if (order < 0) return;
-  const durations = [...project.animation[durationKey]];
-  durations[order] = duration;
+  const animations = project.animation.animations.map((anim) => {
+    if (anim.id !== animId) return anim;
+    const order = anim.frameIndices.indexOf(frameIndex);
+    if (order < 0) return anim;
+    const durations = [...anim.frameDurations];
+    durations[order] = duration;
+    return {
+      ...anim,
+      frameDurations: durations,
+    };
+  });
   project = {
     ...project,
-    animation: { ...project.animation, [durationKey]: durations },
+    animation: {
+      ...project.animation,
+      animations,
+    },
+  };
+  render();
+}
+
+function removeFrameFromAnimation(animId: string, frameIndex: number): void {
+  const animations = project.animation.animations.map((anim) => {
+    if (anim.id !== animId) return anim;
+    const order = anim.frameIndices.indexOf(frameIndex);
+    if (order < 0) return anim;
+    const frameIndices = anim.frameIndices.filter((_, i) => i !== order);
+    const frameDurations = anim.frameDurations.filter((_, i) => i !== order);
+    return {
+      ...anim,
+      frameIndices,
+      frameDurations,
+    };
+  });
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations,
+    },
+    error: null,
   };
   render();
 }
@@ -574,82 +755,56 @@ async function loadAnimationDestination(file: File): Promise<void> {
 function renderAnimationWorkspace(): void {
   const workspace = document.createElement('div');
   workspace.className = 'workspace animation-workspace';
-  let mappedImage: IndexedImage | null = null;
-  let previewImage: ImageData | null = project.sourceImage;
   let model: AnimationProjectModel | null = null;
   let modelError: AnimationModelError | null = null;
 
-  if (project.indexedImage !== null) {
-    const stableColorIndices =
-      project.animation.colorIndices.length ===
-      project.indexedImage.pixels.length
-        ? project.animation.colorIndices
-        : undefined;
-    const paletteMapping = mapAnimationImageToNesPalette(
-      project.indexedImage,
-      project.paletteSet,
-      project.animation.spritePalette,
-      TILESET_PALETTE_REGION_SIZE,
-      stableColorIndices,
-      project.quantizationSettings.colorDistanceMode,
-    );
-    mappedImage = paletteMapping.image;
-    const previewPixels = renderNesPaletteImage(
-      mappedImage,
-      project.paletteSet,
-      paletteMapping.assignments,
-      TILESET_PALETTE_REGION_SIZE,
-    );
-    previewImage = new ImageData(
-      previewPixels,
-      mappedImage.width,
-      mappedImage.height,
-    );
-    try {
-      const definitions: AnimationDefinitionInput[] = [];
-      if (project.animation.idleFrames.length > 0) {
+  try {
+    const definitions: AnimationDefinitionInput[] = [];
+    for (const anim of project.animation.animations) {
+      if (anim.source !== null && anim.frameIndices.length > 0) {
+        const paletteMapping = mapAnimationImageToNesPalette(
+          anim.source.indexedImage,
+          project.paletteSet,
+          project.animation.spritePalette,
+          TILESET_PALETTE_REGION_SIZE,
+          undefined,
+          project.quantizationSettings.colorDistanceMode,
+        );
         definitions.push({
-          name: 'idle',
-          category: 'idle' as const,
-          frameIndices: project.animation.idleFrames,
-          frameDuration: project.animation.idleDuration,
-          frameDurations: project.animation.idleFrameDurations,
+          name: anim.name,
+          sourceImageName: anim.source.fileName,
+          image: paletteMapping.image,
+          frameWidth: anim.frameWidth,
+          frameHeight: anim.frameHeight,
+          originX: anim.originX,
+          originY: anim.originY,
+          playback: anim.playback,
+          flipH: anim.flipH,
+          flipV: anim.flipV,
+          frameIndices: anim.frameIndices,
+          frameDuration: anim.defaultDuration,
+          frameDurations: anim.frameDurations,
         });
       }
-      if (project.animation.movementFrames.length > 0) {
-        definitions.push({
-          name: 'movement',
-          category: 'movement' as const,
-          frameIndices: project.animation.movementFrames,
-          frameDuration: project.animation.movementDuration,
-          frameDurations: project.animation.movementFrameDurations,
-          direction: project.animation.movementDirection,
-          exportMirroredDirection: project.animation.exportMirroredMovement,
-        });
-      }
+    }
+
+    if (definitions.length > 0) {
       model = buildAnimationProjectModel({
         name: project.animation.name,
         symbolPrefix: project.animation.symbolPrefix,
-        sourceImageName: project.fileName ?? 'sprites.png',
-        image: mappedImage,
-        frameWidth: project.animation.frameWidth,
-        frameHeight: project.animation.frameHeight,
         animations: definitions,
         baseChr: project.animation.destinationChr,
         capacityTiles: 256,
         flipDeduplication: project.animation.flipDeduplication,
         spritePalette: project.animation.spritePalette,
-        originX: project.animation.originX,
-        originY: project.animation.originY,
       });
-    } catch (error: unknown) {
-      if (error instanceof AnimationModelError) modelError = error;
-      else throw error;
     }
+  } catch (error: unknown) {
+    if (error instanceof AnimationModelError) modelError = error;
+    else throw error;
   }
 
-  const editorOptions = {
-    image: previewImage,
+  const editorOptions: AnimationEditorOptions = {
     settings: project.animation,
     model,
     modelError,
@@ -658,9 +813,18 @@ function renderAnimationWorkspace(): void {
       project = { ...project, animation, error: null };
       render();
     },
+    onAddAnimation: addAnimation,
+    onDuplicateAnimation: duplicateAnimation,
+    onRemoveAnimation: removeAnimation,
+    onToggleAnimationCollapse: toggleAnimationCollapse,
+    onUpdateAnimation: updateAnimation,
+    onAnimationSourceFile: (animId: string, file: File) => {
+      void loadAnimationSourceFile(animId, file);
+    },
     onFrameToggle: toggleAnimationFrame,
     onFrameMove: moveAnimationFrame,
     onFrameDurationChange: setAnimationFrameDuration,
+    onFrameRemoveFromAnimation: removeFrameFromAnimation,
     onSpritePaletteSelectionChange: (
       paletteIndex: number,
       colorIndex: number,
@@ -714,6 +878,7 @@ function renderAnimationWorkspace(): void {
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,
   };
+
   workspace.append(
     createProjectImageInput(),
     createProjectQuantizationPanel(),
@@ -1157,7 +1322,7 @@ async function loadFile(file: File): Promise<void> {
       mode,
       quantizationSettings,
     );
-    let paletteAssignments = assignmentsForImage(indexedImage, mode);
+    const paletteAssignments = assignmentsForImage(indexedImage, mode);
     const pixelOverrides = createPixelOverrides(
       indexedImage.width,
       indexedImage.height,
@@ -1165,17 +1330,42 @@ async function loadFile(file: File): Promise<void> {
     let nextAnimation = animation;
     let mappedImage: IndexedImage;
     if (mode === 'animation') {
-      const mapping = mapAnimationImageToNesPalette(
+      const sourceData: AnimationSourceData = {
+        fileName: file.name,
+        sourceImage: imageData,
         indexedImage,
-        paletteSet,
-        animation.spritePalette,
-        TILESET_PALETTE_REGION_SIZE,
-        undefined,
-        quantizationSettings.colorDistanceMode,
-      );
-      mappedImage = mapping.image;
-      paletteAssignments = mapping.assignments;
-      nextAnimation = { ...animation, colorIndices: mapping.colorIndices };
+      };
+      const animations = animation.animations.map((anim, idx) => {
+        if (idx === 0 && anim.source === null) {
+          return { ...anim, source: sourceData };
+        }
+        return anim;
+      });
+      nextAnimation = {
+        ...animation,
+        animations:
+          animations.length === 0
+            ? [
+                {
+                  id: generateAnimationId(),
+                  name: 'idle',
+                  source: sourceData,
+                  frameWidth: 16,
+                  frameHeight: 16,
+                  originX: 0,
+                  originY: 0,
+                  playback: 'loop',
+                  flipH: false,
+                  flipV: false,
+                  defaultDuration: 12,
+                  frameIndices: [],
+                  frameDurations: [],
+                  collapsed: false,
+                },
+              ]
+            : animations,
+      };
+      mappedImage = indexedImage;
     } else {
       mappedImage = mapImageToNesPalettes(
         indexedImage,

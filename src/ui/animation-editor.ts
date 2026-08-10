@@ -6,9 +6,8 @@ import {
 import { combineCIdentifiers } from '../core/c-identifier';
 import { padChrRom } from '../core/chr-rom';
 import type {
-  AnimationCategory,
-  AnimationDirection,
   AnimationModelError,
+  AnimationPlayback,
   AnimationProjectModel,
   MetaspriteTile,
 } from '../core/animation-model';
@@ -19,25 +18,37 @@ import {
 } from '../core/nes-palette';
 import { t } from '../i18n';
 import type { TranslationKey } from '../i18n';
-import type { AnimationSettings } from './types';
+import type { AnimationItemSetting, AnimationSettings } from './types';
 
-interface AnimationEditorOptions {
-  readonly image: ImageData | null;
+export interface AnimationEditorOptions {
   readonly settings: AnimationSettings;
   readonly model: AnimationProjectModel | null;
   readonly modelError: AnimationModelError | null;
   readonly paletteSet: NesPaletteSet;
   readonly onSettingsChange: (settings: AnimationSettings) => void;
-  readonly onFrameToggle: (frameIndex: number) => void;
+  readonly onAddAnimation: () => void;
+  readonly onDuplicateAnimation: (animationId: string) => void;
+  readonly onRemoveAnimation: (animationId: string) => void;
+  readonly onToggleAnimationCollapse: (animationId: string) => void;
+  readonly onUpdateAnimation: (
+    animationId: string,
+    patch: Partial<AnimationItemSetting>,
+  ) => void;
+  readonly onAnimationSourceFile: (animationId: string, file: File) => void;
+  readonly onFrameToggle: (animationId: string, frameIndex: number) => void;
   readonly onFrameMove: (
-    category: AnimationCategory,
+    animationId: string,
     frameIndex: number,
     direction: -1 | 1,
   ) => void;
   readonly onFrameDurationChange: (
-    category: AnimationCategory,
+    animationId: string,
     frameIndex: number,
     duration: number,
+  ) => void;
+  readonly onFrameRemoveFromAnimation: (
+    animationId: string,
+    frameIndex: number,
   ) => void;
   readonly onSpritePaletteSelectionChange: (
     paletteIndex: number,
@@ -96,6 +107,12 @@ function errorTranslation(error: AnimationModelError | null): TranslationKey {
       return 'animationErrorFrameGrid';
     case 'invalid-name':
       return 'animationErrorName';
+    case 'duplicate-animation-name':
+      return 'animationErrorDuplicateName';
+    case 'duplicate-animation-identifier':
+      return 'animationErrorDuplicateIdentifier';
+    case 'invalid-playback':
+      return 'animationErrorInvalidPlayback';
     case 'invalid-symbol-prefix':
       return 'animationErrorSymbolPrefix';
     case 'invalid-frame-duration':
@@ -298,6 +315,7 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   };
   prefixInput.addEventListener('input', updateSymbolPreview);
   nameInput.addEventListener('input', updateSymbolPreview);
+
   prefixInput.addEventListener('change', () => {
     options.onSettingsChange({
       ...options.settings,
@@ -311,151 +329,8 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   nameLabel.append(nameText, nameInput);
   symbolPreview.append(symbolPreviewTitle, symbolPreviewCode);
   updateSymbolPreview();
-  fields.append(
-    prefixLabel,
-    nameLabel,
-    symbolPreview,
-    numberInput(
-      t('animationFrameWidthLabel'),
-      options.settings.frameWidth,
-      8,
-      128,
-      (frameWidth) => {
-        options.onSettingsChange({ ...options.settings, frameWidth });
-      },
-    ),
-    numberInput(
-      t('animationFrameHeightLabel'),
-      options.settings.frameHeight,
-      8,
-      128,
-      (frameHeight) => {
-        options.onSettingsChange({ ...options.settings, frameHeight });
-      },
-    ),
-    numberInput(
-      t(
-        options.settings.selectionTarget === 'idle'
-          ? 'animationIdleDuration'
-          : 'animationMovementDuration',
-      ),
-      options.settings.selectionTarget === 'idle'
-        ? options.settings.idleDuration
-        : options.settings.movementDuration,
-      1,
-      255,
-      (duration) => {
-        options.onSettingsChange(
-          options.settings.selectionTarget === 'idle'
-            ? { ...options.settings, idleDuration: duration }
-            : { ...options.settings, movementDuration: duration },
-        );
-      },
-    ),
-    numberInput(
-      t('animationOriginX'),
-      options.settings.originX,
-      -128,
-      127,
-      (originX) => {
-        options.onSettingsChange({ ...options.settings, originX });
-      },
-    ),
-    numberInput(
-      t('animationOriginY'),
-      options.settings.originY,
-      -128,
-      127,
-      (originY) => {
-        options.onSettingsChange({ ...options.settings, originY });
-      },
-    ),
-  );
 
-  const target = document.createElement('fieldset');
-  target.className = 'animation-target';
-  const targetLegend = document.createElement('legend');
-  targetLegend.textContent = t('animationSelectionTarget');
-  target.append(targetLegend);
-  const categories: readonly [AnimationCategory, TranslationKey][] = [
-    ['idle', 'animationIdle'],
-    ['movement', 'animationMovement'],
-  ];
-  categories.forEach(([category, labelKey]) => {
-    const label = document.createElement('label');
-    const radio = document.createElement('input');
-    radio.type = 'radio';
-    radio.name = 'animation-target';
-    radio.checked = options.settings.selectionTarget === category;
-    radio.addEventListener('change', () => {
-      if (radio.checked) {
-        options.onSettingsChange({
-          ...options.settings,
-          selectionTarget: category,
-        });
-      }
-    });
-    label.append(radio, t(labelKey));
-    target.append(label);
-  });
-
-  let movementDirection: HTMLElement | null = null;
-  if (options.settings.selectionTarget === 'movement') {
-    movementDirection = document.createElement('fieldset');
-    movementDirection.className = 'animation-direction-settings';
-    const directionLegend = document.createElement('legend');
-    directionLegend.textContent = t('animationMovementDirection');
-    const directionChoices = document.createElement('div');
-    directionChoices.className = 'animation-direction-choices';
-    const directions: readonly [AnimationDirection, TranslationKey][] = [
-      ['left', 'animationDirectionLeft'],
-      ['right', 'animationDirectionRight'],
-    ];
-    directions.forEach(([direction, labelKey]) => {
-      const label = document.createElement('label');
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'animation-movement-direction';
-      radio.checked = options.settings.movementDirection === direction;
-      radio.addEventListener('change', () => {
-        if (!radio.checked) return;
-        options.onSettingsChange({
-          ...options.settings,
-          movementDirection: direction,
-          movementPreviewDirection: direction,
-        });
-      });
-      label.append(radio, t(labelKey));
-      directionChoices.append(label);
-    });
-    const mirroredLabel = document.createElement('label');
-    mirroredLabel.className = 'checkbox-control';
-    const mirroredCheckbox = document.createElement('input');
-    mirroredCheckbox.type = 'checkbox';
-    mirroredCheckbox.checked = options.settings.exportMirroredMovement;
-    mirroredCheckbox.addEventListener('change', () => {
-      options.onSettingsChange({
-        ...options.settings,
-        exportMirroredMovement: mirroredCheckbox.checked,
-      });
-    });
-    mirroredLabel.append(
-      mirroredCheckbox,
-      t('animationExportMirroredMovement'),
-    );
-    const directionHint = document.createElement('small');
-    directionHint.textContent = t(
-      options.settings.exportMirroredMovement
-        ? 'animationExportMirroredHint'
-        : 'animationExportSingleDirectionHint',
-    );
-    movementDirection.append(
-      directionLegend,
-      directionChoices,
-      mirroredLabel,
-      directionHint,
-    );
-  }
+  fields.append(prefixLabel, nameLabel, symbolPreview);
 
   const flipLabel = document.createElement('label');
   flipLabel.className = 'checkbox-control animation-flip-control';
@@ -513,8 +388,6 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   section.append(
     heading,
     hint,
-    target,
-    ...(movementDirection === null ? [] : [movementDirection]),
     fields,
     flipLabel,
     transparencyHint,
@@ -523,226 +396,34 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   return section;
 }
 
-function createFrameOrder(
-  options: AnimationEditorOptions,
-  category: AnimationCategory,
-  frames: readonly number[],
-  durations: readonly number[],
-): HTMLElement {
-  const group = document.createElement('section');
-  group.className = 'animation-order-group';
-  const heading = document.createElement('h3');
-  heading.textContent = t(
-    category === 'idle' ? 'animationIdle' : 'animationMovement',
-  );
-  group.append(heading);
-  if (frames.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'empty-message';
-    empty.textContent = t('animationNoFrames');
-    group.append(empty);
-    return group;
-  }
-  const list = document.createElement('ol');
-  frames.forEach((frameIndex, orderIndex) => {
-    const item = document.createElement('li');
-    const text = document.createElement('span');
-    text.textContent = t('animationFrameLabel', { index: frameIndex });
-    const duration = document.createElement('label');
-    duration.className = 'animation-frame-duration';
-    const durationText = document.createElement('span');
-    durationText.textContent = t('animationFrameDurationLabel', {
-      index: frameIndex,
-    });
-    const durationInput = document.createElement('input');
-    durationInput.type = 'number';
-    durationInput.min = '1';
-    durationInput.max = '255';
-    durationInput.step = '1';
-    durationInput.value = String(
-      durations[orderIndex] ??
-        (category === 'idle'
-          ? options.settings.idleDuration
-          : options.settings.movementDuration),
-    );
-    let committedDuration = Number(durationInput.value);
-    const commitDuration = (): void => {
-      const nextDuration = Number(durationInput.value);
-      if (nextDuration === committedDuration) return;
-      committedDuration = nextDuration;
-      options.onFrameDurationChange(category, frameIndex, nextDuration);
-    };
-    durationInput.addEventListener('change', commitDuration);
-    durationInput.addEventListener('blur', commitDuration);
-    duration.append(durationText, durationInput);
-    const actions = document.createElement('span');
-    actions.className = 'animation-order-actions';
-    const earlier = document.createElement('button');
-    earlier.type = 'button';
-    earlier.textContent = '↑';
-    earlier.disabled = orderIndex === 0;
-    earlier.setAttribute(
-      'aria-label',
-      t('animationMoveEarlier', { index: frameIndex }),
-    );
-    earlier.addEventListener('click', () => {
-      options.onFrameMove(category, frameIndex, -1);
-    });
-    const later = document.createElement('button');
-    later.type = 'button';
-    later.textContent = '↓';
-    later.disabled = orderIndex === frames.length - 1;
-    later.setAttribute(
-      'aria-label',
-      t('animationMoveLater', { index: frameIndex }),
-    );
-    later.addEventListener('click', () => {
-      options.onFrameMove(category, frameIndex, 1);
-    });
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.textContent = '×';
-    remove.setAttribute(
-      'aria-label',
-      t('animationRemoveFrame', { index: frameIndex }),
-    );
-    remove.addEventListener('click', () => {
-      options.onFrameToggle(frameIndex);
-    });
-    actions.append(earlier, later, remove);
-    item.append(text, duration, actions);
-    list.append(item);
-  });
-  group.append(list);
-  return group;
-}
+function createSingleAnimationPreview(anim: AnimationItemSetting): HTMLElement {
+  const stage = document.createElement('div');
+  stage.className = 'animation-preview-stage';
 
-function createFrameGrid(options: AnimationEditorOptions): HTMLElement {
-  const section = document.createElement('section');
-  section.className = 'panel animation-frame-panel';
-  const heading = document.createElement('h2');
-  heading.textContent = t('animationFrameGridTitle');
-  const hint = document.createElement('p');
-  hint.className = 'muted';
-  hint.textContent = t('animationFrameGridHint');
-  section.append(heading, hint);
-  const { image, settings } = options;
+  const image = anim.source?.sourceImage ?? null;
   if (
     image === null ||
-    settings.frameWidth <= 0 ||
-    settings.frameHeight <= 0 ||
-    image.width % settings.frameWidth !== 0 ||
-    image.height % settings.frameHeight !== 0
-  ) {
-    const empty = document.createElement('p');
-    empty.className = 'empty-message';
-    empty.textContent =
-      image === null ? t('previewEmpty') : t('animationErrorFrameGrid');
-    section.append(empty);
-  } else {
-    const columns = image.width / settings.frameWidth;
-    const rows = image.height / settings.frameHeight;
-    const grid = document.createElement('div');
-    grid.className = 'animation-frame-grid';
-    grid.style.gridTemplateColumns = `repeat(${String(Math.min(columns, 8))}, minmax(5rem, 1fr))`;
-    for (let index = 0; index < columns * rows; index += 1) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'animation-frame-button';
-      const idleOrder = settings.idleFrames.indexOf(index);
-      const movementOrder = settings.movementFrames.indexOf(index);
-      const category =
-        idleOrder >= 0 ? 'idle' : movementOrder >= 0 ? 'movement' : null;
-      if (category !== null) button.dataset.category = category;
-      const sourceX = (index % columns) * settings.frameWidth;
-      const sourceY = Math.floor(index / columns) * settings.frameHeight;
-      const canvas = cropCanvas(
-        image,
-        sourceX,
-        sourceY,
-        settings.frameWidth,
-        settings.frameHeight,
-      );
-      const label = document.createElement('span');
-      label.textContent = `${t('animationFrameLabel', { index })}${
-        category === null
-          ? ''
-          : ` · ${t(category === 'idle' ? 'animationIdle' : 'animationMovement')} #${String((category === 'idle' ? idleOrder : movementOrder) + 1)}`
-      }`;
-      button.setAttribute('aria-pressed', String(category !== null));
-      button.addEventListener('click', () => {
-        options.onFrameToggle(index);
-      });
-      button.append(canvas, label);
-      grid.append(button);
-    }
-    section.append(grid);
-  }
-
-  const orderHeading = document.createElement('h2');
-  orderHeading.className = 'animation-order-title';
-  orderHeading.textContent = t('animationSelectedFramesTitle');
-  const orders = document.createElement('div');
-  orders.className = 'animation-orders is-single';
-  const activeCategory = settings.selectionTarget;
-  orders.append(
-    createFrameOrder(
-      options,
-      activeCategory,
-      activeCategory === 'idle' ? settings.idleFrames : settings.movementFrames,
-      activeCategory === 'idle'
-        ? settings.idleFrameDurations
-        : settings.movementFrameDurations,
-    ),
-  );
-  section.append(orderHeading, orders);
-  return section;
-}
-
-function createAnimationPreview(options: AnimationEditorOptions): HTMLElement {
-  const section = document.createElement('section');
-  section.className = 'panel animation-preview-panel';
-  const heading = document.createElement('h2');
-  heading.textContent = t('animationPreviewTitle');
-  const hint = document.createElement('p');
-  hint.className = 'muted';
-  hint.textContent = t('animationPreviewHint');
-  section.append(heading, hint);
-
-  const { image, settings } = options;
-  const category = settings.selectionTarget;
-  const frames =
-    category === 'idle' ? settings.idleFrames : settings.movementFrames;
-  const durations =
-    category === 'idle'
-      ? settings.idleFrameDurations
-      : settings.movementFrameDurations;
-  const defaultDuration =
-    category === 'idle' ? settings.idleDuration : settings.movementDuration;
-  if (
-    image === null ||
-    frames.length === 0 ||
-    settings.frameWidth <= 0 ||
-    settings.frameHeight <= 0 ||
-    image.width % settings.frameWidth !== 0 ||
-    image.height % settings.frameHeight !== 0
+    anim.frameIndices.length === 0 ||
+    anim.frameWidth <= 0 ||
+    anim.frameHeight <= 0 ||
+    image.width % anim.frameWidth !== 0 ||
+    image.height % anim.frameHeight !== 0
   ) {
     const empty = document.createElement('p');
     empty.className = 'empty-message';
     empty.textContent = t('animationPreviewEmpty');
-    section.append(empty);
-    return section;
+    stage.append(empty);
+    return stage;
   }
 
-  const frameColumns = image.width / settings.frameWidth;
-  const stage = document.createElement('div');
-  stage.className = 'animation-preview-stage';
+  const frameColumns = image.width / anim.frameWidth;
   const canvas = document.createElement('canvas');
   canvas.className = 'animation-preview-canvas';
-  canvas.width = settings.frameWidth;
-  canvas.height = settings.frameHeight;
+  canvas.width = anim.frameWidth;
+  canvas.height = anim.frameHeight;
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', t('animationPreviewTitle'));
+  canvas.setAttribute('aria-label', `${anim.name} preview`);
+
   const meta = document.createElement('strong');
   const controls = document.createElement('div');
   controls.className = 'animation-preview-controls';
@@ -760,50 +441,17 @@ function createAnimationPreview(options: AnimationEditorOptions): HTMLElement {
   next.textContent = '→';
   next.setAttribute('aria-label', t('animationPreviewNext'));
   controls.append(previous, play, next);
-  if (category === 'movement') {
-    const directionControls = document.createElement('div');
-    directionControls.className = 'animation-preview-directions';
-    const directionLabel = document.createElement('strong');
-    directionLabel.textContent = t('animationPreviewDirection');
-    directionControls.append(directionLabel);
-    const directions: readonly [AnimationDirection, TranslationKey][] = [
-      ['left', 'animationDirectionLeft'],
-      ['right', 'animationDirectionRight'],
-    ];
-    directions.forEach(([direction, labelKey]) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'button secondary-button';
-      button.classList.toggle(
-        'is-active',
-        settings.movementPreviewDirection === direction,
-      );
-      button.setAttribute(
-        'aria-pressed',
-        String(settings.movementPreviewDirection === direction),
-      );
-      button.textContent = t(labelKey);
-      button.addEventListener('click', () => {
-        options.onSettingsChange({
-          ...settings,
-          movementPreviewDirection: direction,
-        });
-      });
-      directionControls.append(button);
-    });
-    stage.append(directionControls);
-  }
   stage.append(canvas, meta, controls);
-  section.append(stage);
 
   let current = 0;
   let playing = true;
   let timer: number | null = null;
+
   const draw = (): void => {
-    const sourceIndex = frames[current] ?? 0;
-    const sourceX = (sourceIndex % frameColumns) * settings.frameWidth;
-    const sourceY =
-      Math.floor(sourceIndex / frameColumns) * settings.frameHeight;
+    if (anim.frameIndices.length === 0) return;
+    const sourceIndex = anim.frameIndices[current] ?? 0;
+    const sourceX = (sourceIndex % frameColumns) * anim.frameWidth;
+    const sourceY = Math.floor(sourceIndex / frameColumns) * anim.frameHeight;
     const context = canvas.getContext('2d');
     context?.clearRect(0, 0, canvas.width, canvas.height);
     if (context !== null) {
@@ -811,80 +459,548 @@ function createAnimationPreview(options: AnimationEditorOptions): HTMLElement {
         image,
         sourceX,
         sourceY,
-        settings.frameWidth,
-        settings.frameHeight,
+        anim.frameWidth,
+        anim.frameHeight,
       );
-      const mirror =
-        category === 'movement' &&
-        settings.exportMirroredMovement &&
-        settings.movementPreviewDirection !== settings.movementDirection;
       context.save();
-      if (mirror) {
+      if (anim.flipH && anim.flipV) {
+        context.translate(canvas.width, canvas.height);
+        context.scale(-1, -1);
+      } else if (anim.flipH) {
         context.translate(canvas.width, 0);
         context.scale(-1, 1);
+      } else if (anim.flipV) {
+        context.translate(0, canvas.height);
+        context.scale(1, -1);
       }
       context.drawImage(frameCanvas, 0, 0);
       context.restore();
     }
-    const duration = durations[current] ?? defaultDuration;
-    meta.textContent = t(
-      category === 'movement'
-        ? 'animationPreviewCurrentDirection'
-        : 'animationPreviewCurrent',
-      {
-        animation: t(
-          category === 'idle' ? 'animationIdle' : 'animationMovement',
-        ),
-        direction: t(
-          settings.movementPreviewDirection === 'left'
-            ? 'animationDirectionLeft'
-            : 'animationDirectionRight',
-        ),
-        index: sourceIndex,
-        duration,
-      },
-    );
+    const duration = anim.frameDurations[current] ?? anim.defaultDuration;
+    meta.textContent = `${anim.name} · ${t('animationFrameLabel', {
+      index: sourceIndex,
+    })} · ${String(duration)} ${t('animationDurationUnit')}`;
     play.textContent = t(
       playing ? 'animationPreviewPause' : 'animationPreviewPlay',
     );
   };
-  const schedule = (): void => {
-    if (!playing) return;
-    const duration = durations[current] ?? defaultDuration;
-    timer = window.setTimeout(
-      () => {
-        if (!canvas.isConnected) return;
-        current = (current + 1) % frames.length;
-        draw();
-        schedule();
-      },
-      (duration * 1000) / 60,
-    );
-  };
+
   const stopTimer = (): void => {
     if (timer !== null) window.clearTimeout(timer);
     timer = null;
   };
+
+  const schedule = (): void => {
+    if (!playing || anim.frameIndices.length === 0) return;
+    const duration = anim.frameDurations[current] ?? anim.defaultDuration;
+    timer = window.setTimeout(
+      () => {
+        if (!canvas.isConnected) return;
+        if (anim.playback === 'once') {
+          if (current < anim.frameIndices.length - 1) {
+            current += 1;
+            draw();
+            schedule();
+          } else {
+            playing = false;
+            draw();
+          }
+        } else {
+          current = (current + 1) % anim.frameIndices.length;
+          draw();
+          schedule();
+        }
+      },
+      (duration * 1000) / 60,
+    );
+  };
+
   previous.addEventListener('click', () => {
+    if (anim.frameIndices.length === 0) return;
     stopTimer();
     playing = false;
-    current = (current - 1 + frames.length) % frames.length;
+    current =
+      (current - 1 + anim.frameIndices.length) % anim.frameIndices.length;
     draw();
   });
+
   next.addEventListener('click', () => {
+    if (anim.frameIndices.length === 0) return;
     stopTimer();
     playing = false;
-    current = (current + 1) % frames.length;
+    current = (current + 1) % anim.frameIndices.length;
     draw();
   });
+
   play.addEventListener('click', () => {
-    playing = !playing;
-    stopTimer();
-    draw();
-    schedule();
+    if (anim.frameIndices.length === 0) return;
+    if (!playing) {
+      if (anim.playback === 'once' && current >= anim.frameIndices.length - 1) {
+        current = 0;
+      }
+      playing = true;
+      draw();
+      schedule();
+    } else {
+      playing = false;
+      stopTimer();
+      draw();
+    }
   });
+
   draw();
   schedule();
+  return stage;
+}
+
+function createAnimationCardFrameGrid(
+  options: AnimationEditorOptions,
+  anim: AnimationItemSetting,
+): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'animation-card-grid-container';
+  const heading = document.createElement('h4');
+  heading.textContent = t('animationFrameGridTitle');
+  const hint = document.createElement('p');
+  hint.className = 'muted';
+  hint.textContent = t('animationFrameGridHint');
+  container.append(heading, hint);
+
+  const image = anim.source?.sourceImage ?? null;
+  if (
+    image === null ||
+    anim.frameWidth <= 0 ||
+    anim.frameHeight <= 0 ||
+    image.width % anim.frameWidth !== 0 ||
+    image.height % anim.frameHeight !== 0
+  ) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-message';
+    empty.textContent =
+      image === null ? t('animationNoSource') : t('animationErrorFrameGrid');
+    container.append(empty);
+    return container;
+  }
+
+  const columns = image.width / anim.frameWidth;
+  const rows = image.height / anim.frameHeight;
+  const grid = document.createElement('div');
+  grid.className = 'animation-frame-grid';
+  grid.style.gridTemplateColumns = `repeat(${String(Math.min(columns, 8))}, minmax(5rem, 1fr))`;
+
+  for (let index = 0; index < columns * rows; index += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'animation-frame-button';
+
+    const orderIndex = anim.frameIndices.indexOf(index);
+    const isSelected = orderIndex >= 0;
+
+    if (isSelected) {
+      button.classList.add('is-active-target');
+    }
+
+    const sourceX = (index % columns) * anim.frameWidth;
+    const sourceY = Math.floor(index / columns) * anim.frameHeight;
+    const canvas = cropCanvas(
+      image,
+      sourceX,
+      sourceY,
+      anim.frameWidth,
+      anim.frameHeight,
+    );
+    const label = document.createElement('span');
+    label.textContent = isSelected
+      ? `${t('animationFrameLabel', { index })} (#${String(orderIndex + 1)})`
+      : t('animationFrameLabel', { index });
+
+    button.setAttribute('aria-pressed', String(isSelected));
+    button.addEventListener('click', () => {
+      options.onFrameToggle(anim.id, index);
+    });
+    button.append(canvas, label);
+    grid.append(button);
+  }
+  container.append(grid);
+  return container;
+}
+
+function createFrameOrderList(
+  options: AnimationEditorOptions,
+  anim: AnimationItemSetting,
+): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'animation-order-group';
+  const heading = document.createElement('h4');
+  heading.textContent = t('animationSelectedFramesTitle');
+  container.append(heading);
+
+  if (anim.frameIndices.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-message';
+    empty.textContent = t('animationNoFrames');
+    container.append(empty);
+    return container;
+  }
+
+  const list = document.createElement('ol');
+  anim.frameIndices.forEach((frameIndex, orderIndex) => {
+    const item = document.createElement('li');
+    const text = document.createElement('span');
+    text.textContent = t('animationFrameLabel', { index: frameIndex });
+    const duration = document.createElement('label');
+    duration.className = 'animation-frame-duration';
+    const durationText = document.createElement('span');
+    durationText.textContent = t('animationFrameDurationLabel', {
+      index: frameIndex,
+    });
+    const durationInput = document.createElement('input');
+    durationInput.type = 'number';
+    durationInput.min = '1';
+    durationInput.max = '255';
+    durationInput.step = '1';
+    durationInput.value = String(
+      anim.frameDurations[orderIndex] ?? anim.defaultDuration,
+    );
+    let committedDuration = Number(durationInput.value);
+    const commitDuration = (): void => {
+      const nextDuration = Number(durationInput.value);
+      if (nextDuration === committedDuration) return;
+      committedDuration = nextDuration;
+      options.onFrameDurationChange(anim.id, frameIndex, nextDuration);
+    };
+    durationInput.addEventListener('change', commitDuration);
+    durationInput.addEventListener('blur', commitDuration);
+    duration.append(durationText, durationInput);
+
+    const actions = document.createElement('span');
+    actions.className = 'animation-order-actions';
+    const earlier = document.createElement('button');
+    earlier.type = 'button';
+    earlier.textContent = '↑';
+    earlier.disabled = orderIndex === 0;
+    earlier.setAttribute(
+      'aria-label',
+      t('animationMoveEarlier', { index: frameIndex }),
+    );
+    earlier.addEventListener('click', () => {
+      options.onFrameMove(anim.id, frameIndex, -1);
+    });
+    const later = document.createElement('button');
+    later.type = 'button';
+    later.textContent = '↓';
+    later.disabled = orderIndex === anim.frameIndices.length - 1;
+    later.setAttribute(
+      'aria-label',
+      t('animationMoveLater', { index: frameIndex }),
+    );
+    later.addEventListener('click', () => {
+      options.onFrameMove(anim.id, frameIndex, 1);
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute(
+      'aria-label',
+      t('animationRemoveFrame', { index: frameIndex }),
+    );
+    remove.addEventListener('click', () => {
+      options.onFrameRemoveFromAnimation(anim.id, frameIndex);
+    });
+    actions.append(earlier, later, remove);
+    item.append(text, duration, actions);
+    list.append(item);
+  });
+  container.append(list);
+  return container;
+}
+
+function createAnimationCard(
+  options: AnimationEditorOptions,
+  anim: AnimationItemSetting,
+): HTMLElement {
+  const card = document.createElement('section');
+  card.className = 'animation-card';
+
+  const isCollapsed = anim.collapsed === true;
+  card.classList.toggle('is-collapsed', isCollapsed);
+
+  // Card Header
+  const header = document.createElement('header');
+  header.className = 'animation-card-header';
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'animation-collapse-toggle';
+  toggleBtn.textContent = isCollapsed ? '▶' : '▼';
+  toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+  toggleBtn.addEventListener('click', () => {
+    options.onToggleAnimationCollapse(anim.id);
+  });
+
+  const summary = document.createElement('div');
+  summary.className = 'animation-card-summary';
+  const title = document.createElement('strong');
+  title.textContent = anim.name;
+  const details = document.createElement('span');
+  details.className = 'animation-card-details';
+  const playbackLabel =
+    anim.playback === 'once'
+      ? t('animationPlaybackOnce')
+      : t('animationPlaybackLoop');
+  const flips: string[] = [];
+  if (anim.flipH) flips.push(t('animationFlipHLabel'));
+  if (anim.flipV) flips.push(t('animationFlipVLabel'));
+  const flipSummary = flips.length > 0 ? ` · ${flips.join(', ')}` : '';
+  const sourceName = anim.source ? anim.source.fileName : 'no source';
+  details.textContent = `${sourceName} · ${String(anim.frameIndices.length)} frames · ${playbackLabel}${flipSummary}`;
+  summary.append(title, details);
+  summary.addEventListener('click', () => {
+    options.onToggleAnimationCollapse(anim.id);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'animation-card-actions';
+
+  const dupBtn = document.createElement('button');
+  dupBtn.type = 'button';
+  dupBtn.className = 'button secondary-button';
+  dupBtn.textContent = t('animationDuplicate');
+  dupBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    options.onDuplicateAnimation(anim.id);
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'button secondary-button';
+  removeBtn.textContent = t('animationRemove');
+  removeBtn.disabled = options.settings.animations.length <= 1;
+  removeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    options.onRemoveAnimation(anim.id);
+  });
+
+  actions.append(dupBtn, removeBtn);
+  header.append(toggleBtn, summary, actions);
+  card.append(header);
+
+  // Card Body
+  if (!isCollapsed) {
+    const body = document.createElement('div');
+    body.className = 'animation-card-body';
+
+    const fields = document.createElement('div');
+    fields.className = 'animation-card-fields';
+
+    // Name input
+    const nameLabel = document.createElement('label');
+    nameLabel.className = 'animation-field';
+    const nameText = document.createElement('span');
+    nameText.textContent = t('animationNameLabel');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = anim.name;
+    nameInput.addEventListener('change', () => {
+      options.onUpdateAnimation(anim.id, { name: nameInput.value });
+    });
+    nameLabel.append(nameText, nameInput);
+
+    // Source PNG picker
+    const sourceContainer = document.createElement('div');
+    sourceContainer.className = 'animation-field animation-source-field';
+    const sourceText = document.createElement('span');
+    sourceText.textContent = t('animationSourceFileLabel');
+    const sourceControls = document.createElement('div');
+    sourceControls.className = 'animation-source-controls';
+
+    const sourceInput = document.createElement('input');
+    sourceInput.type = 'file';
+    sourceInput.accept = '.png,image/png';
+    sourceInput.id = `anim-file-${anim.id}`;
+    sourceInput.className = 'visually-hidden';
+    sourceInput.addEventListener('change', () => {
+      const file = sourceInput.files?.[0];
+      if (file !== undefined) {
+        options.onAnimationSourceFile(anim.id, file);
+      }
+    });
+
+    const sourceBtn = document.createElement('label');
+    sourceBtn.htmlFor = sourceInput.id;
+    sourceBtn.className = 'button secondary-button';
+    sourceBtn.textContent = anim.source
+      ? t('animationChangeSource')
+      : t('animationChooseSource');
+
+    const sourceBadge = document.createElement('span');
+    sourceBadge.className = 'animation-source-badge';
+    sourceBadge.textContent = anim.source ? anim.source.fileName : '—';
+
+    sourceControls.append(sourceInput, sourceBtn, sourceBadge);
+    sourceContainer.append(sourceText, sourceControls);
+
+    // Frame width / height
+    const widthField = numberInput(
+      t('animationFrameWidthLabel'),
+      anim.frameWidth,
+      8,
+      128,
+      (frameWidth) => {
+        options.onUpdateAnimation(anim.id, { frameWidth });
+      },
+    );
+
+    const heightField = numberInput(
+      t('animationFrameHeightLabel'),
+      anim.frameHeight,
+      8,
+      128,
+      (frameHeight) => {
+        options.onUpdateAnimation(anim.id, { frameHeight });
+      },
+    );
+
+    // Origin X / Y
+    const originXField = numberInput(
+      t('animationOriginX'),
+      anim.originX,
+      -128,
+      127,
+      (originX) => {
+        options.onUpdateAnimation(anim.id, { originX });
+      },
+    );
+
+    const originYField = numberInput(
+      t('animationOriginY'),
+      anim.originY,
+      -128,
+      127,
+      (originY) => {
+        options.onUpdateAnimation(anim.id, { originY });
+      },
+    );
+
+    // Playback selector
+    const playbackLabelElem = document.createElement('label');
+    playbackLabelElem.className = 'animation-field';
+    const playbackText = document.createElement('span');
+    playbackText.textContent = t('animationPlaybackLabel');
+    const playbackSelect = document.createElement('select');
+    const optLoop = document.createElement('option');
+    optLoop.value = 'loop';
+    optLoop.textContent = t('animationPlaybackLoop');
+    optLoop.selected = anim.playback === 'loop';
+    const optOnce = document.createElement('option');
+    optOnce.value = 'once';
+    optOnce.textContent = t('animationPlaybackOnce');
+    optOnce.selected = anim.playback === 'once';
+    playbackSelect.append(optLoop, optOnce);
+    playbackSelect.addEventListener('change', () => {
+      options.onUpdateAnimation(anim.id, {
+        playback: playbackSelect.value as AnimationPlayback,
+      });
+    });
+    playbackLabelElem.append(playbackText, playbackSelect);
+
+    // Flip H
+    const flipHLabel = document.createElement('label');
+    flipHLabel.className = 'checkbox-control';
+    const flipHInput = document.createElement('input');
+    flipHInput.type = 'checkbox';
+    flipHInput.checked = anim.flipH;
+    flipHInput.addEventListener('change', () => {
+      options.onUpdateAnimation(anim.id, { flipH: flipHInput.checked });
+    });
+    flipHLabel.append(flipHInput, t('animationFlipHLabel'));
+
+    // Flip V
+    const flipVLabel = document.createElement('label');
+    flipVLabel.className = 'checkbox-control';
+    const flipVInput = document.createElement('input');
+    flipVInput.type = 'checkbox';
+    flipVInput.checked = anim.flipV;
+    flipVInput.addEventListener('change', () => {
+      options.onUpdateAnimation(anim.id, { flipV: flipVInput.checked });
+    });
+    flipVLabel.append(flipVInput, t('animationFlipVLabel'));
+
+    // Default Duration
+    const durationField = numberInput(
+      t('animationDefaultDurationLabel'),
+      anim.defaultDuration,
+      1,
+      255,
+      (defaultDuration) => {
+        options.onUpdateAnimation(anim.id, { defaultDuration });
+      },
+    );
+
+    fields.append(
+      nameLabel,
+      sourceContainer,
+      widthField,
+      heightField,
+      originXField,
+      originYField,
+      playbackLabelElem,
+      durationField,
+      flipHLabel,
+      flipVLabel,
+    );
+    body.append(fields);
+
+    // Spritesheet Frame Grid directly inside card
+    body.append(createAnimationCardFrameGrid(options, anim));
+
+    // Frame list and independent preview
+    const split = document.createElement('div');
+    split.className = 'animation-card-split';
+    split.append(
+      createFrameOrderList(options, anim),
+      createSingleAnimationPreview(anim),
+    );
+    body.append(split);
+
+    card.append(body);
+  }
+
+  return card;
+}
+
+function createAnimationListPanel(
+  options: AnimationEditorOptions,
+): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'panel animation-list-panel';
+
+  const header = document.createElement('div');
+  header.className = 'animation-list-header';
+  const titleGroup = document.createElement('div');
+  const heading = document.createElement('h2');
+  heading.textContent = t('animationListTitle');
+  const hint = document.createElement('p');
+  hint.className = 'muted';
+  hint.textContent = t('animationListHint');
+  titleGroup.append(heading, hint);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'button primary-button';
+  addBtn.textContent = t('animationAdd');
+  addBtn.addEventListener('click', options.onAddAnimation);
+
+  header.append(titleGroup, addBtn);
+  section.append(header);
+
+  const cardsContainer = document.createElement('div');
+  cardsContainer.className = 'animation-cards-list';
+  options.settings.animations.forEach((anim) => {
+    cardsContainer.append(createAnimationCard(options, anim));
+  });
+  section.append(cardsContainer);
+
   return section;
 }
 
@@ -903,7 +1019,7 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
   const heading = document.createElement('h2');
   heading.textContent = t('animationMappingTitle');
   section.append(heading);
-  if (options.model === null || options.image === null) {
+  if (options.model === null) {
     const message = document.createElement('p');
     message.className =
       options.modelError === null ? 'empty-message' : 'error-message';
@@ -914,22 +1030,21 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
     section.append(message);
     return section;
   }
-  const image = options.image;
   options.model.animations.forEach((animation) => {
+    const animSetting = options.settings.animations.find(
+      (a) => a.name === animation.name,
+    );
+    const image = animSetting?.source?.sourceImage ?? null;
+    if (image === null) return;
+
     const animationSection = document.createElement('section');
     animationSection.className = 'animation-mapping-group';
     const title = document.createElement('h3');
-    const directionLabel =
-      animation.direction === 'none'
-        ? ''
-        : ` · ${t(
-            animation.direction === 'left'
-              ? 'animationDirectionLeft'
-              : 'animationDirectionRight',
-          )}${animation.generatedByHorizontalFlip ? ` · ${t('animationGeneratedByFlip')}` : ''}`;
-    title.textContent = `${animation.name} · ${t(
-      animation.category === 'idle' ? 'animationIdle' : 'animationMovement',
-    )}${directionLabel}`;
+    const flips: string[] = [];
+    if (animation.flipH) flips.push(t('animationFlipHLabel'));
+    if (animation.flipV) flips.push(t('animationFlipVLabel'));
+    const flipText = flips.length > 0 ? ` · ${flips.join(', ')}` : '';
+    title.textContent = `${animation.name} · ${animation.sourceFile} · ${animation.playback === 'once' ? t('animationPlaybackOnce') : t('animationPlaybackLoop')}${flipText}`;
     animationSection.append(title);
     animation.frames.forEach((frame, frameOrder) => {
       const article = document.createElement('article');
@@ -1091,8 +1206,7 @@ export function createAnimationEditor(
   return [
     createConfiguration(options),
     createSpritePaletteEditor(options),
-    createFrameGrid(options),
-    createAnimationPreview(options),
+    createAnimationListPanel(options),
     createMapping(options),
     createExports(options),
   ];

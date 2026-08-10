@@ -16,28 +16,22 @@ const en = {
     'A playfield must be exactly 256 × 240 px (32 × 30 tiles).',
   animationModeHint:
     'Import a PNG sprite sheet, select frames, and export animation-ready NES data.',
-  animationEditorTitle: 'Sprite animation setup',
+  animationEditorTitle: 'Asset configuration',
   animationEditorHint:
-    'Define the frame grid, choose idle or movement, then click frames in their playback order.',
+    'Configure global asset export settings, C symbols, sprite palettes, and destination CHR.',
   animationSymbolPrefixLabel: 'C symbol prefix',
-  animationNameLabel: 'Animation name',
+  animationNameLabel: 'Asset name',
   animationSymbolPreviewTitle: 'Generated C symbols',
   animationSymbolPreviewInvalid:
-    'Enter a prefix and animation name that contain letters or numbers.',
+    'Enter a prefix and asset name that contain letters or numbers.',
+  animationSourceFileLabel: 'Source spritesheet',
+  animationChooseSource: 'Choose PNG',
+  animationChangeSource: 'Change PNG',
+  animationNoSource: 'No spritesheet loaded for this animation.',
   animationFrameWidthLabel: 'Frame width (px)',
   animationFrameHeightLabel: 'Frame height (px)',
-  animationSelectionTarget: 'Add selected frames to',
   animationIdle: 'Idle',
   animationMovement: 'Movement',
-  animationMovementDirection: 'Primary movement direction',
-  animationDirectionLeft: 'Left',
-  animationDirectionRight: 'Right',
-  animationExportMirroredMovement:
-    'Also export the opposite direction using horizontal flip',
-  animationExportMirroredHint:
-    'Exports two movement animations. The opposite direction mirrors sprite positions and toggles the NES H-flip attribute.',
-  animationExportSingleDirectionHint:
-    'Exports only the primary direction without changing the artwork orientation. Useful for ships and direction-neutral objects.',
   animationIdleDuration: 'Default idle duration',
   animationMovementDuration: 'Default movement duration',
   animationFrameDurationLabel: 'Duration of frame {index}',
@@ -49,8 +43,9 @@ const en = {
   animationDownloadPalette: 'Download sprite palettes',
   animationPreviewTitle: 'Animation preview',
   animationPreviewHint:
-    'Plays the frames of the active animation using their individual durations at 60 game frames per second.',
-  animationPreviewEmpty: 'Select frames in the active animation to preview it.',
+    'Plays the frames of the animation using their individual durations at 60 game frames per second.',
+  animationPreviewEmpty:
+    'Load a PNG and select frames to preview this animation.',
   animationPreviewPlay: 'Play',
   animationPreviewPause: 'Pause',
   animationPreviewPrevious: 'Previous frame',
@@ -75,7 +70,7 @@ const en = {
     '{name}: {tiles} existing tiles ({bytes} bytes).',
   animationFrameGridTitle: 'Sprite-sheet frames',
   animationFrameGridHint:
-    'Click a frame to append it to the active animation. Selected order is shown below.',
+    'Click a frame to add or remove it from this animation sequence.',
   animationFrameLabel: 'Frame {index}',
   animationSelectedFramesTitle: 'Selected frame order',
   animationNoFrames: 'No frames selected.',
@@ -126,6 +121,27 @@ const en = {
     'The destination CHR must be a valid multiple of 16 bytes and fit within 256 tiles.',
   animationErrorCapacity:
     'The resulting CHR exceeds the 256-tile sprite pattern-table capacity.',
+  animationAdd: '+ Add animation',
+  animationDuplicate: 'Duplicate',
+  animationRemove: 'Remove',
+  animationPlaybackLabel: 'Playback',
+  animationPlaybackLoop: 'Loop',
+  animationPlaybackOnce: 'Once',
+  animationFlipHLabel: 'Flip H',
+  animationFlipVLabel: 'Flip V',
+  animationDefaultDurationLabel: 'Default frame duration',
+  animationItemTitle: 'Animation: {name}',
+  animationActiveTarget: 'Editing frames for this animation',
+  animationSetActive: 'Select to edit frames',
+  animationSectionSummary: '{name} · {count} frames · {playback}{flipH}{flipV}',
+  animationListTitle: 'Animations',
+  animationListHint:
+    'Configure multiple animations with independent frames, playback modes, flips, and previews.',
+  animationErrorDuplicateName:
+    'Animation names must be unique within the asset.',
+  animationErrorDuplicateIdentifier:
+    'Animation names produce conflicting C identifiers.',
+  animationErrorInvalidPlayback: 'Invalid animation playback mode.',
   animationErrorGeneric: 'The animation configuration is invalid.',
   choosePng: 'Choose PNG',
   choosePngOrChr: 'Choose PNG, CHR, or NES ROM',
@@ -390,28 +406,22 @@ const ptBr = {
     'Um playfield deve ter exatamente 256 × 240 px (32 × 30 tiles).',
   animationModeHint:
     'Importe um sprite sheet PNG, selecione frames e exporte dados de animação para NES.',
-  animationEditorTitle: 'Configuração da animação de sprite',
+  animationEditorTitle: 'Configuração do asset',
   animationEditorHint:
-    'Defina a grade, escolha parado ou movimento e clique nos frames na ordem de reprodução.',
+    'Configure as opções globais de exportação do asset, símbolos C, paletas de sprite e CHR-base.',
   animationSymbolPrefixLabel: 'Prefixo dos símbolos C',
-  animationNameLabel: 'Nome da animação',
+  animationNameLabel: 'Nome do asset',
   animationSymbolPreviewTitle: 'Símbolos C gerados',
   animationSymbolPreviewInvalid:
-    'Informe um prefixo e um nome de animação que contenham letras ou números.',
+    'Informe um prefixo e um nome de asset que contenham letras ou números.',
+  animationSourceFileLabel: 'Spritesheet de origem',
+  animationChooseSource: 'Selecionar PNG',
+  animationChangeSource: 'Trocar PNG',
+  animationNoSource: 'Nenhum spritesheet carregado para esta animação.',
   animationFrameWidthLabel: 'Largura do frame (px)',
   animationFrameHeightLabel: 'Altura do frame (px)',
-  animationSelectionTarget: 'Adicionar os frames selecionados a',
   animationIdle: 'Parado',
   animationMovement: 'Movimento',
-  animationMovementDirection: 'Direção principal do movimento',
-  animationDirectionLeft: 'Esquerda',
-  animationDirectionRight: 'Direita',
-  animationExportMirroredMovement:
-    'Exportar também o sentido oposto usando flip horizontal',
-  animationExportMirroredHint:
-    'Exporta duas animações de movimento. O sentido oposto espelha as posições dos sprites e alterna o atributo H-flip do NES.',
-  animationExportSingleDirectionHint:
-    'Exporta somente a direção principal sem alterar a orientação da arte. Útil para naves e objetos sem direção visual.',
   animationIdleDuration: 'Duração padrão — Parado',
   animationMovementDuration: 'Duração padrão — Movimento',
   animationFrameDurationLabel: 'Duração do frame {index}',
@@ -423,9 +433,9 @@ const ptBr = {
   animationDownloadPalette: 'Baixar paletas de sprite',
   animationPreviewTitle: 'Prévia da animação',
   animationPreviewHint:
-    'Reproduz os frames da animação ativa usando suas durações individuais a 60 frames de jogo por segundo.',
+    'Reproduz os frames da animação usando suas durações individuais a 60 frames de jogo por segundo.',
   animationPreviewEmpty:
-    'Selecione frames na animação ativa para visualizar a prévia.',
+    'Carregue um PNG e selecione frames para visualizar esta animação.',
   animationPreviewPlay: 'Reproduzir',
   animationPreviewPause: 'Pausar',
   animationPreviewPrevious: 'Frame anterior',
@@ -450,7 +460,7 @@ const ptBr = {
     '{name}: {tiles} tiles existentes ({bytes} bytes).',
   animationFrameGridTitle: 'Frames do sprite sheet',
   animationFrameGridHint:
-    'Clique em um frame para adicioná-lo à animação ativa. A ordem aparece abaixo.',
+    'Clique em um frame para adicioná-lo ou removê-lo da sequência da animação.',
   animationFrameLabel: 'Frame {index}',
   animationSelectedFramesTitle: 'Ordem dos frames selecionados',
   animationNoFrames: 'Nenhum frame selecionado.',
@@ -501,6 +511,27 @@ const ptBr = {
     'O CHR de destino deve ser múltiplo de 16 bytes e caber em 256 tiles.',
   animationErrorCapacity:
     'O CHR resultante excede a capacidade de 256 tiles da pattern table de sprites.',
+  animationAdd: '+ Adicionar animação',
+  animationDuplicate: 'Duplicar',
+  animationRemove: 'Remover',
+  animationPlaybackLabel: 'Reprodução',
+  animationPlaybackLoop: 'Loop',
+  animationPlaybackOnce: 'Uma vez',
+  animationFlipHLabel: 'Flip H',
+  animationFlipVLabel: 'Flip V',
+  animationDefaultDurationLabel: 'Duração padrão do frame',
+  animationItemTitle: 'Animação: {name}',
+  animationActiveTarget: 'Editando frames desta animação',
+  animationSetActive: 'Selecionar para editar frames',
+  animationSectionSummary: '{name} · {count} frames · {playback}{flipH}{flipV}',
+  animationListTitle: 'Animações',
+  animationListHint:
+    'Configure múltiplas animações com frames, modos de reprodução, flips e prévias independentes.',
+  animationErrorDuplicateName:
+    'Os nomes das animações devem ser exclusivos no asset.',
+  animationErrorDuplicateIdentifier:
+    'Os nomes das animações geram identificadores C conflitantes.',
+  animationErrorInvalidPlayback: 'Modo de reprodução de animação inválido.',
   animationErrorGeneric: 'A configuração da animação é inválida.',
   choosePng: 'Selecionar PNG',
   choosePngOrChr: 'Selecionar PNG, CHR ou ROM NES',

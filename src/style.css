@@ -116,7 +116,7 @@ select {
 
 .animation-palette-panel,
 .animation-frame-panel,
-.animation-preview-panel,
+.animation-list-panel,
 .animation-mapping-panel,
 .animation-export-panel,
 .animation-error-panel,
@@ -139,7 +139,7 @@ select {
   grid-row: 4;
 }
 
-.animation-preview-panel {
+.animation-list-panel {
   grid-row: 5;
 }
 
@@ -195,7 +195,8 @@ select {
   font-weight: 700;
 }
 
-.animation-field input {
+.animation-field input,
+.animation-field select {
   width: 100%;
   border: 1px solid var(--panel-border);
   border-radius: 0.45rem;
@@ -259,8 +260,12 @@ select {
   margin-top: 0.2rem;
 }
 
+.animation-flip-control input {
+  accent-color: var(--accent);
+}
+
 .animation-flip-control {
-  margin-block: 0.8rem;
+  margin-bottom: 0.65rem;
 }
 
 .animation-config-panel > small {
@@ -316,8 +321,29 @@ select {
   margin-bottom: 0;
 }
 
-.animation-destination small {
-  flex-basis: 100%;
+.animation-target-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  background: #0f161e;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.55rem;
+}
+
+.animation-target-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.animation-target-buttons .button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgb(87 211 164 / 12%);
+  font-weight: 700;
 }
 
 .animation-frame-grid {
@@ -337,6 +363,9 @@ select {
   color: inherit;
   background: #0f161e;
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .animation-frame-button canvas {
@@ -348,38 +377,169 @@ select {
 
 .animation-frame-button span {
   font-size: 0.75rem;
+  line-height: 1.3;
 }
 
-.animation-frame-button[data-category='idle'] {
+.animation-frame-button[data-has-animation='true'] {
+  border-color: #4a7a96;
+  background: rgb(74 122 150 / 12%);
+}
+
+.animation-frame-button.is-active-target {
   border-color: var(--accent);
-  background: rgb(87 211 164 / 10%);
+  background: rgb(87 211 164 / 16%);
+  box-shadow: 0 0 8px rgb(87 211 164 / 25%);
 }
 
-.animation-frame-button[data-category='movement'] {
-  border-color: #66a8ff;
-  background: rgb(102 168 255 / 10%);
+.animation-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
 }
 
-.animation-order-title {
-  margin-top: 1.25rem;
-  border-top: 1px solid var(--panel-border);
-  padding-top: 1rem;
-}
-
-.animation-orders {
+.animation-cards-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
-.animation-orders.is-single {
-  grid-template-columns: 1fr;
+.animation-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.65rem;
+  background: #0f161e;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.animation-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgb(87 211 164 / 15%);
+}
+
+.animation-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid transparent;
+  user-select: none;
+}
+
+.animation-card:not(.is-collapsed) .animation-card-header {
+  border-bottom-color: var(--panel-border);
+}
+
+.animation-collapse-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.3rem;
+}
+
+.animation-collapse-toggle:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.animation-card-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex-grow: 1;
+  cursor: pointer;
+}
+
+.animation-card-summary strong {
+  font-size: 1rem;
+}
+
+.animation-card-details {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.animation-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.animation-active-btn {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.animation-card-body {
+  padding: 1rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.animation-card-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  align-items: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.animation-source-field {
+  grid-column: 1 / -1;
+}
+
+.animation-source-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.animation-source-badge {
+  font-size: 0.85rem;
+  color: var(--accent);
+  background: rgb(87 211 164 / 10%);
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgb(87 211 164 / 20%);
+  font-family: monospace;
+}
+
+.animation-card-grid-container {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.75rem;
+  background: #0b1016;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.animation-card-grid-container h4 {
+  margin: 0;
+}
+
+.animation-card-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.25rem;
+  align-items: start;
 }
 
 .animation-order-group {
   border: 1px solid var(--panel-border);
   border-radius: 0.55rem;
   padding: 0.75rem;
+  background: #0b1016;
+}
+
+.animation-order-group h4 {
+  margin: 0 0 0.6rem;
 }
 
 .animation-order-group ol {
@@ -390,20 +550,11 @@ select {
 }
 
 .animation-order-group li {
-  padding-left: 0.2rem;
-}
-
-.animation-order-group li,
-.animation-order-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem;
-}
-
-.animation-order-group li {
   display: grid;
-  grid-template-columns: minmax(5rem, 1fr) minmax(11rem, 0.8fr) auto;
+  grid-template-columns: minmax(5rem, 1fr) minmax(10rem, 0.9fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  padding-left: 0.2rem;
 }
 
 .animation-frame-duration {
@@ -424,12 +575,18 @@ select {
   background: #0f161e;
 }
 
+.animation-order-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
 .animation-order-actions button {
   border: 1px solid var(--panel-border);
   border-radius: 0.3rem;
   color: inherit;
   background: #0f161e;
   cursor: pointer;
+  padding: 0.2rem 0.45rem;
 }
 
 .animation-order-actions button:disabled {
@@ -444,31 +601,20 @@ select {
   border: 1px solid var(--panel-border);
   border-radius: 0.65rem;
   padding: 1rem;
-  background: #0f161e;
-}
-
-.animation-preview-canvas,
-.animation-frame-button canvas,
-.animation-tile-cell canvas {
-  background: #000;
+  background: #0b1016;
 }
 
 .animation-preview-canvas {
-  width: min(18rem, 70vw);
-  height: min(18rem, 70vw);
+  width: min(14rem, 60vw);
+  height: min(14rem, 60vw);
   object-fit: contain;
   image-rendering: pixelated;
+  border-radius: 0.35rem;
 }
 
 .animation-preview-controls {
   display: flex;
   gap: 0.55rem;
-}
-
-.animation-preview-directions .button.is-active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: rgb(87 211 164 / 8%);
 }
 
 .animation-mapping-group + .animation-mapping-group,
