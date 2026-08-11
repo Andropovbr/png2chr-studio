@@ -24,8 +24,8 @@ export interface Ca65AnimationExport {
 
 export const ANIMATION_PLAYBACK_LOOP = 0;
 export const ANIMATION_PLAYBACK_ONCE = 1;
-export const ANIMATION_FLIP_H = NES_SPRITE_FLIP_HORIZONTAL;
-export const ANIMATION_FLIP_V = NES_SPRITE_FLIP_VERTICAL;
+export const ANIMATION_ALLOW_H_FLIP = NES_SPRITE_FLIP_HORIZONTAL;
+export const ANIMATION_ALLOW_V_FLIP = NES_SPRITE_FLIP_VERTICAL;
 
 export function sanitizeCIdentifier(name: string): string {
   return normalizeCIdentifier(name) || 'animation';
@@ -98,8 +98,8 @@ function flatten(model: AnimationProjectModel): {
         ? ANIMATION_PLAYBACK_ONCE
         : ANIMATION_PLAYBACK_LOOP;
     const flags =
-      (animation.flipH ? ANIMATION_FLIP_H : 0) |
-      (animation.flipV ? ANIMATION_FLIP_V : 0);
+      (animation.allowHorizontalFlip ? ANIMATION_ALLOW_H_FLIP : 0) |
+      (animation.allowVerticalFlip ? ANIMATION_ALLOW_V_FLIP : 0);
     animations.push({
       frameOffset,
       frameCount: animation.frames.length,
@@ -131,6 +131,8 @@ export function serializeAnimationMetadata(
     name: model.name,
     symbol_prefix: model.symbolPrefix,
     symbol_base: model.symbolBase,
+    default_palette_index: model.defaultPaletteIndex,
+    color_reduction: model.colorReduction ?? 'median-cut',
     source: model.source
       ? {
           image: model.source.image,
@@ -165,17 +167,17 @@ export function serializeAnimationMetadata(
       loop: ANIMATION_PLAYBACK_LOOP,
       once: ANIMATION_PLAYBACK_ONCE,
     },
-    origin: model.origin,
     animations: model.animations.map((animation) => ({
       name: animation.name,
       source_file: animation.sourceFile,
+      palette_index: animation.paletteIndex,
       frame_width: animation.width,
       frame_height: animation.height,
       origin_x: animation.originX,
       origin_y: animation.originY,
       playback: animation.playback,
-      flip_h: animation.flipH,
-      flip_v: animation.flipV,
+      allow_horizontal_flip: animation.allowHorizontalFlip,
+      allow_vertical_flip: animation.allowVerticalFlip,
       default_frame_duration: animation.defaultFrameDuration,
       width: animation.width,
       height: animation.height,
@@ -186,6 +188,7 @@ export function serializeAnimationMetadata(
         source_x: frame.sourceX,
         source_y: frame.sourceY,
         duration: frame.duration,
+        palette_index: frame.paletteIndex,
         width: frame.width,
         height: frame.height,
         omitted_tile_count: frame.omittedTileCount,
@@ -232,8 +235,8 @@ export function generateCAnimationExport(
 #define NES_SPRITE_FLIP_VERTICAL ${hex(NES_SPRITE_FLIP_VERTICAL)}
 #define ANIMATION_PLAYBACK_LOOP ${String(ANIMATION_PLAYBACK_LOOP)}
 #define ANIMATION_PLAYBACK_ONCE ${String(ANIMATION_PLAYBACK_ONCE)}
-#define ANIMATION_FLIP_H ${hex(ANIMATION_FLIP_H)}
-#define ANIMATION_FLIP_V ${hex(ANIMATION_FLIP_V)}
+#define ANIMATION_ALLOW_H_FLIP ${hex(ANIMATION_ALLOW_H_FLIP)}
+#define ANIMATION_ALLOW_V_FLIP ${hex(ANIMATION_ALLOW_V_FLIP)}
 #endif
 
 #ifndef PNG2CHR_ANIMATION_FORMAT_TYPES
@@ -339,8 +342,8 @@ NES_SPRITE_FLIP_HORIZONTAL = $40
 NES_SPRITE_FLIP_VERTICAL = $80
 ANIMATION_PLAYBACK_LOOP = ${String(ANIMATION_PLAYBACK_LOOP)}
 ANIMATION_PLAYBACK_ONCE = ${String(ANIMATION_PLAYBACK_ONCE)}
-ANIMATION_FLIP_H = $40
-ANIMATION_FLIP_V = $80
+ANIMATION_ALLOW_H_FLIP = $40
+ANIMATION_ALLOW_V_FLIP = $80
 .endif
 
 ${constEntries.join('\n')}

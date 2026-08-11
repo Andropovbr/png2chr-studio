@@ -3,9 +3,10 @@ import {
   createPaletteAssignments,
   mapImageToNesPalettes,
   NES_BACKGROUND_PALETTE_COUNT,
+  NES_MASTER_PALETTE,
   type NesPaletteSet,
 } from './nes-palette';
-import type { IndexedImage } from './types';
+import type { IndexedImage, RawImageData } from './types';
 
 export interface AnimationPaletteMapping {
   readonly image: IndexedImage;
@@ -37,16 +38,23 @@ export function mapAnimationImageToNesPalette(
     );
   }
 
+  const actualRegionSize =
+    image.width % regionSize === 0 && image.height % regionSize === 0
+      ? regionSize
+      : image.width % 16 === 0 && image.height % 16 === 0
+        ? 16
+        : 8;
+
   const assignments = createPaletteAssignments(
     image.width,
     image.height,
-    regionSize,
+    actualRegionSize,
   ).fill(paletteIndex);
   const mapped = mapImageToNesPalettes(
     image,
     paletteSet,
     assignments,
-    regionSize,
+    actualRegionSize,
     colorIndices,
     image.transparentIndex !== null,
     colorDistanceMode,
@@ -55,5 +63,43 @@ export function mapAnimationImageToNesPalette(
     image: mapped,
     colorIndices: colorIndices?.slice() ?? mapped.pixels.slice(),
     assignments,
+  };
+}
+
+export function renderAnimationToRawImageData(
+  image: IndexedImage,
+  paletteSet: NesPaletteSet,
+  paletteIndex: number,
+): RawImageData {
+  const activePalette = paletteSet[paletteIndex] ?? [0x0f, 0x00, 0x10, 0x30];
+  const data = new Uint8Array(image.width * image.height * 4);
+
+  for (let i = 0; i < image.pixels.length; i += 1) {
+    const pixel = image.pixels[i] ?? 0;
+    const offset = i * 4;
+    if (pixel === 0 || pixel === image.transparentIndex) {
+      data[offset] = 0;
+      data[offset + 1] = 0;
+      data[offset + 2] = 0;
+      data[offset + 3] = 0;
+    } else {
+      const slot = Math.max(0, Math.min(3, pixel));
+      const colorCode = activePalette[slot] ?? 0x0f;
+      const rgb = NES_MASTER_PALETTE[colorCode] ?? {
+        red: 0,
+        green: 0,
+        blue: 0,
+      };
+      data[offset] = rgb.red;
+      data[offset + 1] = rgb.green;
+      data[offset + 2] = rgb.blue;
+      data[offset + 3] = 255;
+    }
+  }
+
+  return {
+    width: image.width,
+    height: image.height,
+    data,
   };
 }

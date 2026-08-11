@@ -181,8 +181,8 @@ describe('animation project model', () => {
         {
           name: 'cast_flipped',
           playback: 'once',
-          flipH: true,
-          flipV: true,
+          allowHorizontalFlip: true,
+          allowVerticalFlip: true,
           frameIndices: [0],
           frameDuration: 8,
         },
@@ -192,20 +192,14 @@ describe('animation project model', () => {
     });
 
     const anim = model.animations[0];
+    expect(anim?.allowHorizontalFlip).toBe(true);
+    expect(anim?.allowVerticalFlip).toBe(true);
     expect(anim?.flipH).toBe(true);
     expect(anim?.flipV).toBe(true);
     const sprites = anim?.frames[0]?.sprites ?? [];
     expect(sprites).toHaveLength(2);
-    // Metasprite x is flipped
-    expect(sprites.map((s) => s.x)).toEqual([0, -8]);
-    expect(
-      sprites.every(
-        (s) =>
-          (s.attributes &
-            (NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL)) ===
-          (NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL),
-      ),
-    ).toBe(true);
+    // Base animation keeps natural orientation
+    expect(sprites.map((s) => s.x)).toEqual([-8, 0]);
   });
 
   it('rejects duplicate animation names and duplicate sanitized C identifiers', () => {
@@ -718,7 +712,7 @@ describe('animation project model', () => {
     });
   });
 
-  it('deserializes v4 JSON metadata correctly', () => {
+  it('deserializes v4 JSON metadata correctly with allow_horizontal_flip and allow_vertical_flip', () => {
     const v4Json = JSON.stringify({
       format: 'png2chr-studio-animation',
       version: 4,
@@ -734,9 +728,11 @@ describe('animation project model', () => {
         {
           name: 'attack',
           playback: 'once',
-          flip_h: true,
-          flip_v: false,
+          allow_horizontal_flip: true,
+          allow_vertical_flip: false,
           default_frame_duration: 4,
+          origin_x: 4,
+          origin_y: 8,
           frames: [{ source_index: 2, duration: 4 }],
         },
       ],
@@ -744,14 +740,43 @@ describe('animation project model', () => {
 
     const parsed = deserializeAnimationMetadata(v4Json);
     expect(parsed.version).toBe(4);
+    expect(parsed.name).toBe('soldier');
+    expect(parsed.symbolPrefix).toBe('soldier');
     expect(parsed.animations[0]).toMatchObject({
       name: 'attack',
       playback: 'once',
+      allowHorizontalFlip: true,
+      allowVerticalFlip: false,
       flipH: true,
       flipV: false,
+      originX: 4,
+      originY: 8,
       frameIndices: [2],
       frameDurations: [4],
     });
+  });
+
+  it('unifies symbolBase to single name when symbolPrefix matches name', () => {
+    const sheet = sheetFromTiles([tileWith([[0, 0]])]);
+    const model = buildAnimationProjectModel({
+      name: 'soldier',
+      symbolPrefix: 'soldier',
+      sourceImageName: 'soldier.png',
+      image: sheet,
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          playback: 'loop',
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+      ],
+    });
+
+    expect(model.symbolPrefix).toBe('soldier');
+    expect(model.symbolBase).toBe('soldier');
   });
 
   it('supports multiple animations with independent PNG sources, frame sizes, and origins', () => {
@@ -1056,5 +1081,299 @@ describe('animation project model', () => {
     // Consolidated CHR contains all unique tiles from all 4 animations
     expect(model.finalChr.length).toBeGreaterThan(0);
     expect(model.chr.finalTileCount).toBeGreaterThan(0);
+  });
+
+  it('guarantees immutability of graphic data when enabling allowHorizontalFlip', () => {
+    const tile1 = tileWith([[1, 2]]);
+    const tile2 = tileWith([[3, 4]]);
+    const sheet = sheetFromTiles([tile1, tile2]);
+
+    const modelNoFlip = buildAnimationProjectModel({
+      name: 'soldier',
+      symbolPrefix: 'soldier',
+      animations: [
+        {
+          name: 'idle',
+          sourceImageName: 'soldier.png',
+          image: sheet,
+          frameWidth: 16,
+          frameHeight: 8,
+          originX: 8,
+          originY: 4,
+          playback: 'loop',
+          allowHorizontalFlip: false,
+          allowVerticalFlip: false,
+          frameIndices: [0],
+          frameDuration: 8,
+        },
+      ],
+    });
+
+    const modelWithFlip = buildAnimationProjectModel({
+      name: 'soldier',
+      symbolPrefix: 'soldier',
+      animations: [
+        {
+          name: 'idle',
+          sourceImageName: 'soldier.png',
+          image: sheet,
+          frameWidth: 16,
+          frameHeight: 8,
+          originX: 8,
+          originY: 4,
+          playback: 'loop',
+          allowHorizontalFlip: true,
+          allowVerticalFlip: false,
+          frameIndices: [0],
+          frameDuration: 8,
+        },
+      ],
+    });
+
+    // Final CHR bytes must be completely identical
+    expect(modelWithFlip.finalChr).toEqual(modelNoFlip.finalChr);
+    expect(modelWithFlip.chr.finalTileCount).toBe(
+      modelNoFlip.chr.finalTileCount,
+    );
+
+    // Frame sprites and tiles must be completely identical
+    const frameNoFlip = modelNoFlip.animations[0]?.frames[0];
+    const frameWithFlip = modelWithFlip.animations[0]?.frames[0];
+    expect(frameWithFlip?.sprites).toEqual(frameNoFlip?.sprites);
+
+    // Only allowHorizontalFlip capability changes
+    expect(modelNoFlip.animations[0]?.allowHorizontalFlip).toBe(false);
+    expect(modelWithFlip.animations[0]?.allowHorizontalFlip).toBe(true);
+  });
+
+  it('migrates legacy JSON v4 with per-animation quantization_mode to global colorReduction', () => {
+    const legacyV4Json = JSON.stringify({
+      format: 'png2chr-studio-animation',
+      version: 4,
+      name: 'soldier',
+      symbol_prefix: 'soldier',
+      animations: [
+        {
+          name: 'idle',
+          quantization_mode: 'k-means',
+          allow_horizontal_flip: true,
+          frames: [{ source_index: 0, duration: 10 }],
+        },
+      ],
+    });
+
+    const parsed = deserializeAnimationMetadata(legacyV4Json);
+    expect(parsed.colorReduction).toBe('k-means');
+    expect(parsed.animations[0]?.quantizationMode).toBe('k-means');
+  });
+
+  it('uses root color_reduction as source of truth during JSON v4 deserialization', () => {
+    const v4Json = JSON.stringify({
+      format: 'png2chr-studio-animation',
+      version: 4,
+      name: 'soldier',
+      symbol_prefix: 'soldier',
+      color_reduction: 'nearest',
+      animations: [
+        {
+          name: 'idle',
+          // even if legacy field exists, root is source of truth
+          quantization_mode: 'k-means',
+          allow_horizontal_flip: true,
+          frames: [{ source_index: 0, duration: 10 }],
+        },
+      ],
+    });
+
+    const parsed = deserializeAnimationMetadata(v4Json);
+    expect(parsed.colorReduction).toBe('nearest');
+  });
+
+  it('resolves effective palette hierarchically (frame -> animation -> asset default)', () => {
+    const sheet = sheetFromTiles([
+      tileWith([[0, 0]]),
+      tileWith([[1, 0]]),
+      tileWith([[2, 0]]),
+    ]);
+
+    const model = buildAnimationProjectModel({
+      name: 'soldier',
+      symbolPrefix: 'soldier',
+      defaultPaletteIndex: 1,
+      animations: [
+        {
+          name: 'inherited_anim',
+          image: sheet,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0, 1, 2],
+          frameDuration: 6,
+          // no animation palette -> inherits defaultPaletteIndex (1)
+          // frame 2 overrides with palette 3
+          framePalettes: [null, null, 3],
+        },
+        {
+          name: 'explicit_anim',
+          image: sheet,
+          paletteIndex: 2,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0, 1],
+          frameDuration: 6,
+          // frame 1 overrides with palette 0
+          framePalettes: [null, 0],
+        },
+      ],
+    });
+
+    expect(model.defaultPaletteIndex).toBe(1);
+
+    // First animation: effective animation palette is 1
+    const anim0 = model.animations[0];
+    expect(anim0).toBeDefined();
+    expect(anim0?.paletteIndex).toBeNull();
+    expect(anim0?.effectivePalette).toBe(1);
+    expect(anim0?.frames[0]?.paletteIndex).toBeNull();
+    expect(anim0?.frames[0]?.effectivePalette).toBe(1);
+    expect(anim0?.frames[0]?.sprites[0]?.palette).toBe(1);
+    expect((anim0?.frames[0]?.sprites[0]?.attributes ?? 0) & 0x03).toBe(1);
+
+    expect(anim0?.frames[1]?.effectivePalette).toBe(1);
+    expect(anim0?.frames[1]?.sprites[0]?.palette).toBe(1);
+
+    expect(anim0?.frames[2]?.paletteIndex).toBe(3);
+    expect(anim0?.frames[2]?.effectivePalette).toBe(3);
+    expect(anim0?.frames[2]?.sprites[0]?.palette).toBe(3);
+    expect((anim0?.frames[2]?.sprites[0]?.attributes ?? 0) & 0x03).toBe(3);
+
+    // Second animation: effective animation palette is 2
+    const anim1 = model.animations[1];
+    expect(anim1).toBeDefined();
+    expect(anim1?.paletteIndex).toBe(2);
+    expect(anim1?.effectivePalette).toBe(2);
+    expect(anim1?.frames[0]?.paletteIndex).toBeNull();
+    expect(anim1?.frames[0]?.effectivePalette).toBe(2);
+    expect(anim1?.frames[0]?.sprites[0]?.palette).toBe(2);
+    expect((anim1?.frames[0]?.sprites[0]?.attributes ?? 0) & 0x03).toBe(2);
+
+    expect(anim1?.frames[1]?.paletteIndex).toBe(0);
+    expect(anim1?.frames[1]?.effectivePalette).toBe(0);
+    expect(anim1?.frames[1]?.sprites[0]?.palette).toBe(0);
+    expect((anim1?.frames[1]?.sprites[0]?.attributes ?? 0) & 0x03).toBe(0);
+  });
+
+  it('preserves Flip H/V bits while setting palette bits in sprite attributes', () => {
+    // Tile 0: point at (0, 0)
+    // Tile 1: horizontal flip of Tile 0: point at (7, 0)
+    const t0 = tileWith([[0, 0]]);
+    const t1 = tileWith([[7, 0]]);
+    const sheet = sheetFromTiles([t0, t1]);
+
+    const model = buildAnimationProjectModel({
+      name: 'hero',
+      defaultPaletteIndex: 2,
+      animations: [
+        {
+          name: 'walk',
+          image: sheet,
+          paletteIndex: 3,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0, 1],
+          frameDuration: 8,
+        },
+      ],
+      flipDeduplication: true,
+    });
+
+    const anim = model.animations[0];
+    // Frame 0: original tile, no flip, palette 3 -> attributes = 3
+    expect(anim?.frames[0]?.sprites[0]?.horizontalFlip).toBe(false);
+    expect(anim?.frames[0]?.sprites[0]?.attributes).toBe(3);
+
+    // Frame 1: matched with horizontal flip, palette 3 -> attributes = 0x40 | 3 = 0x43
+    expect(anim?.frames[1]?.sprites[0]?.horizontalFlip).toBe(true);
+    expect(anim?.frames[1]?.sprites[0]?.attributes).toBe(
+      NES_SPRITE_FLIP_HORIZONTAL | 3,
+    );
+    expect(anim?.frames[1]?.sprites[0]?.palette).toBe(3);
+  });
+
+  it('does NOT duplicate CHR tiles when changing palettes', () => {
+    const identicalTile = tileWith([
+      [2, 2],
+      [3, 3],
+    ]);
+    const sheetA = sheetFromTiles([identicalTile]);
+    const sheetB = sheetFromTiles([identicalTile]);
+
+    const model = buildAnimationProjectModel({
+      name: 'wizard',
+      defaultPaletteIndex: 0,
+      animations: [
+        {
+          name: 'cast_fire',
+          image: sheetA,
+          paletteIndex: 1, // palette 1 (e.g. fire)
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+        {
+          name: 'cast_ice',
+          image: sheetB,
+          paletteIndex: 2, // palette 2 (e.g. ice)
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+      ],
+      flipDeduplication: true,
+    });
+
+    // Only 1 unique tile allocated in CHR
+    expect(model.chr.finalTileCount).toBe(1);
+    expect(model.chr.reusedImportedTiles).toBe(1);
+    expect(model.animations[0]?.frames[0]?.sprites[0]?.tile).toBe(0);
+    expect(model.animations[1]?.frames[0]?.sprites[0]?.tile).toBe(0);
+    expect(model.animations[0]?.frames[0]?.sprites[0]?.attributes).toBe(1);
+    expect(model.animations[1]?.frames[0]?.sprites[0]?.attributes).toBe(2);
+  });
+
+  it('deserializes JSON v4 with default_palette_index, color_reduction, and frame palette overrides', () => {
+    const jsonText = JSON.stringify({
+      format: 'png2chr-studio-animation',
+      version: 4,
+      name: 'soldier',
+      symbol_prefix: 'soldier',
+      default_palette_index: 2,
+      color_reduction: 'nearest',
+      animations: [
+        {
+          name: 'idle',
+          palette_index: 1,
+          allow_horizontal_flip: true,
+          frames: [
+            { source_index: 0, duration: 10, palette_index: null },
+            { source_index: 1, duration: 12, palette_index: 3 },
+          ],
+        },
+        {
+          name: 'hurt',
+          palette_index: null,
+          frames: [{ source_index: 2, duration: 4, palette_index: 0 }],
+        },
+      ],
+    });
+
+    const parsed = deserializeAnimationMetadata(jsonText);
+    expect(parsed.defaultPaletteIndex).toBe(2);
+    expect(parsed.colorReduction).toBe('nearest');
+    expect(parsed.animations[0]?.paletteIndex).toBe(1);
+    expect(parsed.animations[0]?.framePalettes).toEqual([null, 3]);
+    expect(parsed.animations[1]?.paletteIndex).toBeNull();
+    expect(parsed.animations[1]?.framePalettes).toEqual([0]);
   });
 });

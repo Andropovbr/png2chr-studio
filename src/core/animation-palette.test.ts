@@ -5,7 +5,10 @@ import {
   NES_MASTER_PALETTE,
   setNesPaletteColor,
 } from './nes-palette';
-import { mapAnimationImageToNesPalette } from './animation-palette';
+import {
+  mapAnimationImageToNesPalette,
+  renderAnimationToRawImageData,
+} from './animation-palette';
 import type { IndexedImage } from './types';
 
 function opaqueImage(): IndexedImage {
@@ -94,5 +97,29 @@ describe('animation palette mapping', () => {
 
     expect(mapping.image.pixels[0]).toBe(0);
     expect(Array.from(mapping.image.pixels.slice(1))).not.toContain(0);
+  });
+
+  it('renders indexed image to raw RGBA image data with transparent alpha and NES colors', () => {
+    const palettes = createDefaultNesPaletteSet();
+    const image: IndexedImage = {
+      width: 2,
+      height: 1,
+      pixels: Uint8Array.from([0, 1]),
+      colors: [null, NES_MASTER_PALETTE[palettes[0][1]] ?? null],
+      transparentIndex: 0,
+      colorCount: 2,
+    };
+    const raw = renderAnimationToRawImageData(image, palettes, 0);
+
+    expect(raw.width).toBe(2);
+    expect(raw.height).toBe(1);
+    // Pixel 0 is transparent: alpha 0
+    expect(raw.data[3]).toBe(0);
+    // Pixel 1 is opaque: alpha 255
+    expect(raw.data[7]).toBe(255);
+    const expectedColor = NES_MASTER_PALETTE[palettes[0][1]];
+    expect(raw.data[4]).toBe(expectedColor?.red);
+    expect(raw.data[5]).toBe(expectedColor?.green);
+    expect(raw.data[6]).toBe(expectedColor?.blue);
   });
 });

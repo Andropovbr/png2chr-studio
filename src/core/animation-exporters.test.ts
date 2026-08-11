@@ -164,7 +164,11 @@ describe('animation exporters', () => {
     const c = generateCAnimationExport(multiModel);
     const asm = generateCa65AnimationExport(multiModel);
     const json = JSON.parse(serializeAnimationMetadata(multiModel)) as {
-      animations: { name: string; playback: string; flip_h: boolean }[];
+      animations: {
+        name: string;
+        playback: string;
+        allow_horizontal_flip: boolean;
+      }[];
     };
 
     expect(json.animations).toHaveLength(3);
@@ -176,7 +180,7 @@ describe('animation exporters', () => {
       origin_x: 0,
       origin_y: 0,
       playback: 'loop',
-      flip_h: false,
+      allow_horizontal_flip: false,
     });
     expect(json.animations[2]).toMatchObject({
       name: 'attack',
@@ -184,19 +188,19 @@ describe('animation exporters', () => {
       frame_width: 8,
       frame_height: 8,
       playback: 'once',
-      flip_h: true,
+      allow_horizontal_flip: true,
     });
 
-    expect(c.header).toContain('SOLDIER_SOLDIER_ANIM_IDLE = 0,');
-    expect(c.header).toContain('SOLDIER_SOLDIER_ANIM_WALK = 1,');
-    expect(c.header).toContain('SOLDIER_SOLDIER_ANIM_ATTACK = 2,');
-    expect(c.header).toContain('} SoldierSoldierAnimationId;');
+    expect(c.header).toContain('SOLDIER_ANIM_IDLE = 0,');
+    expect(c.header).toContain('SOLDIER_ANIM_WALK = 1,');
+    expect(c.header).toContain('SOLDIER_ANIM_ATTACK = 2,');
+    expect(c.header).toContain('} SoldierAnimationId;');
     expect(c.source).toContain('{ 0, 1, 1, 1, 0, 0x00 }'); // idle (frameOffset=0, count=1, w=1, h=1, loop=0, flags=0)
     expect(c.source).toContain('{ 2, 1, 1, 1, 1, 0x40 }'); // attack (frameOffset=2, count=1, w=1, h=1, once=1, flags=0x40)
 
-    expect(asm.include).toContain('SOLDIER_SOLDIER_ANIM_IDLE = 0');
-    expect(asm.include).toContain('SOLDIER_SOLDIER_ANIM_WALK = 1');
-    expect(asm.include).toContain('SOLDIER_SOLDIER_ANIM_ATTACK = 2');
+    expect(asm.include).toContain('SOLDIER_ANIM_IDLE = 0');
+    expect(asm.include).toContain('SOLDIER_ANIM_WALK = 1');
+    expect(asm.include).toContain('SOLDIER_ANIM_ATTACK = 2');
   });
 
   it('generates two exports that can coexist without symbol or guard collisions', () => {
@@ -223,5 +227,166 @@ describe('animation exporters', () => {
     expect(movement.header).toContain(
       '#ifndef PNG2CHR_ANIMATION_FORMAT_CONSTANTS',
     );
+  });
+
+  it('exports allow flip constants in C and Assembly and excludes root origin from JSON', () => {
+    const pixels = new Uint8Array(64);
+    const image: IndexedImage = {
+      width: 8,
+      height: 8,
+      pixels,
+      colors: [null, { red: 255, green: 255, blue: 255 }],
+      transparentIndex: 0,
+      colorCount: 2,
+    };
+    const mod = buildAnimationProjectModel({
+      name: 'soldier',
+      symbolPrefix: 'soldier',
+      sourceImageName: 'soldier.png',
+      image,
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          playback: 'loop',
+          allowHorizontalFlip: true,
+          allowVerticalFlip: false,
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+      ],
+    });
+
+    const c = generateCAnimationExport(mod);
+    const asm = generateCa65AnimationExport(mod);
+    const jsonStr = serializeAnimationMetadata(mod);
+    const json = JSON.parse(jsonStr) as Record<string, unknown>;
+
+    expect(c.header).toContain('#define ANIMATION_ALLOW_H_FLIP 0x40');
+    expect(c.header).toContain('#define ANIMATION_ALLOW_V_FLIP 0x80');
+    expect(c.header).not.toContain('#define ANIMATION_FLIP_H');
+    expect(c.header).not.toContain('#define ANIMATION_FLIP_V');
+
+    expect(asm.include).toContain('ANIMATION_ALLOW_H_FLIP = $40');
+    expect(asm.include).toContain('ANIMATION_ALLOW_V_FLIP = $80');
+    expect(asm.include).not.toContain('ANIMATION_FLIP_H =');
+    expect(asm.include).not.toContain('ANIMATION_FLIP_V =');
+
+    expect(json).not.toHaveProperty('origin');
+    const anim = (json.animations as Record<string, unknown>[])[0];
+    expect(anim).toMatchObject({
+      allow_horizontal_flip: true,
+      allow_vertical_flip: false,
+    });
+  });
+
+  it('serializes default_palette_index, color_reduction, and animation/frame palette indices to JSON, C, and CA65', () => {
+    const pixels = new Uint8Array(64);
+    pixels[0] = 1;
+    const image: IndexedImage = {
+      width: 8,
+      height: 8,
+      pixels,
+      colors: [null, { red: 255, green: 255, blue: 255 }],
+      transparentIndex: 0,
+      colorCount: 2,
+    };
+
+    const mod = buildAnimationProjectModel({
+      name: 'soldier',
+      symbolPrefix: 'soldier',
+      defaultPaletteIndex: 1,
+      quantizationMode: 'median-cut',
+      animations: [
+        {
+          name: 'idle',
+          image,
+          paletteIndex: 2,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0, 0],
+          frameDuration: 8,
+          framePalettes: [null, 3],
+        },
+      ],
+    });
+
+    const jsonStr = serializeAnimationMetadata(mod);
+    const json = JSON.parse(jsonStr) as Record<string, unknown>;
+
+    expect(json).toMatchObject({
+      default_palette_index: 1,
+      color_reduction: 'median-cut',
+    });
+
+    const anim = (json.animations as Record<string, unknown>[])[0];
+    expect(anim?.palette_index).toBe(2);
+    const frames = anim?.frames as Record<string, unknown>[];
+    expect(frames[0]?.palette_index).toBeNull();
+    expect(frames[1]?.palette_index).toBe(3);
+
+    // C export should have fully resolved attributes for sprites:
+    // Frame 0 uses anim palette 2 -> attributes = 2
+    // Frame 1 uses frame palette override 3 -> attributes = 3
+    const c = generateCAnimationExport(mod);
+    expect(c.source).toContain('{ 0, 0, 0x00, 0x02 }');
+    expect(c.source).toContain('{ 0, 0, 0x00, 0x03 }');
+
+    // CA65 export
+    const asm = generateCa65AnimationExport(mod);
+    expect(asm.source).toContain('.byte $00, $00, $00, $02');
+    expect(asm.source).toContain('.byte $00, $00, $00, $03');
+  });
+
+  it('exports global color_reduction at root and omits quantization_mode from animations', () => {
+    const pixels = new Uint8Array(64);
+    pixels[0] = 1;
+    const image: IndexedImage = {
+      width: 8,
+      height: 8,
+      pixels,
+      colors: [null, { red: 255, green: 255, blue: 255 }],
+      transparentIndex: 0,
+      colorCount: 2,
+    };
+
+    const mod = buildAnimationProjectModel({
+      name: 'soldier',
+      quantizationMode: 'k-means',
+      animations: [
+        {
+          name: 'idle',
+          image,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDuration: 10,
+        },
+        {
+          name: 'walk',
+          image,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDuration: 8,
+        },
+      ],
+    });
+
+    const jsonStr = serializeAnimationMetadata(mod);
+    const json = JSON.parse(jsonStr) as Record<string, unknown>;
+
+    // Verifies color_reduction at root
+    expect(json.color_reduction).toBe('k-means');
+
+    // Verifies quantization_mode is NOT present inside animations[]
+    const animations = json.animations as Record<string, unknown>[];
+    expect(animations.length).toBe(2);
+    animations.forEach((anim) => {
+      expect(anim).not.toHaveProperty('quantization_mode');
+      expect(anim).not.toHaveProperty('quantizationMode');
+      expect(anim).not.toHaveProperty('color_reduction');
+    });
   });
 });

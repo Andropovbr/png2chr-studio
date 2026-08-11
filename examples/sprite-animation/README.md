@@ -1,6 +1,6 @@
 # Sprite animation export example
 
-This directory illustrates the files produced by animation mode for an asset configured with multiple animations (`idle`, `movement_right`, `movement_left`). Each animation can have its own source PNG spritesheet, frame dimensions, origin, playback mode (`loop` or `once`), and flip flags.
+This directory illustrates the files produced by animation mode for an asset configured with multiple animations (`idle`, `movement_right`, `movement_left`). Color reduction is configured globally for the asset (`nearest`, `median-cut`, `k-means`). Palettes resolve hierarchically from asset default (`default_palette_index`), animation palette (`palette_index`), and per-frame overrides (`frames[].palette_index`). Each animation has its own source PNG spritesheet, frame dimensions, origin, playback mode (`loop` or `once`), and directional flip capability (`allow_horizontal_flip`, `allow_vertical_flip`).
 
 The example uses `hero` as its symbol prefix and `animation` as its asset name, producing the shared `hero_animation` filename and symbol base. The example starts with a destination CHR containing two tiles. New tiles are appended at indexes `$02` and `$03`. Repeated artwork reuses those indexes, and flipped tiles demonstrate the NES horizontal (`$40`) and vertical (`$80`) OAM attribute flags. Transparent 8x8 cells are omitted from metasprite definitions. Individual frame durations are measured in game frames.
 

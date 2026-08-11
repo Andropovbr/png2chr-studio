@@ -6,7 +6,11 @@ import type { NesPaletteSet } from '../core/nes-palette';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
-import type { QuantizationSettings } from '../core/quantization-settings';
+import type {
+  DitheringMode,
+  QuantizationMode,
+  QuantizationSettings,
+} from '../core/quantization-settings';
 
 export interface DisplayError {
   readonly key: TranslationKey;
@@ -28,22 +32,29 @@ export interface AnimationItemSetting {
   readonly id: string;
   readonly name: string;
   readonly source: AnimationSourceData | null;
+  readonly paletteIndex?: number | null;
   readonly frameWidth: number;
   readonly frameHeight: number;
   readonly originX: number;
   readonly originY: number;
   readonly playback: AnimationPlayback;
-  readonly flipH: boolean;
-  readonly flipV: boolean;
+  readonly allowHorizontalFlip: boolean;
+  readonly allowVerticalFlip: boolean;
+  readonly flipH?: boolean;
+  readonly flipV?: boolean;
   readonly defaultDuration: number;
   readonly frameIndices: readonly number[];
   readonly frameDurations: readonly number[];
+  readonly framePalettes?: readonly (number | null)[];
   readonly collapsed?: boolean;
 }
 
 export interface AnimationSettings {
   readonly name: string;
   readonly symbolPrefix: string;
+  readonly defaultPaletteIndex: number;
+  readonly quantizationMode: QuantizationMode;
+  readonly ditheringMode: DitheringMode;
   readonly animations: readonly AnimationItemSetting[];
   readonly flipDeduplication: boolean;
   readonly spritePalette: number;
@@ -51,6 +62,7 @@ export interface AnimationSettings {
   readonly colorIndices: Uint8Array;
   readonly destinationChrName: string | null;
   readonly destinationChr: Uint8Array;
+  readonly mappingCollapsed?: boolean;
 }
 
 export interface ProjectView {

@@ -524,6 +524,72 @@ select {
   margin: 0;
 }
 
+.animation-reduction-section {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.55rem;
+  padding: 0.75rem;
+  background: #0b1016;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.animation-reduction-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  user-select: none;
+}
+
+.animation-reduction-header strong {
+  font-size: 0.95rem;
+}
+
+.animation-reduction-summary {
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+
+.animation-reduction-body {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+.animation-reduction-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.65rem;
+}
+
+.animation-reduction-card {
+  padding: 0.45rem;
+  border-radius: 0.45rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.animation-reduction-card strong {
+  font-size: 0.82rem;
+}
+
+.animation-reduction-preview-canvas {
+  width: 100%;
+  max-height: 5.5rem;
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 0.25rem;
+}
+
+.animation-reduction-selected-label {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .animation-card-split {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
@@ -542,35 +608,91 @@ select {
   margin: 0 0 0.6rem;
 }
 
+.animation-reduction-ref-container {
+  display: flex;
+  margin-bottom: 0.75rem;
+}
+
+.animation-reduction-ref-container select {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  background: #0f161e;
+  color: inherit;
+}
+
+.animation-default-palette-group {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+}
+
+.animation-default-palette-group select {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  background: #0f161e;
+  color: inherit;
+}
+
 .animation-order-group ol {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.5rem;
   margin: 0;
-  padding-left: 1.6rem;
+  padding: 0;
+  list-style: none;
 }
 
 .animation-order-group li {
-  display: grid;
-  grid-template-columns: minmax(5rem, 1fr) minmax(10rem, 0.9fr) auto;
+  display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding-left: 0.2rem;
+  gap: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  background: #080c10;
+  border: 1px solid rgb(255 255 255 / 6%);
+  border-radius: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.animation-frame-thumbnail {
+  max-width: 2.2rem;
+  max-height: 2.2rem;
+  image-rendering: pixelated;
+  background: #000;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+}
+
+.animation-frame-order-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  min-width: 4rem;
+}
+
+.animation-frame-palette-select select {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  color: inherit;
+  background: #0f161e;
 }
 
 .animation-frame-duration {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.45rem;
+  gap: 0.35rem;
   color: var(--muted);
   font-size: 0.75rem;
+  margin-left: auto;
 }
 
 .animation-frame-duration input {
-  width: 4.5rem;
+  width: 3.5rem;
   border: 1px solid var(--panel-border);
   border-radius: 0.35rem;
-  padding: 0.35rem;
+  padding: 0.3rem;
   color: inherit;
   background: #0f161e;
 }
@@ -594,6 +716,36 @@ select {
   opacity: 0.35;
 }
 
+.animation-duration-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.animation-apply-all-btn {
+  font-size: 0.8rem;
+  padding: 0.45rem 0.75rem;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.animation-mirror-variants {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.animation-mirror-variants legend {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0 0.4rem;
+}
+
 .animation-preview-stage {
   display: grid;
   justify-items: center;
@@ -612,9 +764,42 @@ select {
   border-radius: 0.35rem;
 }
 
+.animation-preview-variant-controls,
+.animation-preview-color-controls {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+  align-items: center;
+  margin: 0.15rem 0;
+}
+
+.animation-preview-variant-controls .button,
+.animation-preview-color-controls .button {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+}
+
+.animation-preview-variant-controls .button.is-selected,
+.animation-preview-color-controls .button.is-selected {
+  background: var(--accent);
+  color: #0d1217;
+  font-weight: 600;
+}
+
 .animation-preview-controls {
   display: flex;
   gap: 0.55rem;
+}
+
+.animation-mapping-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  user-select: none;
+}
+
+.animation-mapping-header h2 {
+  margin: 0;
 }
 
 .animation-mapping-group + .animation-mapping-group,

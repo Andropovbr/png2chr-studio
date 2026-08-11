@@ -23,7 +23,7 @@ import {
   createEmptyCollisionMap,
   encodeCollisionMap,
 } from './core/collision-encoder';
-import { analyzeImage } from './core/image-analysis';
+import { analyzeImage, imageHasTransparency } from './core/image-analysis';
 import { extractNromChr, InesRomError } from './core/ines-rom';
 import {
   createDefaultNesPaletteSet,
@@ -56,6 +56,7 @@ import {
   QUANTIZATION_MODES,
   loadQuantizationSettings,
   saveQuantizationSettings,
+  type QuantizationMode,
   type QuantizationSettings,
 } from './core/quantization-settings';
 import { getLocale, subscribeToLocale, t } from './i18n';
@@ -104,31 +105,37 @@ if (appElement === null) {
 }
 const app: HTMLElement = appElement;
 
-let nextAnimationIdCounter = 1;
 function generateAnimationId(): string {
-  return `anim_${String(nextAnimationIdCounter++)}_${Math.random().toString(36).slice(2, 6)}`;
+  return `anim-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function createDefaultAnimationSettings(): AnimationSettings {
   const initialId = generateAnimationId();
   return {
     name: 'soldier',
-    symbolPrefix: 'asset',
+    symbolPrefix: 'soldier',
+    defaultPaletteIndex: 0,
+    quantizationMode: 'median-cut',
+    ditheringMode: 'none',
     animations: [
       {
         id: initialId,
         name: 'idle',
         source: null,
+        paletteIndex: null,
         frameWidth: 16,
         frameHeight: 16,
         originX: 0,
         originY: 0,
         playback: 'loop',
+        allowHorizontalFlip: false,
+        allowVerticalFlip: false,
         flipH: false,
         flipV: false,
         defaultDuration: 12,
         frameIndices: [],
         frameDurations: [],
+        framePalettes: [],
         collapsed: false,
       },
     ],
@@ -138,6 +145,7 @@ function createDefaultAnimationSettings(): AnimationSettings {
     colorIndices: new Uint8Array(),
     destinationChrName: null,
     destinationChr: new Uint8Array(),
+    mappingCollapsed: true,
   };
 }
 
@@ -201,13 +209,6 @@ function assignmentsForImage(
     image.height,
     paletteRegionSize(mode, image),
   );
-}
-
-function imageHasTransparency(image: ImageData): boolean {
-  for (let offset = 3; offset < image.data.length; offset += 4) {
-    if (image.data[offset] === 0) return true;
-  }
-  return false;
 }
 
 function quantizationColorLimit(mode: ProjectMode, image: ImageData): number {
@@ -332,6 +333,25 @@ async function changeQuantizationSettings(
     let animation = project.animation;
     let mappedImage: IndexedImage;
     if (project.mode === 'animation') {
+      const updatedAnimations = project.animation.animations.map((anim) => {
+        if (anim.source === null) return anim;
+        const reindexed = quantizePngSource(
+          anim.source.sourceImage,
+          'animation',
+          {
+            quantizationMode: project.animation.quantizationMode,
+            ditheringMode: project.animation.ditheringMode,
+            colorDistanceMode: settings.colorDistanceMode,
+          },
+        );
+        return {
+          ...anim,
+          source: {
+            ...anim.source,
+            indexedImage: reindexed,
+          },
+        };
+      });
       const mapping = mapAnimationImageToNesPalette(
         indexedImage,
         project.paletteSet,
@@ -344,6 +364,7 @@ async function changeQuantizationSettings(
       assignments = mapping.assignments;
       animation = {
         ...project.animation,
+        animations: updatedAnimations,
         colorIndices: mapping.colorIndices,
       };
     } else {
@@ -466,17 +487,21 @@ function addAnimation(): void {
   const newAnim: AnimationItemSetting = {
     id: newId,
     name: `anim_${String(count)}`,
-    source: lastAnim?.source ?? null,
+    source: null,
+    paletteIndex: null,
     frameWidth: lastAnim?.frameWidth ?? 16,
     frameHeight: lastAnim?.frameHeight ?? 16,
     originX: lastAnim?.originX ?? 0,
     originY: lastAnim?.originY ?? 0,
     playback: 'loop',
+    allowHorizontalFlip: false,
+    allowVerticalFlip: false,
     flipH: false,
     flipV: false,
     defaultDuration: 12,
     frameIndices: [],
     frameDurations: [],
+    framePalettes: [],
     collapsed: false,
   };
   project = {
@@ -502,6 +527,7 @@ function duplicateAnimation(animId: string): void {
     name: `${original.name}_copy`,
     frameIndices: [...original.frameIndices],
     frameDurations: [...original.frameDurations],
+    framePalettes: [...(original.framePalettes ?? [])],
     collapsed: false,
   };
   const list = [...project.animation.animations];
@@ -561,17 +587,53 @@ function updateAnimation(
   render();
 }
 
+function setGlobalAnimationQuantizationMode(mode: QuantizationMode): void {
+  const animations = project.animation.animations.map((anim) => {
+    if (anim.source === null) {
+      return {
+        ...anim,
+        quantizationMode: mode,
+      };
+    }
+    const reindexed = quantizePngSource(anim.source.sourceImage, 'animation', {
+      quantizationMode: mode,
+      ditheringMode: project.animation.ditheringMode,
+      colorDistanceMode: project.quantizationSettings.colorDistanceMode,
+    });
+    return {
+      ...anim,
+      quantizationMode: mode,
+      source: {
+        ...anim.source,
+        indexedImage: reindexed,
+      },
+    };
+  });
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      quantizationMode: mode,
+      animations,
+    },
+    error: null,
+  };
+  render();
+}
+
 async function loadAnimationSourceFile(
   animId: string,
   file: File,
 ): Promise<void> {
   try {
     const imageData = await decodeImage(file);
-    const indexedImage = quantizePngSource(
-      imageData,
-      'animation',
-      project.quantizationSettings,
-    );
+    const quantMode = project.animation.quantizationMode;
+    const dithMode = project.animation.ditheringMode;
+    const indexedImage = quantizePngSource(imageData, 'animation', {
+      quantizationMode: quantMode,
+      ditheringMode: dithMode,
+      colorDistanceMode: project.quantizationSettings.colorDistanceMode,
+    });
     const source: AnimationSourceData = {
       fileName: file.name,
       sourceImage: imageData,
@@ -584,11 +646,18 @@ async function loadAnimationSourceFile(
       const totalFrames = columns * rows;
       const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
       const validDurations = anim.frameDurations.slice(0, validIndices.length);
+      const validPalettes = (anim.framePalettes ?? []).slice(
+        0,
+        validIndices.length,
+      );
       return {
         ...anim,
         source,
+        quantizationMode: quantMode,
+        ditheringMode: dithMode,
         frameIndices: validIndices,
         frameDurations: validDurations,
+        framePalettes: validPalettes,
       };
     });
     project = {
@@ -617,16 +686,21 @@ function toggleAnimationFrame(animId: string, frameIndex: number): void {
       const nextDurations = anim.frameDurations.filter(
         (_, i) => i !== existsIndex,
       );
+      const nextPalettes = (anim.framePalettes ?? []).filter(
+        (_, i) => i !== existsIndex,
+      );
       return {
         ...anim,
         frameIndices: nextFrames,
         frameDurations: nextDurations,
+        framePalettes: nextPalettes,
       };
     }
     return {
       ...anim,
       frameIndices: [...anim.frameIndices, frameIndex],
       frameDurations: [...anim.frameDurations, anim.defaultDuration],
+      framePalettes: [...(anim.framePalettes ?? []), null],
     };
   });
   project = {
@@ -654,6 +728,10 @@ function moveAnimationFrame(
     }
     const frames = [...anim.frameIndices];
     const durations = [...anim.frameDurations];
+    const palettes = [...(anim.framePalettes ?? [])];
+    while (palettes.length < frames.length) {
+      palettes.push(null);
+    }
     [frames[current], frames[target]] = [
       frames[target] ?? 0,
       frames[current] ?? 0,
@@ -662,10 +740,15 @@ function moveAnimationFrame(
       durations[target] ?? anim.defaultDuration,
       durations[current] ?? anim.defaultDuration,
     ];
+    [palettes[current], palettes[target]] = [
+      palettes[target] ?? null,
+      palettes[current] ?? null,
+    ];
     return {
       ...anim,
       frameIndices: frames,
       frameDurations: durations,
+      framePalettes: palettes,
     };
   });
   project = {
@@ -704,6 +787,53 @@ function setAnimationFrameDuration(
   render();
 }
 
+function setAnimationFramePalette(
+  animId: string,
+  frameOrderIndex: number,
+  paletteIndex: number | null,
+): void {
+  const animations = project.animation.animations.map((anim) => {
+    if (anim.id !== animId) return anim;
+    const framePalettes = [...(anim.framePalettes ?? [])];
+    while (framePalettes.length < anim.frameIndices.length) {
+      framePalettes.push(null);
+    }
+    framePalettes[frameOrderIndex] = paletteIndex;
+    return {
+      ...anim,
+      framePalettes,
+    };
+  });
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations,
+    },
+    error: null,
+  };
+  render();
+}
+
+function applyDefaultDurationToAll(animId: string): void {
+  const animations = project.animation.animations.map((anim) => {
+    if (anim.id !== animId) return anim;
+    const durations = anim.frameIndices.map(() => anim.defaultDuration);
+    return {
+      ...anim,
+      frameDurations: durations,
+    };
+  });
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations,
+    },
+  };
+  render();
+}
+
 function removeFrameFromAnimation(animId: string, frameIndex: number): void {
   const animations = project.animation.animations.map((anim) => {
     if (anim.id !== animId) return anim;
@@ -711,10 +841,14 @@ function removeFrameFromAnimation(animId: string, frameIndex: number): void {
     if (order < 0) return anim;
     const frameIndices = anim.frameIndices.filter((_, i) => i !== order);
     const frameDurations = anim.frameDurations.filter((_, i) => i !== order);
+    const framePalettes = (anim.framePalettes ?? []).filter(
+      (_, i) => i !== order,
+    );
     return {
       ...anim,
       frameIndices,
       frameDurations,
+      framePalettes,
     };
   });
   project = {
@@ -762,28 +896,25 @@ function renderAnimationWorkspace(): void {
     const definitions: AnimationDefinitionInput[] = [];
     for (const anim of project.animation.animations) {
       if (anim.source !== null && anim.frameIndices.length > 0) {
-        const paletteMapping = mapAnimationImageToNesPalette(
-          anim.source.indexedImage,
-          project.paletteSet,
-          project.animation.spritePalette,
-          TILESET_PALETTE_REGION_SIZE,
-          undefined,
-          project.quantizationSettings.colorDistanceMode,
-        );
         definitions.push({
           name: anim.name,
           sourceImageName: anim.source.fileName,
-          image: paletteMapping.image,
+          image: anim.source.indexedImage,
+          paletteIndex: anim.paletteIndex ?? null,
+          quantizationMode: project.animation.quantizationMode,
           frameWidth: anim.frameWidth,
           frameHeight: anim.frameHeight,
           originX: anim.originX,
           originY: anim.originY,
           playback: anim.playback,
-          flipH: anim.flipH,
-          flipV: anim.flipV,
+          allowHorizontalFlip: anim.allowHorizontalFlip,
+          allowVerticalFlip: anim.allowVerticalFlip,
+          flipH: anim.allowHorizontalFlip,
+          flipV: anim.allowVerticalFlip,
           frameIndices: anim.frameIndices,
           frameDuration: anim.defaultDuration,
           frameDurations: anim.frameDurations,
+          framePalettes: anim.framePalettes,
         });
       }
     }
@@ -793,6 +924,8 @@ function renderAnimationWorkspace(): void {
         name: project.animation.name,
         symbolPrefix: project.animation.symbolPrefix,
         animations: definitions,
+        defaultPaletteIndex: project.animation.defaultPaletteIndex,
+        quantizationMode: project.animation.quantizationMode,
         baseChr: project.animation.destinationChr,
         capacityTiles: 256,
         flipDeduplication: project.animation.flipDeduplication,
@@ -809,14 +942,37 @@ function renderAnimationWorkspace(): void {
     model,
     modelError,
     paletteSet: project.paletteSet,
+    colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     onSettingsChange: (animation: AnimationSettings) => {
       project = { ...project, animation, error: null };
+      render();
+    },
+    onGlobalQuantizationModeChange: setGlobalAnimationQuantizationMode,
+    onDefaultPaletteIndexChange: (defaultPaletteIndex: number) => {
+      project = {
+        ...project,
+        animation: {
+          ...project.animation,
+          defaultPaletteIndex,
+        },
+        error: null,
+      };
       render();
     },
     onAddAnimation: addAnimation,
     onDuplicateAnimation: duplicateAnimation,
     onRemoveAnimation: removeAnimation,
     onToggleAnimationCollapse: toggleAnimationCollapse,
+    onToggleMappingCollapse: () => {
+      project = {
+        ...project,
+        animation: {
+          ...project.animation,
+          mappingCollapsed: !(project.animation.mappingCollapsed ?? true),
+        },
+      };
+      render();
+    },
     onUpdateAnimation: updateAnimation,
     onAnimationSourceFile: (animId: string, file: File) => {
       void loadAnimationSourceFile(animId, file);
@@ -824,6 +980,8 @@ function renderAnimationWorkspace(): void {
     onFrameToggle: toggleAnimationFrame,
     onFrameMove: moveAnimationFrame,
     onFrameDurationChange: setAnimationFrameDuration,
+    onFramePaletteChange: setAnimationFramePalette,
+    onApplyDefaultDurationToAll: applyDefaultDurationToAll,
     onFrameRemoveFromAnimation: removeFrameFromAnimation,
     onSpritePaletteSelectionChange: (
       paletteIndex: number,
@@ -879,11 +1037,7 @@ function renderAnimationWorkspace(): void {
     onDownloadText: downloadText,
   };
 
-  workspace.append(
-    createProjectImageInput(),
-    createProjectQuantizationPanel(),
-    ...createAnimationEditor(editorOptions),
-  );
+  workspace.append(...createAnimationEditor(editorOptions));
   if (project.error !== null) {
     const error = document.createElement('section');
     error.className = 'panel error-panel animation-error-panel';
@@ -1350,16 +1504,20 @@ async function loadFile(file: File): Promise<void> {
                   id: generateAnimationId(),
                   name: 'idle',
                   source: sourceData,
+                  paletteIndex: null,
                   frameWidth: 16,
                   frameHeight: 16,
                   originX: 0,
                   originY: 0,
                   playback: 'loop',
+                  allowHorizontalFlip: false,
+                  allowVerticalFlip: false,
                   flipH: false,
                   flipV: false,
                   defaultDuration: 12,
                   frameIndices: [],
                   frameDurations: [],
+                  framePalettes: [],
                   collapsed: false,
                 },
               ]

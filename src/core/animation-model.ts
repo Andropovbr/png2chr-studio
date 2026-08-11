@@ -6,6 +6,7 @@ import {
   normalizeCIdentifier,
 } from './c-identifier';
 import { tilePixelKey, transformedTileKey } from './tile-deduplication';
+import type { QuantizationMode } from './quantization-settings';
 import type { IndexedImage, Tile } from './types';
 
 export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
@@ -26,6 +27,8 @@ export interface AnimationDefinitionInput {
   readonly name: string;
   readonly sourceImageName?: string;
   readonly image?: IndexedImage;
+  readonly paletteIndex?: number | null;
+  readonly quantizationMode?: QuantizationMode;
   readonly frameWidth?: number;
   readonly frameHeight?: number;
   readonly originX?: number;
@@ -33,7 +36,10 @@ export interface AnimationDefinitionInput {
   readonly frameIndices: readonly number[];
   readonly frameDuration: number;
   readonly frameDurations?: readonly number[];
+  readonly framePalettes?: readonly (number | null)[];
   readonly playback?: AnimationPlayback;
+  readonly allowHorizontalFlip?: boolean;
+  readonly allowVerticalFlip?: boolean;
   readonly flipH?: boolean;
   readonly flipV?: boolean;
   readonly category?: AnimationCategory;
@@ -46,6 +52,8 @@ export interface BuildAnimationModelOptions {
   readonly symbolPrefix?: string;
   readonly sourceImageName?: string;
   readonly image?: IndexedImage;
+  readonly defaultPaletteIndex?: number;
+  readonly quantizationMode?: QuantizationMode;
   readonly frameWidth?: number;
   readonly frameHeight?: number;
   readonly originX?: number;
@@ -76,6 +84,8 @@ export interface AnimationFrameModel {
   readonly sourceX: number;
   readonly sourceY: number;
   readonly duration: number;
+  readonly paletteIndex?: number | null;
+  readonly effectivePalette: number;
   readonly width: number;
   readonly height: number;
   readonly omittedTileCount: number;
@@ -86,8 +96,13 @@ export interface AnimationModel {
   readonly name: string;
   readonly sourceFile: string;
   readonly playback: AnimationPlayback;
+  readonly allowHorizontalFlip: boolean;
+  readonly allowVerticalFlip: boolean;
   readonly flipH: boolean;
   readonly flipV: boolean;
+  readonly paletteIndex?: number | null;
+  readonly effectivePalette: number;
+  readonly quantizationMode?: QuantizationMode;
   readonly defaultFrameDuration: number;
   readonly originX: number;
   readonly originY: number;
@@ -119,6 +134,8 @@ export interface AnimationProjectModel {
   readonly name: string;
   readonly symbolPrefix: string;
   readonly symbolBase: string;
+  readonly defaultPaletteIndex: number;
+  readonly colorReduction?: QuantizationMode;
   readonly source?: {
     readonly image: string;
     readonly imageWidth: number;
@@ -280,7 +297,10 @@ export function buildAnimationProjectModel(
   const symbolPrefix = normalizeCIdentifier(
     options.symbolPrefix ?? defaultSymbolPrefix(fallbackSourceImageName),
   );
-  const symbolBase = combineCIdentifiers(symbolPrefix, options.name);
+  const symbolBase =
+    symbolPrefix !== normalizeCIdentifier(options.name)
+      ? combineCIdentifiers(symbolPrefix, options.name)
+      : normalizeCIdentifier(options.name);
   if (
     symbolPrefix.length === 0 ||
     symbolBase.length === 0 ||
@@ -452,8 +472,10 @@ export function buildAnimationProjectModel(
   let newTileCount = 0;
 
   const baseAnimations = options.animations.map((animation): AnimationModel => {
-    const animFlipH = animation.flipH === true;
-    const animFlipV = animation.flipV === true;
+    const allowHorizontalFlip =
+      animation.allowHorizontalFlip ?? animation.flipH === true;
+    const allowVerticalFlip =
+      animation.allowVerticalFlip ?? animation.flipV === true;
     const playback = animation.playback ?? 'loop';
     const animImage = animation.image ?? options.image;
     if (animImage === undefined) {
@@ -471,10 +493,19 @@ export function buildAnimationProjectModel(
       options.sourceImageName ??
       fallbackSourceImageName;
 
+    const defaultPaletteIndex =
+      options.defaultPaletteIndex ?? options.spritePalette ?? 0;
+    const animPaletteIndex = animation.paletteIndex ?? null;
+    const animEffectivePalette = animPaletteIndex ?? defaultPaletteIndex;
+
     const frames = animation.frameIndices.map(
       (sourceIndex, frameOrder): AnimationFrameModel => {
         const sourceX = (sourceIndex % animColumns) * animFrameWidth;
         const sourceY = Math.floor(sourceIndex / animColumns) * animFrameHeight;
+        const framePaletteOverride =
+          animation.framePalettes?.[frameOrder] ?? null;
+        const frameEffectivePalette =
+          framePaletteOverride ?? animPaletteIndex ?? defaultPaletteIndex;
         const sprites: MetaspriteTile[] = [];
         let omittedTileCount = 0;
         for (let tileRow = 0; tileRow < animHeightTiles; tileRow += 1) {
@@ -525,30 +556,23 @@ export function buildAnimationProjectModel(
               });
             }
 
-            const finalCol = animFlipH
-              ? animWidthTiles - 1 - tileColumn
-              : tileColumn;
-            const finalRow = animFlipV
-              ? animHeightTiles - 1 - tileRow
-              : tileRow;
-            const finalFlipAttributes =
-              flipAttributes ^
-              (animFlipH ? NES_SPRITE_FLIP_HORIZONTAL : 0) ^
-              (animFlipV ? NES_SPRITE_FLIP_VERTICAL : 0);
+            const finalFlipAttributes = flipAttributes;
+            const finalAttributes =
+              (finalFlipAttributes & ~0x03) | (frameEffectivePalette & 0x03);
 
             sprites.push({
-              x: finalCol * TILE_SIZE - animOriginX,
-              y: finalRow * TILE_SIZE - animOriginY,
+              x: tileColumn * TILE_SIZE - animOriginX,
+              y: tileRow * TILE_SIZE - animOriginY,
               tile: tileIndex,
-              attributes: spritePalette | finalFlipAttributes,
-              palette: spritePalette,
+              attributes: finalAttributes,
+              palette: frameEffectivePalette,
               horizontalFlip:
                 (finalFlipAttributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0,
               verticalFlip:
                 (finalFlipAttributes & NES_SPRITE_FLIP_VERTICAL) !== 0,
               reuse,
-              sourceTileColumn: finalCol,
-              sourceTileRow: finalRow,
+              sourceTileColumn: tileColumn,
+              sourceTileRow: tileRow,
             });
           }
         }
@@ -558,6 +582,8 @@ export function buildAnimationProjectModel(
           sourceY,
           duration:
             animation.frameDurations?.[frameOrder] ?? animation.frameDuration,
+          paletteIndex: framePaletteOverride,
+          effectivePalette: frameEffectivePalette,
           width: animFrameWidth,
           height: animFrameHeight,
           omittedTileCount,
@@ -569,8 +595,13 @@ export function buildAnimationProjectModel(
       name: animation.name,
       sourceFile,
       playback,
-      flipH: animFlipH,
-      flipV: animFlipV,
+      allowHorizontalFlip,
+      allowVerticalFlip,
+      flipH: allowHorizontalFlip,
+      flipV: allowVerticalFlip,
+      paletteIndex: animPaletteIndex,
+      effectivePalette: animEffectivePalette,
+      quantizationMode: animation.quantizationMode,
       category: animation.category,
       direction: animation.direction ?? 'none',
       generatedByHorizontalFlip: false,
@@ -636,6 +667,8 @@ export function buildAnimationProjectModel(
   const remainingTiles = capacityTiles - finalTileCount;
   const appendedTileStart = baseTiles.length;
   const output = options.chrOutputName ?? `${symbolBase}.chr`;
+  const defaultPaletteIndex =
+    options.defaultPaletteIndex ?? options.spritePalette ?? 0;
 
   const sourceProp =
     options.image && options.frameWidth && options.frameHeight
@@ -658,6 +691,8 @@ export function buildAnimationProjectModel(
     name: options.name,
     symbolPrefix,
     symbolBase,
+    defaultPaletteIndex,
+    colorReduction: options.quantizationMode,
     source: sourceProp,
     chr: {
       capacityTiles,
@@ -688,11 +723,16 @@ export interface DeserializedAnimationEntry {
   readonly originX: number;
   readonly originY: number;
   readonly playback: AnimationPlayback;
+  readonly allowHorizontalFlip: boolean;
+  readonly allowVerticalFlip: boolean;
   readonly flipH: boolean;
   readonly flipV: boolean;
+  readonly paletteIndex?: number | null;
+  readonly quantizationMode?: QuantizationMode;
   readonly defaultFrameDuration: number;
   readonly frameIndices: readonly number[];
   readonly frameDurations: readonly number[];
+  readonly framePalettes?: readonly (number | null)[];
 }
 
 export interface DeserializedAnimationProject {
@@ -701,6 +741,8 @@ export interface DeserializedAnimationProject {
   readonly name: string;
   readonly symbolPrefix: string;
   readonly symbolBase: string;
+  readonly defaultPaletteIndex: number;
+  readonly colorReduction?: QuantizationMode;
   readonly source?: {
     readonly image: string;
     readonly frameWidth: number;
@@ -714,12 +756,20 @@ interface RawFrameEntry {
   readonly source_index?: unknown;
   readonly sourceIndex?: unknown;
   readonly duration?: unknown;
+  readonly palette_index?: unknown;
+  readonly paletteIndex?: unknown;
 }
 
 interface RawAnimationEntry {
   readonly name?: unknown;
   readonly source_file?: unknown;
   readonly sourceFile?: unknown;
+  readonly palette_index?: unknown;
+  readonly paletteIndex?: unknown;
+  readonly quantization_mode?: unknown;
+  readonly quantizationMode?: unknown;
+  readonly color_reduction?: unknown;
+  readonly colorReduction?: unknown;
   readonly frame_width?: unknown;
   readonly frameWidth?: unknown;
   readonly width?: unknown;
@@ -731,6 +781,10 @@ interface RawAnimationEntry {
   readonly origin_y?: unknown;
   readonly originY?: unknown;
   readonly playback?: unknown;
+  readonly allow_horizontal_flip?: unknown;
+  readonly allowHorizontalFlip?: unknown;
+  readonly allow_vertical_flip?: unknown;
+  readonly allowVerticalFlip?: unknown;
   readonly flip_h?: unknown;
   readonly flipH?: unknown;
   readonly generated_by_horizontal_flip?: unknown;
@@ -762,6 +816,12 @@ interface RawMetadataProject {
   readonly symbolPrefix?: unknown;
   readonly symbol_base?: unknown;
   readonly symbolBase?: unknown;
+  readonly default_palette_index?: unknown;
+  readonly defaultPaletteIndex?: unknown;
+  readonly color_reduction?: unknown;
+  readonly colorReduction?: unknown;
+  readonly quantization_mode?: unknown;
+  readonly quantizationMode?: unknown;
   readonly source?: RawSourceMetadata;
   readonly origin?: RawOriginMetadata;
   readonly animations?: readonly RawAnimationEntry[];
@@ -789,8 +849,17 @@ export function deserializeAnimationMetadata(
   }
   const version = asNumber(raw.version, 1);
   const name = asString(raw.name, 'animation');
-  const symbolPrefix = asString(raw.symbol_prefix ?? raw.symbolPrefix, 'asset');
-  const symbolBase = asString(raw.symbol_base ?? raw.symbolBase, 'asset');
+  const symbolPrefix = asString(raw.symbol_prefix ?? raw.symbolPrefix, name);
+  const symbolBase = asString(raw.symbol_base ?? raw.symbolBase, name);
+  const defaultPaletteIndex = asNumber(
+    raw.default_palette_index ?? raw.defaultPaletteIndex,
+    0,
+  );
+  let colorReduction =
+    (raw.color_reduction as QuantizationMode | undefined) ??
+    (raw.colorReduction as QuantizationMode | undefined) ??
+    (raw.quantization_mode as QuantizationMode | undefined) ??
+    (raw.quantizationMode as QuantizationMode | undefined);
   const source = raw.source;
   const origin = raw.origin;
   const rawAnimations: readonly RawAnimationEntry[] = Array.isArray(
@@ -798,6 +867,20 @@ export function deserializeAnimationMetadata(
   )
     ? raw.animations
     : [];
+
+  if (colorReduction === undefined && rawAnimations.length > 0) {
+    for (const anim of rawAnimations) {
+      const animMode =
+        (anim.quantization_mode as QuantizationMode | undefined) ??
+        (anim.quantizationMode as QuantizationMode | undefined) ??
+        (anim.color_reduction as QuantizationMode | undefined) ??
+        (anim.colorReduction as QuantizationMode | undefined);
+      if (animMode !== undefined) {
+        colorReduction = animMode;
+        break;
+      }
+    }
+  }
 
   const defaultImage = asString(source?.image, 'sprites.png');
   const defaultFrameWidth = asNumber(
@@ -818,6 +901,12 @@ export function deserializeAnimationMetadata(
         anim.source_file ?? anim.sourceFile,
         defaultImage,
       );
+      const paletteIndex =
+        typeof anim.palette_index === 'number'
+          ? anim.palette_index
+          : typeof anim.paletteIndex === 'number'
+            ? anim.paletteIndex
+            : null;
       const frameWidth = asNumber(
         anim.frame_width ?? anim.frameWidth ?? anim.width,
         defaultFrameWidth,
@@ -830,11 +919,21 @@ export function deserializeAnimationMetadata(
       const originY = asNumber(anim.origin_y ?? anim.originY, defaultOriginY);
       const playback: AnimationPlayback =
         anim.playback === 'once' ? 'once' : 'loop';
-      const flipH = asBoolean(
-        anim.flip_h ?? anim.flipH ?? anim.generated_by_horizontal_flip,
+      const allowHorizontalFlip = asBoolean(
+        anim.allow_horizontal_flip ??
+          anim.allowHorizontalFlip ??
+          anim.flip_h ??
+          anim.flipH ??
+          anim.generated_by_horizontal_flip,
         false,
       );
-      const flipV = asBoolean(anim.flip_v ?? anim.flipV, false);
+      const allowVerticalFlip = asBoolean(
+        anim.allow_vertical_flip ??
+          anim.allowVerticalFlip ??
+          anim.flip_v ??
+          anim.flipV,
+        false,
+      );
       const defaultDuration = asNumber(
         anim.default_frame_duration ?? anim.defaultFrameDuration,
         12,
@@ -848,19 +947,35 @@ export function deserializeAnimationMetadata(
       const frameDurations: number[] = frames.map((f: RawFrameEntry) =>
         asNumber(f.duration, defaultDuration),
       );
+      const framePalettes: (number | null)[] = frames.map(
+        (f: RawFrameEntry) => {
+          const p = f.palette_index ?? f.paletteIndex;
+          return typeof p === 'number' ? p : null;
+        },
+      );
+      const quantizationMode =
+        (anim.quantization_mode as QuantizationMode | undefined) ??
+        (anim.quantizationMode as QuantizationMode | undefined) ??
+        (anim.color_reduction as QuantizationMode | undefined) ??
+        (anim.colorReduction as QuantizationMode | undefined);
       return {
         name: animName,
         sourceFile,
+        paletteIndex,
         frameWidth,
         frameHeight,
         originX,
         originY,
         playback,
-        flipH,
-        flipV,
+        allowHorizontalFlip,
+        allowVerticalFlip,
+        flipH: allowHorizontalFlip,
+        flipV: allowVerticalFlip,
+        quantizationMode: quantizationMode ?? colorReduction,
         defaultFrameDuration: defaultDuration,
         frameIndices,
         frameDurations,
+        framePalettes,
       };
     },
   );
@@ -871,6 +986,8 @@ export function deserializeAnimationMetadata(
     name,
     symbolPrefix,
     symbolBase,
+    defaultPaletteIndex,
+    colorReduction,
     source: source?.image
       ? {
           image: defaultImage,

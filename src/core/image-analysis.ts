@@ -27,3 +27,10 @@ export function analyzeImage(image: RawImageData): IndexedImage {
 
   return mapColors(image);
 }
+
+export function imageHasTransparency(image: RawImageData | ImageData): boolean {
+  for (let index = 3; index < image.data.length; index += 4) {
+    if (image.data[index] === 0) return true;
+  }
+  return false;
+}
