@@ -69,11 +69,16 @@ describe('animation exporters', () => {
     expect(first).toBe(second);
     expect(parsed).toMatchObject({
       format: 'png2chr-studio-animation',
-      version: 4,
+      version: 5,
       name: 'animation',
       symbol_prefix: 'hero',
       symbol_base: 'hero_animation',
+      pattern_table: 0,
+      destination_pattern_table: 0,
       chr: {
+        physical_capacity_tiles: 512,
+        pattern_table: 0,
+        pattern_table_capacity_tiles: 256,
         base_tile_count: 0,
         final_tile_count: 1,
         final_size_bytes: 8192,
@@ -102,10 +107,16 @@ describe('animation exporters', () => {
     expect(output.header).toContain('HERO_ANIMATION_ANIM_IDLE = 0,');
     expect(output.header).toContain('HERO_ANIMATION_ANIM_MOVEMENT = 1,');
     expect(output.header).toContain('} HeroAnimationAnimationId;');
+    expect(output.header).toContain(
+      '#define HERO_ANIMATION_SPRITE_PATTERN_TABLE 0',
+    );
     expect(output.source).toContain('{ 0, 0, 0x00, 0x00 }');
     expect(output.source).toContain('{ 0, 0, 0x00, 0x40 }');
     expect(output.source).toContain(
       'const uint8_t hero_animation_animation_count = 2;',
+    );
+    expect(output.source).toContain(
+      'const uint8_t hero_animation_sprite_pattern_table = 0;',
     );
     expect(output.estimatedRomBytes).toBe(31);
   });
@@ -119,10 +130,12 @@ describe('animation exporters', () => {
     expect(first.include).toContain('Sprite entry (4 bytes)');
     expect(first.include).toContain('HERO_ANIMATION_ANIM_IDLE = 0');
     expect(first.include).toContain('HERO_ANIMATION_ANIM_MOVEMENT = 1');
+    expect(first.include).toContain('HERO_ANIMATION_SPRITE_PATTERN_TABLE = 0');
     expect(first.source).toContain('.segment "RODATA"');
     expect(first.source).not.toContain('.include');
     expect(first.source).toContain('.byte $00, $00, $00, $40');
     expect(first.source).toContain('hero_animation_animation_count:');
+    expect(first.source).toContain('hero_animation_sprite_pattern_table:');
     expect(first.estimatedRomBytes).toBe(31);
   });
 
