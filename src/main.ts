@@ -865,7 +865,7 @@ function removeFrameFromAnimation(animId: string, frameIndex: number): void {
 async function loadAnimationDestination(file: File): Promise<void> {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (bytes.length === 0 || bytes.length % 16 !== 0 || bytes.length > 4096) {
+    if (bytes.length === 0 || bytes.length % 16 !== 0 || bytes.length > 8192) {
       throw new RangeError('Invalid animation destination CHR.');
     }
     project = {
@@ -927,7 +927,7 @@ function renderAnimationWorkspace(): void {
         defaultPaletteIndex: project.animation.defaultPaletteIndex,
         quantizationMode: project.animation.quantizationMode,
         baseChr: project.animation.destinationChr,
-        capacityTiles: 256,
+        capacityTiles: 512,
         flipDeduplication: project.animation.flipDeduplication,
         spritePalette: project.animation.spritePalette,
       });

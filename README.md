@@ -194,7 +194,7 @@ All four sprite palettes are visible in animation mode. Select any slot and repl
 
 Every selected frame is divided into 8x8 cells and represented as a metasprite. A fully empty cell (transparent/index 0) is omitted instead of consuming an OAM entry. Partially empty cells remain normal NES tiles. The origin is subtracted from each cell position, and every exported X/Y offset must fit an 8-bit signed value. The effective sprite palette occupies attribute bits 0-1.
 
-An optional destination `.chr` can be loaded before conversion. Its bytes and indexes are preserved. New tiles extracted across all animation sources are appended after the existing tiles, while exact matches reuse their absolute destination index or previously allocated tile index. With flip-aware reuse enabled, horizontal, vertical, and combined matches across any source PNG reuse the stored tile and set NES OAM attribute bits `$40`, `$80`, or `$C0`. The resulting sprite pattern table supports up to 256 tiles (4 KB pattern table capacity). The UI reports destination reuse, imported-frame reuse, new tiles, append start, final size, and remaining capacity.
+An optional destination `.chr` can be loaded before conversion. Its bytes and indexes are preserved. New tiles extracted across all animation sources are appended after the existing tiles, while exact matches reuse their absolute destination index or previously allocated tile index. With flip-aware reuse enabled, horizontal, vertical, and combined matches across any source PNG reuse the stored tile and set NES OAM attribute bits `$40`, `$80`, or `$C0`. The resulting sprite CHR supports up to 512 tiles (one 8 KB NES CHR-ROM bank). Tile indexes are exported as 16-bit values, and since the NES OAM holds an 8-bit tile index per 4 KB pattern table, a game that uses more than 256 sprite tiles must switch CHR banks at runtime. The UI reports destination reuse, imported-frame reuse, new tiles, append start, final size, and remaining capacity.
 
 The mapping preview (collapsible section, closed by default) shows each frame's final tile index, reuse source, orientation, OAM attributes, and omitted cells for each animation. Color reduction is configured globally for the asset (`nearest`, `median-cut`, `k-means`) with a reference animation selector and visual comparison cards. Animation mode exports:
 
@@ -214,9 +214,11 @@ The C and ca65 exports flatten the model into three ROM-friendly arrays:
 
 | Entry     | Bytes | Layout                                                                        |
 | --------- | ----: | ----------------------------------------------------------------------------- |
-| Sprite    |     4 | signed X, signed Y, tile index, OAM attributes                                |
+| Sprite    |     5 | signed X, signed Y, tile index (16-bit), OAM attributes                       |
 | Frame     |     4 | sprite offset (16-bit), count, duration                                       |
 | Animation |     7 | frame offset (16-bit), count, width tiles, height tiles, playback, flip flags |
+
+The ca65 sprite entry is exactly 5 bytes (`x`, `y`, tile word, attributes). The cc65 C struct stores the same five bytes plus one alignment pad byte because `uint16_t tile` requires 2-byte alignment.
 
 See [`examples/sprite-animation`](examples/sprite-animation) for matching JSON, C, and ca65 outputs.
 
@@ -249,7 +251,7 @@ npm run build
 
 - No manual tile removal
 - Collision cells support ten gameplay types; slopes and custom user-defined types are not supported
-- Animation exports target one 256-tile sprite pattern table (8-bit tile indexes)
+- Animation exports target a 512-tile sprite CHR with 16-bit tile indexes; the NES OAM still holds an 8-bit tile index per 4 KB pattern table, so sprite sets beyond 256 tiles need CHR bank switching at runtime
 - No metasprite hitboxes or runtime renderer generation
 - ROM graphics extraction is limited to iNES mapper 0 with one 8 KB CHR-ROM bank
 - No cloud storage or backend

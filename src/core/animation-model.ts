@@ -13,7 +13,7 @@ export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
 export const ANIMATION_METADATA_VERSION = 4;
 export const NES_SPRITE_FLIP_HORIZONTAL = 0x40;
 export const NES_SPRITE_FLIP_VERTICAL = 0x80;
-export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 256;
+export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 512;
 
 const TILE_SIZE = 8;
 const BYTES_PER_TILE = 16;
@@ -317,7 +317,7 @@ export function buildAnimationProjectModel(
   if (
     !Number.isInteger(capacityTiles) ||
     capacityTiles <= 0 ||
-    capacityTiles > 256
+    capacityTiles > 512
   ) {
     throw new AnimationModelError('tile-index-overflow', { capacityTiles });
   }
@@ -550,7 +550,7 @@ export function buildAnimationProjectModel(
               newTileCount += 1;
               reuse = 'new';
             }
-            if (tileIndex > 0xff) {
+            if (tileIndex > 0xffff) {
               throw new AnimationModelError('tile-index-overflow', {
                 tileIndex,
               });

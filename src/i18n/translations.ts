@@ -120,9 +120,9 @@ const en = {
   animationErrorOrigin:
     'The origin must keep every metasprite offset within the signed 8-bit range (-128 to 127).',
   animationErrorDestination:
-    'The destination CHR must be a valid multiple of 16 bytes and fit within 256 tiles.',
+    'The destination CHR must be a valid multiple of 16 bytes and fit within 512 tiles.',
   animationErrorCapacity:
-    'The resulting CHR exceeds the 256-tile sprite pattern-table capacity.',
+    'The resulting CHR exceeds the 512-tile sprite CHR capacity.',
   animationAdd: '+ Add animation',
   animationDuplicate: 'Duplicate',
   animationRemove: 'Remove',
@@ -533,9 +533,9 @@ const ptBr = {
   animationErrorOrigin:
     'A origem deve manter todos os deslocamentos do metasprite no intervalo de 8 bits com sinal (-128 a 127).',
   animationErrorDestination:
-    'O CHR de destino deve ser múltiplo de 16 bytes e caber em 256 tiles.',
+    'O CHR de destino deve ser múltiplo de 16 bytes e caber em 512 tiles.',
   animationErrorCapacity:
-    'O CHR resultante excede a capacidade de 256 tiles da pattern table de sprites.',
+    'O CHR resultante excede a capacidade de 512 tiles do CHR de sprites.',
   animationAdd: '+ Adicionar animação',
   animationDuplicate: 'Duplicar',
   animationRemove: 'Remover',

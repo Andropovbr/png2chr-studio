@@ -6,8 +6,13 @@ import {
   sanitizeCIdentifier,
   serializeAnimationMetadata,
 } from './animation-exporters';
-import { buildAnimationProjectModel } from './animation-model';
+import {
+  ANIMATION_METADATA_VERSION,
+  buildAnimationProjectModel,
+  DEFAULT_ANIMATION_CHR_CAPACITY_TILES,
+} from './animation-model';
 import type { IndexedImage } from './types';
+import example from '../../examples/sprite-animation/hero_animation.json';
 
 function model(
   directional = false,
@@ -107,7 +112,7 @@ describe('animation exporters', () => {
     expect(output.source).toContain(
       'const uint8_t hero_animation_animation_count = 2;',
     );
-    expect(output.estimatedRomBytes).toBe(31);
+    expect(output.estimatedRomBytes).toBe(35);
   });
 
   it('generates deterministic ca65 data with documented layouts and animation constants', () => {
@@ -116,14 +121,16 @@ describe('animation exporters', () => {
 
     expect(first).toEqual(second);
     expect(first.includeFileName).toBe('hero_animation.inc');
-    expect(first.include).toContain('Sprite entry (4 bytes)');
+    expect(first.include).toContain('Sprite entry (5 bytes)');
     expect(first.include).toContain('HERO_ANIMATION_ANIM_IDLE = 0');
     expect(first.include).toContain('HERO_ANIMATION_ANIM_MOVEMENT = 1');
     expect(first.source).toContain('.segment "RODATA"');
     expect(first.source).not.toContain('.include');
-    expect(first.source).toContain('.byte $00, $00, $00, $40');
+    expect(first.source).toContain(
+      '.byte $00, $00\n    .word $0000\n    .byte $40',
+    );
     expect(first.source).toContain('hero_animation_animation_count:');
-    expect(first.estimatedRomBytes).toBe(31);
+    expect(first.estimatedRomBytes).toBe(35);
   });
 
   it('exports multiple arbitrary animations with loop and once playbacks to C and Assembly', () => {
@@ -335,8 +342,12 @@ describe('animation exporters', () => {
 
     // CA65 export
     const asm = generateCa65AnimationExport(mod);
-    expect(asm.source).toContain('.byte $00, $00, $00, $02');
-    expect(asm.source).toContain('.byte $00, $00, $00, $03');
+    expect(asm.source).toContain(
+      '.byte $00, $00\n    .word $0000\n    .byte $02',
+    );
+    expect(asm.source).toContain(
+      '.byte $00, $00\n    .word $0000\n    .byte $03',
+    );
   });
 
   it('exports global color_reduction at root and omits quantization_mode from animations', () => {
@@ -388,5 +399,35 @@ describe('animation exporters', () => {
       expect(anim).not.toHaveProperty('quantizationMode');
       expect(anim).not.toHaveProperty('color_reduction');
     });
+  });
+
+  it('keeps the committed sprite-animation example metadata in sync with the current schema', () => {
+    expect(example.version).toBe(ANIMATION_METADATA_VERSION);
+    expect(example.chr.capacity_tiles).toBe(
+      DEFAULT_ANIMATION_CHR_CAPACITY_TILES,
+    );
+
+    const reuseCounts: Record<string, number> = {
+      destination: 0,
+      imported: 0,
+      new: 0,
+    };
+    for (const animation of example.animations) {
+      for (const frame of animation.frames) {
+        for (const sprite of frame.sprites) {
+          reuseCounts[sprite.reuse] = (reuseCounts[sprite.reuse] ?? 0) + 1;
+        }
+      }
+    }
+    expect(reuseCounts.destination).toBe(example.chr.reused_destination_tiles);
+    expect(reuseCounts.imported).toBe(example.chr.reused_imported_tiles);
+    expect(reuseCounts.new).toBe(example.chr.new_tile_count);
+
+    expect(example.chr.final_tile_count).toBe(
+      example.chr.base_tile_count + example.chr.new_tile_count,
+    );
+    expect(example.chr.remaining_tiles).toBe(
+      example.chr.capacity_tiles - example.chr.final_tile_count,
+    );
   });
 });

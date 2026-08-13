@@ -68,7 +68,7 @@ function build(
       { name: 'idle', category: 'idle', frameIndices, frameDuration: 12 },
     ],
     baseChr,
-    capacityTiles: 256,
+    capacityTiles: 512,
     flipDeduplication: true,
   });
 }
@@ -529,6 +529,59 @@ describe('animation project model', () => {
       }),
     ).toThrow(
       new AnimationModelError('chr-capacity-overflow', { capacityTiles: 1 }),
+    );
+  });
+
+  it('allows more than 256 unique tiles up to the 512-tile CHR capacity', () => {
+    const tiles: Tile[] = Array.from({ length: 300 }, (_, index) => {
+      const pixels = new Uint8Array(64);
+      for (let pixel = 0; pixel < 6; pixel += 1) {
+        pixels[pixel] = ((Math.floor(index / 3 ** pixel) % 3) + 1) & 0xff;
+      }
+      return { id: 0, column: 0, row: 0, pixels };
+    });
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles(tiles),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: tiles.map((_, index) => index),
+          frameDuration: 8,
+        },
+      ],
+      capacityTiles: 512,
+      flipDeduplication: false,
+    });
+
+    expect(model.chr.finalTileCount).toBe(300);
+    expect(model.chr.newTileCount).toBe(300);
+    expect(model.chr.remainingTiles).toBe(212);
+  });
+
+  it('rejects a capacity above the 512-tile CHR limit', () => {
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheetFromTiles([tileWith([[0, 0]])]),
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'idle',
+            frameIndices: [0],
+            frameDuration: 8,
+          },
+        ],
+        capacityTiles: 513,
+      }),
+    ).toThrow(
+      new AnimationModelError('tile-index-overflow', { capacityTiles: 513 }),
     );
   });
 
