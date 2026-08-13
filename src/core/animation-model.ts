@@ -1,19 +1,29 @@
-import { decodeChr } from './chr-decoder';
-import { encodeChr } from './chr-encoder';
 import {
   combineCIdentifiers,
   isValidCIdentifier,
   normalizeCIdentifier,
 } from './c-identifier';
+import {
+  createPatternTableSlots,
+  encodePatternTableSlots,
+  isSpritePatternTable,
+  localPatternTableTileIndex,
+  NES_CHR_ROM_TILE_COUNT,
+  NES_CHR_ROM_SIZE,
+  NES_PATTERN_TABLE_TILE_COUNT,
+  patternTablePhysicalRange,
+  type PatternTableSlot,
+  type SpritePatternTable,
+} from './chr-pattern-table';
 import { tilePixelKey, transformedTileKey } from './tile-deduplication';
 import type { QuantizationMode } from './quantization-settings';
 import type { IndexedImage, Tile } from './types';
 
 export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
-export const ANIMATION_METADATA_VERSION = 4;
+export const ANIMATION_METADATA_VERSION = 5;
 export const NES_SPRITE_FLIP_HORIZONTAL = 0x40;
 export const NES_SPRITE_FLIP_VERTICAL = 0x80;
-export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 256;
+export const DEFAULT_ANIMATION_PATTERN_TABLE: SpritePatternTable = 0;
 
 const TILE_SIZE = 8;
 const BYTES_PER_TILE = 16;
@@ -60,8 +70,9 @@ export interface BuildAnimationModelOptions {
   readonly originY?: number;
   readonly animations: readonly AnimationDefinitionInput[];
   readonly baseChr?: Uint8Array;
+  readonly patternTable?: SpritePatternTable;
+  readonly destinationPatternTable?: SpritePatternTable;
   readonly chrOutputName?: string;
-  readonly capacityTiles?: number;
   readonly flipDeduplication?: boolean;
   readonly spritePalette?: number;
 }
@@ -70,6 +81,7 @@ export interface MetaspriteTile {
   readonly x: number;
   readonly y: number;
   readonly tile: number;
+  readonly physicalTileIndex: number;
   readonly attributes: number;
   readonly palette: number;
   readonly horizontalFlip: boolean;
@@ -117,12 +129,20 @@ export interface AnimationModel {
 }
 
 export interface AnimationChrStatistics {
+  readonly physicalCapacityTiles: number;
+  readonly patternTable: SpritePatternTable;
+  readonly destinationPatternTable: SpritePatternTable;
+  readonly patternTableCapacityTiles: number;
   readonly capacityTiles: number;
   readonly baseTileCount: number;
+  readonly patternTableBaseTileCount: number;
   readonly reusedDestinationTiles: number;
   readonly reusedImportedTiles: number;
   readonly newTileCount: number;
   readonly appendedTileStart: number;
+  /** Occupied tiles in the pattern table selected for sprite OAM bytes. */
+  readonly patternTableFinalTileCount: number;
+  /** Occupied tiles across both physical 4 KiB pattern tables. */
   readonly finalTileCount: number;
   readonly finalSizeBytes: number;
   readonly remainingTiles: number;
@@ -135,6 +155,8 @@ export interface AnimationProjectModel {
   readonly symbolPrefix: string;
   readonly symbolBase: string;
   readonly defaultPaletteIndex: number;
+  readonly patternTable: SpritePatternTable;
+  readonly destinationPatternTable: SpritePatternTable;
   readonly colorReduction?: QuantizationMode;
   readonly source?: {
     readonly image: string;
@@ -168,8 +190,10 @@ export type AnimationModelErrorCode =
   | 'invalid-playback'
   | 'invalid-origin'
   | 'invalid-sprite-palette'
+  | 'invalid-pattern-table'
   | 'invalid-destination-chr'
   | 'destination-capacity-overflow'
+  | 'pattern-table-capacity-overflow'
   | 'chr-capacity-overflow'
   | 'tile-index-overflow';
 
@@ -184,7 +208,7 @@ export class AnimationModelError extends Error {
 }
 
 interface TileMatch {
-  readonly index: number;
+  readonly physicalTileIndex: number;
   readonly attributes: number;
 }
 
@@ -257,14 +281,24 @@ function transparentTile(tile: Tile): boolean {
 
 function findTileMatch(
   candidate: Tile,
-  allocated: readonly Tile[],
+  slots: readonly PatternTableSlot[],
+  patternTable: SpritePatternTable,
   flipDeduplication: boolean,
 ): TileMatch | null {
   const candidateKey = tilePixelKey(candidate);
-  for (let index = 0; index < allocated.length; index += 1) {
-    const existing = allocated[index];
-    if (existing !== undefined && tilePixelKey(existing) === candidateKey) {
-      return { index, attributes: 0 };
+  const [start, end] = patternTablePhysicalRange(patternTable);
+  for (
+    let physicalTileIndex = start;
+    physicalTileIndex <= end;
+    physicalTileIndex += 1
+  ) {
+    const existing = slots[physicalTileIndex]?.tile;
+    if (
+      existing !== null &&
+      existing !== undefined &&
+      tilePixelKey(existing) === candidateKey
+    ) {
+      return { physicalTileIndex, attributes: 0 };
     }
   }
   if (!flipDeduplication) return null;
@@ -274,12 +308,16 @@ function findTileMatch(
     [false, true, NES_SPRITE_FLIP_VERTICAL],
     [true, true, NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL],
   ] as const;
-  for (let index = 0; index < allocated.length; index += 1) {
-    const existing = allocated[index];
-    if (existing === undefined) continue;
+  for (
+    let physicalTileIndex = start;
+    physicalTileIndex <= end;
+    physicalTileIndex += 1
+  ) {
+    const existing = slots[physicalTileIndex]?.tile;
+    if (existing === undefined || existing === null) continue;
     for (const [horizontal, vertical, attributes] of flips) {
       if (transformedTileKey(existing, horizontal, vertical) === candidateKey) {
-        return { index, attributes };
+        return { physicalTileIndex, attributes };
       }
     }
   }
@@ -312,14 +350,16 @@ export function buildAnimationProjectModel(
     throw new AnimationModelError('no-selected-frames');
   }
 
-  const capacityTiles =
-    options.capacityTiles ?? DEFAULT_ANIMATION_CHR_CAPACITY_TILES;
+  const patternTable = options.patternTable ?? DEFAULT_ANIMATION_PATTERN_TABLE;
+  const destinationPatternTable =
+    options.destinationPatternTable ?? DEFAULT_ANIMATION_PATTERN_TABLE;
   if (
-    !Number.isInteger(capacityTiles) ||
-    capacityTiles <= 0 ||
-    capacityTiles > 256
+    !isSpritePatternTable(patternTable) ||
+    !isSpritePatternTable(destinationPatternTable)
   ) {
-    throw new AnimationModelError('tile-index-overflow', { capacityTiles });
+    throw new AnimationModelError('invalid-pattern-table', {
+      patternTable: String(patternTable),
+    });
   }
   const spritePalette = options.spritePalette ?? 0;
   if (
@@ -330,19 +370,21 @@ export function buildAnimationProjectModel(
     throw new AnimationModelError('invalid-sprite-palette');
   }
   const baseChr = options.baseChr ?? new Uint8Array();
-  if (baseChr.length % BYTES_PER_TILE !== 0) {
+  if (
+    baseChr.length % BYTES_PER_TILE !== 0 ||
+    baseChr.length > NES_CHR_ROM_SIZE
+  ) {
     throw new AnimationModelError('invalid-destination-chr');
   }
-  const baseTiles =
-    baseChr.length === 0
-      ? []
-      : decodeChr(baseChr).map((tile, id) => ({ ...tile, id }));
-  if (baseTiles.length > capacityTiles) {
-    throw new AnimationModelError('destination-capacity-overflow', {
-      baseTileCount: baseTiles.length,
-      capacityTiles,
-    });
-  }
+  const slots = createPatternTableSlots(baseChr, destinationPatternTable);
+  const baseTileCount = slots.filter(
+    (slot) => slot.source === 'destination',
+  ).length;
+  const [patternTableStart, patternTableEnd] =
+    patternTablePhysicalRange(patternTable);
+  const patternTableBaseTileCount = slots
+    .slice(patternTableStart, patternTableEnd + 1)
+    .filter((slot) => slot.source === 'destination').length;
 
   const animationNames = new Set<string>();
   const animationIdentifiers = new Set<string>();
@@ -466,10 +508,13 @@ export function buildAnimationProjectModel(
     }
   }
 
-  const allocated: Tile[] = baseTiles.map((tile) => ({ ...tile }));
   let reusedDestinationTiles = 0;
   let reusedImportedTiles = 0;
   let newTileCount = 0;
+  let appendedTileStart = slots
+    .slice(patternTableStart, patternTableEnd + 1)
+    .findIndex((slot) => slot.tile === null);
+  if (appendedTileStart < 0) appendedTileStart = NES_PATTERN_TABLE_TILE_COUNT;
 
   const baseAnimations = options.animations.map((animation): AnimationModel => {
     const allowHorizontalFlip =
@@ -527,29 +572,42 @@ export function buildAnimationProjectModel(
             }
             const match = findTileMatch(
               candidate,
-              allocated,
+              slots,
+              patternTable,
               options.flipDeduplication ?? true,
             );
-            let tileIndex: number;
+            let physicalTileIndex: number;
             let flipAttributes = 0;
             let reuse: TileReuse;
             if (match !== null) {
-              tileIndex = match.index;
+              physicalTileIndex = match.physicalTileIndex;
               flipAttributes = match.attributes;
-              reuse = tileIndex < baseTiles.length ? 'destination' : 'imported';
+              reuse = slots[physicalTileIndex]?.source ?? 'imported';
               if (reuse === 'destination') reusedDestinationTiles += 1;
               else reusedImportedTiles += 1;
             } else {
-              tileIndex = allocated.length;
-              if (tileIndex >= capacityTiles) {
-                throw new AnimationModelError('chr-capacity-overflow', {
-                  capacityTiles,
-                });
+              const availableSlot = slots
+                .slice(patternTableStart, patternTableEnd + 1)
+                .find((slot) => slot.tile === null);
+              if (availableSlot === undefined) {
+                throw new AnimationModelError(
+                  'pattern-table-capacity-overflow',
+                  {
+                    patternTable,
+                    capacityTiles: NES_PATTERN_TABLE_TILE_COUNT,
+                  },
+                );
               }
-              allocated.push({ ...candidate, id: tileIndex });
+              physicalTileIndex = availableSlot.physicalTileIndex;
+              slots[physicalTileIndex] = {
+                physicalTileIndex,
+                tile: { ...candidate, id: physicalTileIndex },
+                source: 'imported',
+              };
               newTileCount += 1;
               reuse = 'new';
             }
+            const tileIndex = localPatternTableTileIndex(physicalTileIndex);
             if (tileIndex > 0xff) {
               throw new AnimationModelError('tile-index-overflow', {
                 tileIndex,
@@ -564,6 +622,7 @@ export function buildAnimationProjectModel(
               x: tileColumn * TILE_SIZE - animOriginX,
               y: tileRow * TILE_SIZE - animOriginY,
               tile: tileIndex,
+              physicalTileIndex,
               attributes: finalAttributes,
               palette: frameEffectivePalette,
               horizontalFlip:
@@ -662,10 +721,13 @@ export function buildAnimationProjectModel(
     return [primaryAnimation, mirroredAnimation];
   });
 
-  const finalTileCount = allocated.length;
-  const finalChr = encodeChr(allocated);
-  const remainingTiles = capacityTiles - finalTileCount;
-  const appendedTileStart = baseTiles.length;
+  const finalTileCount = slots.filter((slot) => slot.tile !== null).length;
+  const finalChr = encodePatternTableSlots(slots);
+  const patternTableFinalTileCount = slots
+    .slice(patternTableStart, patternTableEnd + 1)
+    .filter((slot) => slot.tile !== null).length;
+  const remainingTiles =
+    NES_PATTERN_TABLE_TILE_COUNT - patternTableFinalTileCount;
   const output = options.chrOutputName ?? `${symbolBase}.chr`;
   const defaultPaletteIndex =
     options.defaultPaletteIndex ?? options.spritePalette ?? 0;
@@ -692,17 +754,25 @@ export function buildAnimationProjectModel(
     symbolPrefix,
     symbolBase,
     defaultPaletteIndex,
+    patternTable,
+    destinationPatternTable,
     colorReduction: options.quantizationMode,
     source: sourceProp,
     chr: {
-      capacityTiles,
-      baseTileCount: baseTiles.length,
+      physicalCapacityTiles: NES_CHR_ROM_TILE_COUNT,
+      patternTable,
+      destinationPatternTable,
+      patternTableCapacityTiles: NES_PATTERN_TABLE_TILE_COUNT,
+      capacityTiles: NES_PATTERN_TABLE_TILE_COUNT,
+      baseTileCount,
+      patternTableBaseTileCount,
       reusedDestinationTiles,
       reusedImportedTiles,
       newTileCount,
       appendedTileStart,
+      patternTableFinalTileCount,
       finalTileCount,
-      finalSizeBytes: finalChr.length,
+      finalSizeBytes: NES_CHR_ROM_SIZE,
       remainingTiles,
       output,
     },
@@ -742,6 +812,8 @@ export interface DeserializedAnimationProject {
   readonly symbolPrefix: string;
   readonly symbolBase: string;
   readonly defaultPaletteIndex: number;
+  readonly patternTable: SpritePatternTable;
+  readonly destinationPatternTable: SpritePatternTable;
   readonly colorReduction?: QuantizationMode;
   readonly source?: {
     readonly image: string;
@@ -818,6 +890,10 @@ interface RawMetadataProject {
   readonly symbolBase?: unknown;
   readonly default_palette_index?: unknown;
   readonly defaultPaletteIndex?: unknown;
+  readonly pattern_table?: unknown;
+  readonly patternTable?: unknown;
+  readonly destination_pattern_table?: unknown;
+  readonly destinationPatternTable?: unknown;
   readonly color_reduction?: unknown;
   readonly colorReduction?: unknown;
   readonly quantization_mode?: unknown;
@@ -855,6 +931,13 @@ export function deserializeAnimationMetadata(
     raw.default_palette_index ?? raw.defaultPaletteIndex,
     0,
   );
+  const rawPatternTable = raw.pattern_table ?? raw.patternTable;
+  const rawDestinationPatternTable =
+    raw.destination_pattern_table ?? raw.destinationPatternTable;
+  const patternTable: SpritePatternTable =
+    rawPatternTable === 1 ? 1 : DEFAULT_ANIMATION_PATTERN_TABLE;
+  const destinationPatternTable: SpritePatternTable =
+    rawDestinationPatternTable === 1 ? 1 : DEFAULT_ANIMATION_PATTERN_TABLE;
   let colorReduction =
     (raw.color_reduction as QuantizationMode | undefined) ??
     (raw.colorReduction as QuantizationMode | undefined) ??
@@ -987,6 +1070,8 @@ export function deserializeAnimationMetadata(
     symbolPrefix,
     symbolBase,
     defaultPaletteIndex,
+    patternTable,
+    destinationPatternTable,
     colorReduction,
     source: source?.image
       ? {

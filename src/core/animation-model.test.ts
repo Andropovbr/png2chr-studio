@@ -68,7 +68,6 @@ function build(
       { name: 'idle', category: 'idle', frameIndices, frameDuration: 12 },
     ],
     baseChr,
-    capacityTiles: 256,
     flipDeduplication: true,
   });
 }
@@ -443,7 +442,8 @@ describe('animation project model', () => {
     expect(model.chr.reusedDestinationTiles).toBe(1);
     expect(model.chr.newTileCount).toBe(0);
     expect(model.animations[0]?.frames[0]?.sprites[0]?.tile).toBe(0);
-    expect(model.finalChr).toEqual(destination);
+    expect(model.finalChr).toHaveLength(8 * 1024);
+    expect(model.finalChr.slice(0, destination.length)).toEqual(destination);
   });
 
   it.each([
@@ -462,7 +462,8 @@ describe('animation project model', () => {
 
       expect(model.chr.reusedDestinationTiles).toBe(1);
       expect(model.chr.newTileCount).toBe(0);
-      expect(model.finalChr).toEqual(destination);
+      expect(model.finalChr).toHaveLength(8 * 1024);
+      expect(model.finalChr.slice(0, destination.length)).toEqual(destination);
       expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
         tile: 0,
         attributes,
@@ -507,8 +508,125 @@ describe('animation project model', () => {
     expect(model.chr.newTileCount).toBe(0);
   });
 
-  it('rejects capacity overflow', () => {
-    const destination = encodeChr([tileWith([[0, 0]])]);
+  it('keeps sprite tile bytes local to the selected pattern table', () => {
+    const destination = encodeChr(
+      Array.from({ length: 256 }, () => tileWith([[0, 0]])),
+    );
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([tileWith([[1, 1]])]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+      baseChr: destination,
+      patternTable: 1,
+    });
+
+    expect(model.patternTable).toBe(1);
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      tile: 0,
+      physicalTileIndex: 256,
+      reuse: 'new',
+    });
+    expect(model.chr.patternTable).toBe(1);
+    expect(model.chr.physicalCapacityTiles).toBe(512);
+    expect(model.chr.patternTableCapacityTiles).toBe(256);
+    expect(model.finalChr.slice(0, destination.length)).toEqual(destination);
+  });
+
+  it('reports total CHR and selected pattern-table usage independently', () => {
+    const destination = encodeChr(
+      Array.from({ length: 256 }, () => tileWith([[0, 0]])),
+    );
+    const importedTiles = Array.from({ length: 13 }, (_, index) =>
+      tileWith([
+        [0, 0],
+        [(index % 7) + 1, Math.floor(index / 7) + 1],
+      ]),
+    );
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles(importedTiles),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: importedTiles.map((_, index) => index),
+          frameDuration: 8,
+        },
+      ],
+      baseChr: destination,
+      patternTable: 1,
+    });
+
+    expect(model.chr).toMatchObject({
+      finalTileCount: 269,
+      patternTableFinalTileCount: 13,
+      remainingTiles: 243,
+      physicalCapacityTiles: 512,
+      patternTableCapacityTiles: 256,
+    });
+  });
+
+  it('allocates the final local tile index at physical tile 511', () => {
+    const destination = encodeChr(
+      Array.from({ length: 255 }, () => tileWith([[0, 0]])),
+    );
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([tileWith([[1, 1]])]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+      baseChr: destination,
+      patternTable: 1,
+      destinationPatternTable: 1,
+    });
+
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      tile: 255,
+      physicalTileIndex: 511,
+    });
+  });
+
+  it('does not deduplicate tiles across pattern tables', () => {
+    const repeatedTile = tileWith([[2, 2]]);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([repeatedTile]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+      baseChr: encodeChr([repeatedTile]),
+      patternTable: 1,
+    });
+
+    expect(model.chr.reusedDestinationTiles).toBe(0);
+    expect(model.chr.newTileCount).toBe(1);
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      tile: 0,
+      physicalTileIndex: 256,
+      reuse: 'new',
+    });
+  });
+
+  it('rejects allocation when the selected pattern table is full', () => {
+    const destination = encodeChr(
+      Array.from({ length: 256 }, () => tileWith([[0, 0]])),
+    );
+
     expect(() =>
       buildAnimationProjectModel({
         name: 'player',
@@ -525,11 +643,71 @@ describe('animation project model', () => {
           },
         ],
         baseChr: destination,
-        capacityTiles: 1,
       }),
     ).toThrow(
-      new AnimationModelError('chr-capacity-overflow', { capacityTiles: 1 }),
+      new AnimationModelError('pattern-table-capacity-overflow', {
+        patternTable: 0,
+        capacityTiles: 256,
+      }),
     );
+  });
+
+  it('treats a full pattern table 1 as full even when table 0 is empty', () => {
+    const destination = encodeChr(
+      Array.from({ length: 256 }, () => tileWith([[0, 0]])),
+    );
+
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheetFromTiles([tileWith([[1, 1]])]),
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'idle',
+            category: 'idle',
+            frameIndices: [0],
+            frameDuration: 8,
+          },
+        ],
+        baseChr: destination,
+        patternTable: 1,
+        destinationPatternTable: 1,
+      }),
+    ).toThrow(
+      new AnimationModelError('pattern-table-capacity-overflow', {
+        patternTable: 1,
+        capacityTiles: 256,
+      }),
+    );
+  });
+
+  it('accepts a full 8 KiB CHR ROM when its selected table has matching tiles', () => {
+    const repeatedTile = tileWith([[2, 2]]);
+    const destination = encodeChr(
+      Array.from({ length: 512 }, () => repeatedTile),
+    );
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([repeatedTile]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+      baseChr: destination,
+      patternTable: 1,
+    });
+
+    expect(model.finalChr).toEqual(destination);
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      tile: 0,
+      physicalTileIndex: 256,
+      reuse: 'destination',
+    });
   });
 
   it('rejects duplicate selection and invalid dimensions', () => {
@@ -695,6 +873,8 @@ describe('animation project model', () => {
 
     const parsed = deserializeAnimationMetadata(legacyJson);
     expect(parsed.version).toBe(3);
+    expect(parsed.patternTable).toBe(0);
+    expect(parsed.destinationPatternTable).toBe(0);
     expect(parsed.animations).toHaveLength(2);
     expect(parsed.animations[0]).toMatchObject({
       name: 'idle',
@@ -1375,5 +1555,21 @@ describe('animation project model', () => {
     expect(parsed.animations[0]?.framePalettes).toEqual([null, 3]);
     expect(parsed.animations[1]?.paletteIndex).toBeNull();
     expect(parsed.animations[1]?.framePalettes).toEqual([0]);
+  });
+
+  it('deserializes v5 pattern-table settings', () => {
+    const parsed = deserializeAnimationMetadata(
+      JSON.stringify({
+        format: 'png2chr-studio-animation',
+        version: 5,
+        name: 'ship',
+        pattern_table: 1,
+        destination_pattern_table: 1,
+        animations: [],
+      }),
+    );
+
+    expect(parsed.patternTable).toBe(1);
+    expect(parsed.destinationPatternTable).toBe(1);
   });
 });
