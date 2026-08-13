@@ -148,8 +148,9 @@ function errorTranslation(error: AnimationModelError | null): TranslationKey {
     case 'destination-capacity-overflow':
       return 'animationErrorDestination';
     case 'chr-capacity-overflow':
-    case 'tile-index-overflow':
       return 'animationErrorCapacity';
+    case 'tile-index-overflow':
+      return 'animationErrorTileIndex';
     default:
       return 'animationErrorGeneric';
   }
@@ -1627,6 +1628,7 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
       `$${model.chr.appendedTileStart.toString(16).padStart(2, '0').toUpperCase()}`,
     ),
     stat(t('animationFinalTiles'), String(model.chr.finalTileCount)),
+    stat(t('animationChrCapacity'), `${String(model.chr.capacityTiles)} tiles`),
     stat(t('animationRemainingTiles'), String(model.chr.remainingTiles)),
     stat(t('animationFinalChrSize'), `${String(exportedChr.length)} bytes`),
   );

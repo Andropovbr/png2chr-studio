@@ -3,6 +3,7 @@ import './style.css';
 import {
   AnimationModelError,
   buildAnimationProjectModel,
+  DEFAULT_ANIMATION_CHR_CAPACITY_TILES,
 } from './core/animation-model';
 import { mapAnimationImageToNesPalette } from './core/animation-palette';
 import type {
@@ -927,7 +928,7 @@ function renderAnimationWorkspace(): void {
         defaultPaletteIndex: project.animation.defaultPaletteIndex,
         quantizationMode: project.animation.quantizationMode,
         baseChr: project.animation.destinationChr,
-        capacityTiles: 256,
+        capacityTiles: DEFAULT_ANIMATION_CHR_CAPACITY_TILES,
         flipDeduplication: project.animation.flipDeduplication,
         spritePalette: project.animation.spritePalette,
       });

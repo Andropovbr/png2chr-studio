@@ -194,7 +194,7 @@ All four sprite palettes are visible in animation mode. Select any slot and repl
 
 Every selected frame is divided into 8x8 cells and represented as a metasprite. A fully empty cell (transparent/index 0) is omitted instead of consuming an OAM entry. Partially empty cells remain normal NES tiles. The origin is subtracted from each cell position, and every exported X/Y offset must fit an 8-bit signed value. The effective sprite palette occupies attribute bits 0-1.
 
-An optional destination `.chr` can be loaded before conversion. Its bytes and indexes are preserved. New tiles extracted across all animation sources are appended after the existing tiles, while exact matches reuse their absolute destination index or previously allocated tile index. With flip-aware reuse enabled, horizontal, vertical, and combined matches across any source PNG reuse the stored tile and set NES OAM attribute bits `$40`, `$80`, or `$C0`. The resulting sprite pattern table supports up to 256 tiles (4 KB pattern table capacity). The UI reports destination reuse, imported-frame reuse, new tiles, append start, final size, and remaining capacity.
+An optional destination `.chr` can be loaded before conversion. Its bytes and indexes are preserved. New tiles extracted across all animation sources are appended after the existing tiles, while exact matches reuse their absolute destination index or previously allocated tile index. With flip-aware reuse enabled, horizontal, vertical, and combined matches across any source PNG reuse the stored tile and set NES OAM attribute bits `$40`, `$80`, or `$C0`. The consolidated CHR has a physical capacity of 512 tiles / 8 KiB (8192 bytes / 16 bytes per tile). The UI reports destination reuse, imported-frame reuse, new tiles, append start, final size, and remaining capacity (`512 - final tile count`).
 
 The mapping preview (collapsible section, closed by default) shows each frame's final tile index, reuse source, orientation, OAM attributes, and omitted cells for each animation. Color reduction is configured globally for the asset (`nearest`, `median-cut`, `k-means`) with a reference animation selector and visual comparison cards. Animation mode exports:
 
@@ -206,9 +206,11 @@ The mapping preview (collapsible section, closed by default) shows each frame's 
 
 The JSON is the canonical interchange format. It describes global asset properties (`name`, `symbol_prefix`, `symbol_base`, `default_palette_index`, `color_reduction`), consolidated CHR statistics, and each animation's `source_file`, `palette_index`, `frame_width`, `frame_height`, `origin_x`, `origin_y`, `playback`, `allow_horizontal_flip`, `allow_vertical_flip`, `default_frame_duration`, and `frames[].sprites[]` with explicit X/Y offsets, final tile indexes, attributes, palette, flips, reuse classification, and source cell coordinates. Binary CHR bytes and raw images are not duplicated in JSON.
 
+The 512-tile / 8 KiB capacity describes the physical storage of the consolidated CHR file only. The 8x8 metasprite format exported by the C and ca65 generators continues to store each sprite's tile index in a single byte (`uint8_t tile;` / `.byte tile`), so every exported sprite can reference only indexes 0-255 directly. A base CHR with more than 256 tiles (up to 512) is accepted physically, but an animation or metasprite that needs to reference a tile above index 255 fails with a specific tile-index diagnostic instead of being silently represented with a wider index.
+
 Animation exports use a unified **Asset / set name** (or optional distinct C symbol prefix). The value is normalized to a lowercase C identifier, so `soldier` produces the base `soldier`, matching filenames such as `soldier.c` and globals such as `soldier_sprites`, `soldier_frames`, `soldier_animations`, `soldier_animation_count`, and the enum `${PascalCase}AnimationId` (e.g. `SoldierAnimationId`). Capability flags indicate directional flip support (`ANIMATION_ALLOW_H_FLIP` / `ANIMATION_ALLOW_V_FLIP`).
 
-Every downloaded `.chr` is padded with zero bytes to at least 8 KiB, the standard size of one NES CHR-ROM bank (such as on NROM carts). Tile indexes and allocation statistics describe the populated pattern table data before padding, and CHR data larger than 8 KiB is never truncated.
+Every downloaded `.chr` is padded with zero bytes to at least 8 KiB, the standard size of one NES CHR-ROM bank (such as on NROM carts). That 8 KiB bank has a physical capacity of 512 tiles. Tile indexes and allocation statistics describe the populated CHR data before padding, and CHR data larger than 8 KiB is never truncated.
 
 The C and ca65 exports flatten the model into three ROM-friendly arrays:
 
@@ -249,7 +251,7 @@ npm run build
 
 - No manual tile removal
 - Collision cells support ten gameplay types; slopes and custom user-defined types are not supported
-- Animation exports target one 256-tile sprite pattern table (8-bit tile indexes)
+- Animation exports target one 8 KiB CHR bank with a physical capacity of 512 tiles; the exported 8x8 metasprite entries still use 8-bit tile indexes (0-255)
 - No metasprite hitboxes or runtime renderer generation
 - ROM graphics extraction is limited to iNES mapper 0 with one 8 KB CHR-ROM bank
 - No cloud storage or backend

@@ -53,6 +53,23 @@ function sheetFromTiles(tiles: readonly Tile[]): IndexedImage {
   return image(tiles.length * 8, 8, pixels);
 }
 
+// Generates `count` distinct, non-transparent tiles. The bit pattern of
+// `512 + i` (bits 0..9) is stamped onto the tile pixels, so every tile is
+// unique, has at least one opaque pixel (bit 9), and can be reproduced in a
+// test sheet to force an exact base-CHR match at a chosen index.
+function binaryTiles(count: number): Tile[] {
+  return Array.from({ length: count }, (_, i) => {
+    const pixels = new Uint8Array(64);
+    const value = 512 + i;
+    for (let bit = 0; bit < 10; bit += 1) {
+      if ((value >> bit) & 1) {
+        pixels[bit] = 1;
+      }
+    }
+    return { id: 0, column: 0, row: 0, pixels };
+  });
+}
+
 function build(
   sheet: IndexedImage,
   frameIndices = [0, 1],
@@ -68,7 +85,6 @@ function build(
       { name: 'idle', category: 'idle', frameIndices, frameDuration: 12 },
     ],
     baseChr,
-    capacityTiles: 256,
     flipDeduplication: true,
   });
 }
@@ -530,6 +546,220 @@ describe('animation project model', () => {
     ).toThrow(
       new AnimationModelError('chr-capacity-overflow', { capacityTiles: 1 }),
     );
+  });
+
+  it('defaults the physical CHR capacity to 512 tiles (8 KiB)', () => {
+    const model = build(sheetFromTiles([tileWith([[0, 0]])]), [0]);
+    expect(model.chr.capacityTiles).toBe(512);
+    expect(model.chr.remainingTiles).toBe(
+      model.chr.capacityTiles - model.chr.finalTileCount,
+    );
+  });
+
+  it('computes 468 remaining tiles for a 44-tile CHR against 512 tiles', () => {
+    const tiles = binaryTiles(44);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles(tiles),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: tiles.map((_, i) => i),
+          frameDuration: 12,
+        },
+      ],
+      flipDeduplication: false,
+    });
+
+    expect(model.chr.capacityTiles).toBe(512);
+    expect(model.chr.finalTileCount).toBe(44);
+    expect(model.chr.remainingTiles).toBe(468);
+  });
+
+  it('accepts exactly 512 tiles as the physical CHR capacity', () => {
+    const baseChr = encodeChr(binaryTiles(512));
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([tileWith([[1, 1]])]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: [0],
+          frameDuration: 12,
+        },
+      ],
+      baseChr,
+      flipDeduplication: false,
+    });
+
+    expect(model.chr.baseTileCount).toBe(512);
+    expect(model.chr.finalTileCount).toBe(512);
+    expect(model.chr.remainingTiles).toBe(0);
+    expect(model.animations[0]?.frames[0]?.sprites[0]?.tile).toBe(0);
+  });
+
+  it('rejects a base CHR with 513 tiles as exceeding the physical capacity', () => {
+    const baseChr = encodeChr(binaryTiles(513));
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheetFromTiles([tileWith([[1, 1]])]),
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'idle',
+            category: 'idle',
+            frameIndices: [0],
+            frameDuration: 12,
+          },
+        ],
+        baseChr,
+        flipDeduplication: false,
+      }),
+    ).toThrow(
+      new AnimationModelError('destination-capacity-overflow', {
+        baseTileCount: 513,
+        capacityTiles: 512,
+      }),
+    );
+  });
+
+  it('accepts a base CHR with 300 tiles (above 256) as long as nothing references index 256+', () => {
+    const baseTiles = binaryTiles(300);
+    const baseChr = encodeChr(baseTiles);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([
+        tileWith([
+          [0, 0],
+          [1, 1],
+        ]),
+      ]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: [0],
+          frameDuration: 12,
+        },
+      ],
+      baseChr,
+      flipDeduplication: false,
+    });
+
+    expect(model.chr.baseTileCount).toBe(300);
+    expect(model.chr.finalTileCount).toBe(300);
+    // The referenced base tile sits at index 1 (value 513 has bits 0 and 9).
+    expect(model.animations[0]?.frames[0]?.sprites[0]?.tile).toBe(1);
+  });
+
+  it('allows tile index 255 in an exported metasprite', () => {
+    const tiles = binaryTiles(256);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles(tiles),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: tiles.map((_, i) => i),
+          frameDuration: 12,
+        },
+      ],
+      flipDeduplication: false,
+    });
+
+    expect(model.chr.finalTileCount).toBe(256);
+    expect(model.animations[0]?.frames[255]?.sprites[0]?.tile).toBe(255);
+  });
+
+  it('fails with tile-index-overflow when a metasprite needs tile index 256', () => {
+    const tiles = binaryTiles(257);
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheetFromTiles(tiles),
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'idle',
+            category: 'idle',
+            frameIndices: tiles.map((_, i) => i),
+            frameDuration: 12,
+          },
+        ],
+        flipDeduplication: false,
+      }),
+    ).toThrow(
+      new AnimationModelError('tile-index-overflow', {
+        tileIndex: 256,
+        capacityTiles: 512,
+      }),
+    );
+  });
+
+  it('fails with tile-index-overflow when a sprite references a base-CHR tile above index 255', () => {
+    const baseChr = encodeChr(binaryTiles(300));
+    // binaryTiles(300) stamp value 512 + 256 = 768 (bits 8 and 9 set), so this
+    // sheet tile exactly matches base-CHR tile index 256.
+    const animationTile = tileWith([
+      [0, 1],
+      [1, 1],
+    ]);
+    expect(() =>
+      buildAnimationProjectModel({
+        name: 'player',
+        sourceImageName: 'player.png',
+        image: sheetFromTiles([animationTile]),
+        frameWidth: 8,
+        frameHeight: 8,
+        animations: [
+          {
+            name: 'idle',
+            category: 'idle',
+            frameIndices: [0],
+            frameDuration: 12,
+          },
+        ],
+        baseChr,
+        flipDeduplication: false,
+      }),
+    ).toThrow(
+      new AnimationModelError('tile-index-overflow', {
+        tileIndex: 256,
+        capacityTiles: 512,
+      }),
+    );
+  });
+
+  it('continues deduplicating across the 512-tile physical capacity', () => {
+    const shared = tileWith([[0, 0]]);
+    const model = build(
+      sheetFromTiles([shared, shared, shared, shared]),
+      [0, 1, 2, 3],
+    );
+
+    expect(model.chr.newTileCount).toBe(1);
+    expect(model.chr.reusedImportedTiles).toBe(3);
+    expect(model.chr.finalTileCount).toBe(1);
   });
 
   it('rejects duplicate selection and invalid dimensions', () => {

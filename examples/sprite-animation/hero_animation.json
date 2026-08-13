@@ -17,7 +17,7 @@
   },
   "chr": {
     "output": "hero_animation.chr",
-    "capacity_tiles": 256,
+    "capacity_tiles": 512,
     "base_tile_count": 2,
     "reused_destination_tiles": 4,
     "reused_imported_tiles": 2,
@@ -25,7 +25,7 @@
     "appended_tile_start": 2,
     "final_tile_count": 4,
     "final_size_bytes": 8192,
-    "remaining_tiles": 252
+    "remaining_tiles": 508
   },
   "attribute_flags": {
     "flip_horizontal": 64,

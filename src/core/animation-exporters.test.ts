@@ -74,9 +74,11 @@ describe('animation exporters', () => {
       symbol_prefix: 'hero',
       symbol_base: 'hero_animation',
       chr: {
+        capacity_tiles: 512,
         base_tile_count: 0,
         final_tile_count: 1,
         final_size_bytes: 8192,
+        remaining_tiles: 511,
       },
       attribute_flags: {
         flip_horizontal: 64,
@@ -388,5 +390,46 @@ describe('animation exporters', () => {
       expect(anim).not.toHaveProperty('quantizationMode');
       expect(anim).not.toHaveProperty('color_reduction');
     });
+  });
+
+  it('keeps the metasprite tile index at 8 bits in C, ca65, and JSON', () => {
+    const c = generateCAnimationExport(model());
+    const asm = generateCa65AnimationExport(model());
+    const json = JSON.parse(serializeAnimationMetadata(model())) as {
+      animations: {
+        frames: {
+          sprites: { tile: number }[];
+        }[];
+      }[];
+    };
+
+    expect(c.header).toContain('uint8_t tile;');
+    expect(c.header).not.toContain('uint16_t tile;');
+    expect(c.source).toMatch(/\{ 0, 0, 0x[0-9A-F]{2}, 0x[0-9A-F]{2} \}/);
+    expect(asm.source).toMatch(
+      /\.byte \$[0-9A-F]{2}, \$[0-9A-F]{2}, \$[0-9A-F]{2}, \$[0-9A-F]{2}/,
+    );
+    expect(asm.source).not.toMatch(
+      /\.word \$[0-9A-F]{2}, \$[0-9A-F]{2}, \$[0-9A-F]{2}, \$[0-9A-F]{2}/,
+    );
+
+    const sprites = json.animations.flatMap((anim) =>
+      anim.frames.flatMap((frame) => frame.sprites),
+    );
+    expect(sprites.length).toBeGreaterThan(0);
+    expect(
+      sprites.every((sprite) => sprite.tile >= 0 && sprite.tile <= 255),
+    ).toBe(true);
+  });
+
+  it('keeps the 4-byte sprite layout and estimated ROM size for the 512-tile capacity', () => {
+    const c = generateCAnimationExport(model());
+    const asm = generateCa65AnimationExport(model());
+
+    // The physical capacity must not inflate the per-sprite ROM cost.
+    expect(c.estimatedRomBytes).toBe(31);
+    expect(asm.estimatedRomBytes).toBe(31);
+    expect(c.source).toContain('{ 0, 0, 0x00, 0x00 }');
+    expect(asm.source).toContain('.byte $00, $00, $00, $40');
   });
 });

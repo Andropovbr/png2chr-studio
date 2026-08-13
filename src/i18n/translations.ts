@@ -97,6 +97,7 @@ const en = {
   animationNewTiles: 'New tiles',
   animationAppendStart: 'Append starts at',
   animationFinalTiles: 'Final tiles',
+  animationChrCapacity: 'CHR capacity',
   animationRemainingTiles: 'Remaining capacity',
   animationFinalChrSize: 'Final CHR size',
   animationExportsTitle: 'Animation exports',
@@ -120,9 +121,11 @@ const en = {
   animationErrorOrigin:
     'The origin must keep every metasprite offset within the signed 8-bit range (-128 to 127).',
   animationErrorDestination:
-    'The destination CHR must be a valid multiple of 16 bytes and fit within 256 tiles.',
+    'The destination CHR must be a valid multiple of 16 bytes and fit within 512 tiles (8 KiB).',
   animationErrorCapacity:
-    'The resulting CHR exceeds the 256-tile sprite pattern-table capacity.',
+    'The resulting CHR exceeds the 512-tile (8 KiB) physical CHR capacity.',
+  animationErrorTileIndex:
+    'The CHR has a physical capacity of 512 tiles, but the current 8x8 metasprite format supports only tile indexes from 0 to 255.',
   animationAdd: '+ Add animation',
   animationDuplicate: 'Duplicate',
   animationRemove: 'Remove',
@@ -510,6 +513,7 @@ const ptBr = {
   animationNewTiles: 'Tiles novos',
   animationAppendStart: 'Início da anexação',
   animationFinalTiles: 'Tiles finais',
+  animationChrCapacity: 'Capacidade do CHR',
   animationRemainingTiles: 'Capacidade restante',
   animationFinalChrSize: 'Tamanho final do CHR',
   animationExportsTitle: 'Exportações da animação',
@@ -533,9 +537,11 @@ const ptBr = {
   animationErrorOrigin:
     'A origem deve manter todos os deslocamentos do metasprite no intervalo de 8 bits com sinal (-128 a 127).',
   animationErrorDestination:
-    'O CHR de destino deve ser múltiplo de 16 bytes e caber em 256 tiles.',
+    'O CHR de destino deve ser múltiplo de 16 bytes e caber em 512 tiles (8 KiB).',
   animationErrorCapacity:
-    'O CHR resultante excede a capacidade de 256 tiles da pattern table de sprites.',
+    'O CHR resultante excede a capacidade física de 512 tiles (8 KiB).',
+  animationErrorTileIndex:
+    'O CHR possui capacidade física de 512 tiles, mas o formato atual de metasprites 8x8 suporta apenas índices de tile entre 0 e 255.',
   animationAdd: '+ Adicionar animação',
   animationDuplicate: 'Duplicar',
   animationRemove: 'Remover',

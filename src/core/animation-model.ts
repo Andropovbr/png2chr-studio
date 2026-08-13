@@ -13,7 +13,14 @@ export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
 export const ANIMATION_METADATA_VERSION = 4;
 export const NES_SPRITE_FLIP_HORIZONTAL = 0x40;
 export const NES_SPRITE_FLIP_VERTICAL = 0x80;
-export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 256;
+
+// Physical capacity of one 8 KiB CHR file: 8192 bytes / 16 bytes per tile.
+export const DEFAULT_ANIMATION_CHR_CAPACITY_TILES = 512;
+
+// The current 8x8 metasprite format stores tile indexes in a single byte.
+// Even though the CHR can physically hold 512 tiles, each sprite entry can
+// only reference indexes 0..255 directly.
+export const ANIMATION_METASPRITE_MAX_TILE_INDEX = 0xff;
 
 const TILE_SIZE = 8;
 const BYTES_PER_TILE = 16;
@@ -317,9 +324,9 @@ export function buildAnimationProjectModel(
   if (
     !Number.isInteger(capacityTiles) ||
     capacityTiles <= 0 ||
-    capacityTiles > 256
+    capacityTiles > DEFAULT_ANIMATION_CHR_CAPACITY_TILES
   ) {
-    throw new AnimationModelError('tile-index-overflow', { capacityTiles });
+    throw new AnimationModelError('chr-capacity-overflow', { capacityTiles });
   }
   const spritePalette = options.spritePalette ?? 0;
   if (
@@ -550,9 +557,10 @@ export function buildAnimationProjectModel(
               newTileCount += 1;
               reuse = 'new';
             }
-            if (tileIndex > 0xff) {
+            if (tileIndex > ANIMATION_METASPRITE_MAX_TILE_INDEX) {
               throw new AnimationModelError('tile-index-overflow', {
                 tileIndex,
+                capacityTiles,
               });
             }
 
