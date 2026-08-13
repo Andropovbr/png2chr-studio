@@ -537,6 +537,43 @@ describe('animation project model', () => {
     expect(model.finalChr.slice(0, destination.length)).toEqual(destination);
   });
 
+  it('reports total CHR and selected pattern-table usage independently', () => {
+    const destination = encodeChr(
+      Array.from({ length: 256 }, () => tileWith([[0, 0]])),
+    );
+    const importedTiles = Array.from({ length: 13 }, (_, index) =>
+      tileWith([
+        [0, 0],
+        [(index % 7) + 1, Math.floor(index / 7) + 1],
+      ]),
+    );
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles(importedTiles),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: importedTiles.map((_, index) => index),
+          frameDuration: 8,
+        },
+      ],
+      baseChr: destination,
+      patternTable: 1,
+    });
+
+    expect(model.chr).toMatchObject({
+      finalTileCount: 269,
+      patternTableFinalTileCount: 13,
+      remainingTiles: 243,
+      physicalCapacityTiles: 512,
+      patternTableCapacityTiles: 256,
+    });
+  });
+
   it('allocates the final local tile index at physical tile 511', () => {
     const destination = encodeChr(
       Array.from({ length: 255 }, () => tileWith([[0, 0]])),

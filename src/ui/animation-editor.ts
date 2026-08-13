@@ -1683,7 +1683,16 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
       t('animationAppendStart'),
       `$${model.chr.appendedTileStart.toString(16).padStart(2, '0').toUpperCase()}`,
     ),
-    stat(t('animationFinalTiles'), String(model.chr.finalTileCount)),
+    stat(
+      t('animationTotalChr'),
+      `${String(model.chr.finalTileCount)} / ${String(model.chr.physicalCapacityTiles)} tiles`,
+    ),
+    stat(
+      t('animationSpritePatternTableUsage', {
+        table: model.chr.patternTable,
+      }),
+      `${String(model.chr.patternTableFinalTileCount)} / ${String(model.chr.patternTableCapacityTiles)} tiles`,
+    ),
     stat(t('animationRemainingTiles'), String(model.chr.remainingTiles)),
     stat(t('animationFinalChrSize'), `${String(exportedChr.length)} bytes`),
   );

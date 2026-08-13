@@ -140,6 +140,9 @@ export interface AnimationChrStatistics {
   readonly reusedImportedTiles: number;
   readonly newTileCount: number;
   readonly appendedTileStart: number;
+  /** Occupied tiles in the pattern table selected for sprite OAM bytes. */
+  readonly patternTableFinalTileCount: number;
+  /** Occupied tiles across both physical 4 KiB pattern tables. */
   readonly finalTileCount: number;
   readonly finalSizeBytes: number;
   readonly remainingTiles: number;
@@ -767,6 +770,7 @@ export function buildAnimationProjectModel(
       reusedImportedTiles,
       newTileCount,
       appendedTileStart,
+      patternTableFinalTileCount,
       finalTileCount,
       finalSizeBytes: NES_CHR_ROM_SIZE,
       remainingTiles,
