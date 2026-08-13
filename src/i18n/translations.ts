@@ -61,6 +61,9 @@ const en = {
   animationOriginX: 'Origin X',
   animationOriginY: 'Origin Y',
   animationFlipDeduplication: 'Reuse tiles using H/V sprite flips',
+  animationSpritePatternTable: 'Sprite pattern table',
+  animationDestinationPatternTable: 'Base CHR placement table',
+  animationPatternTableOption: 'Pattern table {table}',
   animationTransparencyHint:
     'Transparent source pixels map to universal color index 0. Fully empty 8 × 8 cells are still omitted from the metasprite.',
   animationDestinationTitle: 'Destination CHR',
@@ -120,7 +123,7 @@ const en = {
   animationErrorOrigin:
     'The origin must keep every metasprite offset within the signed 8-bit range (-128 to 127).',
   animationErrorDestination:
-    'The destination CHR must be a valid multiple of 16 bytes and fit within 256 tiles.',
+    'The destination CHR must be a valid multiple of 16 bytes and fit within 512 tiles (8 KiB).',
   animationErrorCapacity:
     'The resulting CHR exceeds the 256-tile sprite pattern-table capacity.',
   animationAdd: '+ Add animation',
@@ -474,6 +477,9 @@ const ptBr = {
   animationOriginX: 'Origem X',
   animationOriginY: 'Origem Y',
   animationFlipDeduplication: 'Reutilizar tiles usando flips H/V de sprite',
+  animationSpritePatternTable: 'Pattern table dos sprites',
+  animationDestinationPatternTable: 'Tabela para posicionar o CHR-base',
+  animationPatternTableOption: 'Pattern table {table}',
   animationTransparencyHint:
     'Pixels transparentes do PNG usam o índice universal 0. Células 8 × 8 totalmente vazias continuam omitidas do metasprite.',
   animationDestinationTitle: 'CHR de destino',
@@ -533,7 +539,7 @@ const ptBr = {
   animationErrorOrigin:
     'A origem deve manter todos os deslocamentos do metasprite no intervalo de 8 bits com sinal (-128 a 127).',
   animationErrorDestination:
-    'O CHR de destino deve ser múltiplo de 16 bytes e caber em 256 tiles.',
+    'O CHR de destino deve ser múltiplo de 16 bytes e caber em 512 tiles (8 KiB).',
   animationErrorCapacity:
     'O CHR resultante excede a capacidade de 256 tiles da pattern table de sprites.',
   animationAdd: '+ Adicionar animação',

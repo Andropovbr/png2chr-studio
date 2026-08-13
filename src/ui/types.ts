@@ -62,6 +62,10 @@ export interface AnimationSettings {
   readonly colorIndices: Uint8Array;
   readonly destinationChrName: string | null;
   readonly destinationChr: Uint8Array;
+  /** Pattern table used by sprite OAM tile bytes (PPUCTRL bit 3). */
+  readonly patternTable: 0 | 1;
+  /** Placement for a base CHR shorter than 8 KiB. */
+  readonly destinationPatternTable: 0 | 1;
   readonly mappingCollapsed?: boolean;
 }
 

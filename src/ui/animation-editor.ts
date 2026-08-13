@@ -148,6 +148,7 @@ function errorTranslation(error: AnimationModelError | null): TranslationKey {
     case 'destination-capacity-overflow':
       return 'animationErrorDestination';
     case 'chr-capacity-overflow':
+    case 'pattern-table-capacity-overflow':
     case 'tile-index-overflow':
       return 'animationErrorCapacity';
     default:
@@ -517,6 +518,54 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   });
   flipLabel.append(flipCheckbox, t('animationFlipDeduplication'));
 
+  const patternTables = document.createElement('div');
+  patternTables.className = 'animation-fields';
+  const spritePatternTableLabel = document.createElement('label');
+  spritePatternTableLabel.className = 'animation-field';
+  const spritePatternTableText = document.createElement('span');
+  spritePatternTableText.textContent = t('animationSpritePatternTable');
+  const spritePatternTable = document.createElement('select');
+  for (const table of [0, 1] as const) {
+    const option = document.createElement('option');
+    option.value = String(table);
+    option.textContent = t('animationPatternTableOption', { table });
+    option.selected = options.settings.patternTable === table;
+    spritePatternTable.append(option);
+  }
+  spritePatternTable.addEventListener('change', () => {
+    options.onSettingsChange({
+      ...options.settings,
+      patternTable: Number(spritePatternTable.value) as 0 | 1,
+    });
+  });
+  spritePatternTableLabel.append(spritePatternTableText, spritePatternTable);
+
+  const destinationPatternTableLabel = document.createElement('label');
+  destinationPatternTableLabel.className = 'animation-field';
+  const destinationPatternTableText = document.createElement('span');
+  destinationPatternTableText.textContent = t(
+    'animationDestinationPatternTable',
+  );
+  const destinationPatternTable = document.createElement('select');
+  for (const table of [0, 1] as const) {
+    const option = document.createElement('option');
+    option.value = String(table);
+    option.textContent = t('animationPatternTableOption', { table });
+    option.selected = options.settings.destinationPatternTable === table;
+    destinationPatternTable.append(option);
+  }
+  destinationPatternTable.addEventListener('change', () => {
+    options.onSettingsChange({
+      ...options.settings,
+      destinationPatternTable: Number(destinationPatternTable.value) as 0 | 1,
+    });
+  });
+  destinationPatternTableLabel.append(
+    destinationPatternTableText,
+    destinationPatternTable,
+  );
+  patternTables.append(spritePatternTableLabel, destinationPatternTableLabel);
+
   const transparencyHint = document.createElement('small');
   transparencyHint.textContent = t('animationTransparencyHint');
 
@@ -562,6 +611,7 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
     hint,
     fields,
     flipLabel,
+    patternTables,
     transparencyHint,
     destination,
   );
@@ -1488,7 +1538,8 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
     section.append(message);
     return section;
   }
-  options.model.animations.forEach((animation) => {
+  const model = options.model;
+  model.animations.forEach((animation) => {
     const animSetting = options.settings.animations.find(
       (a) => a.name === animation.name,
     );
@@ -1563,6 +1614,12 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
               .toString(16)
               .padStart(2, '0')
               .toUpperCase()}`;
+          }
+          if (sprite !== undefined) {
+            details.textContent = `T${String(model.patternTable)} · P$${sprite.physicalTileIndex
+              .toString(16)
+              .padStart(3, '0')
+              .toUpperCase()} · ${details.textContent}`;
           }
           cell.append(details);
           grid.append(cell);
