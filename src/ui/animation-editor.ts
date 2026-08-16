@@ -998,8 +998,7 @@ function createAnimationCardFrameGrid(
   const columns = nesImage.width / anim.frameWidth;
   const rows = nesImage.height / anim.frameHeight;
   const grid = document.createElement('div');
-  grid.className = 'animation-frame-grid';
-  grid.style.gridTemplateColumns = `repeat(${String(Math.min(columns, 8))}, minmax(5rem, 1fr))`;
+  grid.className = 'animation-frame-grid animation-frame-filmstrip';
 
   for (let index = 0; index < columns * rows; index += 1) {
     const button = document.createElement('button');
@@ -1482,19 +1481,20 @@ function createAnimationCard(
       durationContainer,
       mirrorFieldset,
     );
-    body.append(fields);
 
-    // Spritesheet Frame Grid directly inside card
-    body.append(createAnimationCardFrameGrid(options, anim));
-
-    // Frame list and independent preview
-    const split = document.createElement('div');
-    split.className = 'animation-card-split';
-    split.append(
+    const mainColumn = document.createElement('div');
+    mainColumn.className = 'animation-card-main';
+    mainColumn.append(
+      fields,
+      createAnimationCardFrameGrid(options, anim),
       createFrameOrderList(options, anim),
-      createSingleAnimationPreview(options, anim),
     );
-    body.append(split);
+
+    const previewColumn = document.createElement('div');
+    previewColumn.className = 'animation-card-preview';
+    previewColumn.append(createSingleAnimationPreview(options, anim));
+
+    body.append(mainColumn, previewColumn);
 
     card.append(body);
   }

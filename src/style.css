@@ -358,6 +358,27 @@ select {
   padding-bottom: 0.35rem;
 }
 
+.animation-frame-filmstrip {
+  display: flex;
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.animation-frame-filmstrip .animation-frame-button {
+  flex: 0 0 auto;
+  width: 5rem;
+  min-width: 5rem;
+}
+
+.animation-frame-filmstrip .animation-frame-button canvas {
+  width: 4rem;
+  height: 4rem;
+  max-height: none;
+  object-fit: contain;
+  margin-inline: auto;
+}
+
 .animation-frame-button {
   display: grid;
   min-width: 5rem;
@@ -483,7 +504,21 @@ select {
 .animation-card-body {
   padding: 1rem;
   display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(13rem, 1fr);
   gap: 1.25rem;
+  align-items: start;
+}
+
+.animation-card-main {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.animation-card-preview {
+  min-width: 0;
+  position: sticky;
+  top: 4.5rem;
 }
 
 .animation-card-fields {
@@ -1726,6 +1761,14 @@ input:focus-visible + label {
 
   .tiles-panel {
     max-height: none;
+  }
+
+  .animation-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .animation-card-preview {
+    position: static;
   }
 }
 
