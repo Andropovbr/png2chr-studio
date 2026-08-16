@@ -50,7 +50,66 @@ function cssColor(code: number): string {
   return `rgb(${String(color.red)} ${String(color.green)} ${String(color.blue)})`;
 }
 
-function createPaletteRows(options: PaletteEditorOptions): HTMLElement {
+function createMasterPaletteDialog(
+  options: PaletteEditorOptions,
+): { dialog: HTMLDialogElement; openFor: (paletteIndex: number, colorIndex: number) => void } {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'nes-master-dialog';
+  const form = document.createElement('form');
+  form.method = 'dialog';
+  const fieldset = document.createElement('fieldset');
+  fieldset.className = 'nes-master-palette';
+  const legend = document.createElement('legend');
+  legend.textContent = t('nesMasterPaletteTitle');
+  const target = document.createElement('p');
+  target.className = 'nes-color-target';
+  const grid = document.createElement('div');
+  grid.className = 'nes-color-grid';
+  const closeButton = document.createElement('button');
+  closeButton.type = 'submit';
+  closeButton.className = 'button secondary-button';
+  closeButton.textContent = t('nesMasterPaletteClose');
+
+  const openFor = (paletteIndex: number, colorIndex: number): void => {
+    const targetCode =
+      options.paletteSet[paletteIndex]?.[colorIndex] ?? 0x0f;
+    target.textContent = t('nesColorEditTarget', {
+      palette: paletteIndex,
+      color: colorIndex,
+      code: hexadecimal(targetCode),
+    });
+    grid.replaceChildren();
+    NES_MASTER_PALETTE.forEach((_color, colorCode) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'nes-color-button';
+      button.style.backgroundColor = cssColor(colorCode);
+      button.title = hexadecimal(colorCode);
+      button.setAttribute(
+        'aria-label',
+        t('nesColorButton', { code: hexadecimal(colorCode) }),
+      );
+      button.addEventListener('click', () => {
+        options.onPaletteColorChange(paletteIndex, colorIndex, colorCode);
+        dialog.close();
+      });
+      grid.append(button);
+    });
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+  };
+
+  fieldset.append(legend, target, grid);
+  form.append(fieldset, closeButton);
+  dialog.append(form);
+  return { dialog, openFor };
+}
+
+function createPaletteRows(
+  options: PaletteEditorOptions,
+  onEditColor: (paletteIndex: number, colorIndex: number) => void,
+): HTMLElement {
   const rows = document.createElement('div');
   rows.className = 'nes-palette-rows';
 
@@ -87,6 +146,7 @@ function createPaletteRows(options: PaletteEditorOptions): HTMLElement {
           paletteIndex: targetPalette,
           colorIndex,
         });
+        onEditColor(targetPalette, colorIndex);
       });
       swatches.append(button);
     });
@@ -94,48 +154,6 @@ function createPaletteRows(options: PaletteEditorOptions): HTMLElement {
     rows.append(row);
   });
   return rows;
-}
-
-function createMasterPalette(options: PaletteEditorOptions): HTMLElement {
-  const fieldset = document.createElement('fieldset');
-  fieldset.className = 'nes-master-palette';
-  const legend = document.createElement('legend');
-  legend.textContent = t('nesMasterPaletteTitle');
-  const target = document.createElement('p');
-  target.className = 'nes-color-target';
-  const targetCode =
-    options.paletteSet[options.colorTarget.paletteIndex]?.[
-      options.colorTarget.colorIndex
-    ] ?? 0x0f;
-  target.textContent = t('nesColorEditTarget', {
-    palette: options.colorTarget.paletteIndex,
-    color: options.colorTarget.colorIndex,
-    code: hexadecimal(targetCode),
-  });
-  const grid = document.createElement('div');
-  grid.className = 'nes-color-grid';
-
-  NES_MASTER_PALETTE.forEach((_color, colorCode) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'nes-color-button';
-    button.style.backgroundColor = cssColor(colorCode);
-    button.title = hexadecimal(colorCode);
-    button.setAttribute(
-      'aria-label',
-      t('nesColorButton', { code: hexadecimal(colorCode) }),
-    );
-    button.addEventListener('click', () => {
-      options.onPaletteColorChange(
-        options.colorTarget.paletteIndex,
-        options.colorTarget.colorIndex,
-        colorCode,
-      );
-    });
-    grid.append(button);
-  });
-  fieldset.append(legend, target, grid);
-  return fieldset;
 }
 
 function drawAssignmentCanvas(
@@ -718,6 +736,12 @@ export function createPaletteEditor(
   } else {
     section.append(createAssignmentEditor(options, options.image));
   }
-  section.append(createPaletteRows(options), createMasterPalette(options));
+  const dialog = createMasterPaletteDialog(options);
+  section.append(
+    createPaletteRows(options, (paletteIndex, colorIndex) => {
+      dialog.openFor(paletteIndex, colorIndex);
+    }),
+    dialog.dialog,
+  );
   return section;
 }

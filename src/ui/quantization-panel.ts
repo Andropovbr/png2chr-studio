@@ -8,6 +8,7 @@ import {
 } from '../core/quantization-settings';
 import { COLOR_DISTANCE_MODES } from '../core/color-distance';
 import { t, type TranslationKey } from '../i18n';
+import { createCollapsiblePanel } from './collapsible';
 
 export interface QuantizationPreview {
   readonly mode: QuantizationMode;
@@ -20,6 +21,8 @@ interface QuantizationPanelOptions {
   readonly settings: QuantizationSettings;
   readonly previews: readonly QuantizationPreview[];
   readonly previewsLoading: boolean;
+  readonly isCollapsed?: boolean;
+  readonly onToggleCollapse?: () => void;
   readonly onSettingsChange: (settings: QuantizationSettings) => void;
 }
 
@@ -100,22 +103,28 @@ function comparisonCard(
 export function createQuantizationPanel(
   options: QuantizationPanelOptions,
 ): HTMLElement {
-  const section = document.createElement('section');
-  section.className = 'panel quantization-panel';
-  const heading = document.createElement('h2');
-  heading.textContent = t('quantizationTitle');
   const hint = document.createElement('p');
   hint.className = 'muted';
   hint.textContent = t('quantizationHint');
-  section.append(heading, hint);
 
   if (!options.pngActive || options.sourceImage === null) {
+    const section = document.createElement('section');
+    section.className = 'panel quantization-panel';
+    const heading = document.createElement('h2');
+    heading.textContent = t('quantizationTitle');
     const empty = document.createElement('p');
     empty.className = 'empty-message';
     empty.textContent = t('quantizationEmpty');
-    section.append(empty);
+    section.append(heading, empty);
     return section;
   }
+
+  const summary = `${t(
+    QUANTIZATION_LABELS[options.settings.quantizationMode],
+  )} · ${t(DITHERING_LABELS[options.settings.ditheringMode])}`;
+
+  const content = document.createElement('div');
+  content.className = 'quantization-content';
 
   const controls = document.createElement('div');
   controls.className = 'quantization-controls';
@@ -215,7 +224,7 @@ export function createQuantizationPanel(
     loading.textContent = t('quantizationPreviewLoading');
     comparison.append(loading);
   }
-  section.append(
+  content.append(
     controls,
     advanced,
     reset,
@@ -223,5 +232,14 @@ export function createQuantizationPanel(
     comparisonHint,
     comparison,
   );
-  return section;
+
+  const isCollapsed = options.isCollapsed ?? false;
+  return createCollapsiblePanel({
+    panelClassName: 'quantization-panel',
+    title: t('quantizationTitle'),
+    summary,
+    isCollapsed,
+    onToggle: options.onToggleCollapse ?? (() => undefined),
+    children: [hint, content],
+  });
 }

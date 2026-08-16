@@ -28,6 +28,7 @@ import type { RawImageData } from '../core/types';
 import { t } from '../i18n';
 import type { TranslationKey } from '../i18n';
 import type { AnimationItemSetting, AnimationSettings } from './types';
+import { createCollapsiblePanel } from './collapsible';
 
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
   nearest: 'quantizationNearest',
@@ -49,6 +50,9 @@ export interface AnimationEditorOptions {
   readonly onRemoveAnimation: (animationId: string) => void;
   readonly onToggleAnimationCollapse: (animationId: string) => void;
   readonly onToggleMappingCollapse: () => void;
+  readonly onToggleConfigCollapse: () => void;
+  readonly onTogglePaletteCollapse: () => void;
+  readonly onToggleQuantizationCollapse: () => void;
   readonly onUpdateAnimation: (
     animationId: string,
     patch: Partial<AnimationItemSetting>,
@@ -199,27 +203,24 @@ function paletteCssColor(colorCode: number): string {
 function createAnimationQuantizationPanel(
   options: AnimationEditorOptions,
 ): HTMLElement {
-  const section = document.createElement('section');
-  section.className = 'panel animation-quantization-panel';
-
-  const heading = document.createElement('h2');
-  heading.textContent = t('animationColorReductionTitle');
-  const hint = document.createElement('p');
-  hint.className = 'muted';
-  hint.textContent = t('quantizationHint');
-  section.append(heading, hint);
-
   const animationsWithSource = options.settings.animations.filter(
     (a) => a.source !== null,
   );
 
   if (animationsWithSource.length === 0) {
+    const section = document.createElement('section');
+    section.className = 'panel animation-quantization-panel';
+    const heading = document.createElement('h2');
+    heading.textContent = t('animationColorReductionTitle');
     const emptyMsg = document.createElement('p');
     emptyMsg.className = 'muted empty-message';
     emptyMsg.textContent = t('animationReductionNoSources');
-    section.append(emptyMsg);
+    section.append(heading, emptyMsg);
     return section;
   }
+
+  const content = document.createElement('div');
+  content.className = 'animation-quantization-content';
 
   // Reference image selector
   const refContainer = document.createElement('div');
@@ -243,7 +244,7 @@ function createAnimationQuantizationPanel(
 
   refLabel.append(refLabelText, refSelect);
   refContainer.append(refLabel);
-  section.append(refContainer);
+  content.append(refContainer);
 
   const cardsContainer = document.createElement('div');
   cardsContainer.className = 'animation-reduction-cards';
@@ -303,7 +304,7 @@ function createAnimationQuantizationPanel(
   });
 
   renderCards(activeRefId);
-  section.append(cardsContainer);
+  content.append(cardsContainer);
 
   const selectedLabel = t(
     QUANTIZATION_LABELS[options.settings.quantizationMode],
@@ -313,22 +314,83 @@ function createAnimationQuantizationPanel(
   status.textContent = t('animationColorReductionSelected', {
     mode: selectedLabel,
   });
-  section.append(status);
+  content.append(status);
 
-  return section;
+  return createCollapsiblePanel({
+    panelClassName: 'animation-quantization-panel',
+    title: t('animationColorReductionTitle'),
+    summary: selectedLabel,
+    isCollapsed: options.settings.quantizationCollapsed ?? false,
+    onToggle: options.onToggleQuantizationCollapse,
+    children: [content],
+  });
+}
+
+function createSpriteMasterPaletteDialog(
+  options: AnimationEditorOptions,
+): { dialog: HTMLDialogElement; openFor: (paletteIndex: number, colorIndex: number) => void } {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'nes-master-dialog';
+  const form = document.createElement('form');
+  form.method = 'dialog';
+  const fieldset = document.createElement('fieldset');
+  fieldset.className = 'nes-master-palette animation-sprite-master-palette';
+  const legend = document.createElement('legend');
+  legend.textContent = t('nesMasterPaletteTitle');
+  const target = document.createElement('p');
+  target.className = 'nes-color-target';
+  const grid = document.createElement('div');
+  grid.className = 'nes-color-grid';
+  const closeButton = document.createElement('button');
+  closeButton.type = 'submit';
+  closeButton.className = 'button secondary-button';
+  closeButton.textContent = t('nesMasterPaletteClose');
+
+  const openFor = (paletteIndex: number, colorIndex: number): void => {
+    const targetCode =
+      options.paletteSet[paletteIndex]?.[colorIndex] ?? 0x0f;
+    target.textContent = t('nesColorEditTarget', {
+      palette: paletteIndex,
+      color: colorIndex,
+      code: hexadecimal(targetCode),
+    });
+    grid.replaceChildren();
+    NES_MASTER_PALETTE.forEach((_color, colorCode) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'nes-color-button';
+      button.style.backgroundColor = paletteCssColor(colorCode);
+      button.title = hexadecimal(colorCode);
+      button.setAttribute(
+        'aria-label',
+        t('nesColorButton', { code: hexadecimal(colorCode) }),
+      );
+      button.addEventListener('click', () => {
+        options.onPaletteColorChange(paletteIndex, colorIndex, colorCode);
+        dialog.close();
+      });
+      grid.append(button);
+    });
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+  };
+
+  fieldset.append(legend, target, grid);
+  form.append(fieldset, closeButton);
+  dialog.append(form);
+  return { dialog, openFor };
 }
 
 function createSpritePaletteEditor(
   options: AnimationEditorOptions,
 ): HTMLElement {
-  const section = document.createElement('section');
-  section.className = 'panel animation-palette-panel';
-  const heading = document.createElement('h2');
-  heading.textContent = t('animationSpritePalettesTitle');
   const hint = document.createElement('p');
   hint.className = 'muted';
   hint.textContent = t('animationSpritePalettesHint');
-  section.append(heading, hint);
+
+  const content = document.createElement('div');
+  content.className = 'animation-palette-content';
 
   // Asset default palette selector
   const defaultPaletteGroup = document.createElement('div');
@@ -350,7 +412,7 @@ function createSpritePaletteEditor(
   });
   defaultPaletteLabel.append(defaultPaletteSpan, defaultPaletteSelect);
   defaultPaletteGroup.append(defaultPaletteLabel);
-  section.append(defaultPaletteGroup);
+  content.append(defaultPaletteGroup);
 
   const palettes = document.createElement('div');
   palettes.className = 'animation-sprite-palettes';
@@ -358,6 +420,7 @@ function createSpritePaletteEditor(
     0,
     Math.min(3, options.settings.spriteColorIndex),
   );
+  const masterPalette = createSpriteMasterPaletteDialog(options);
 
   options.paletteSet.forEach((palette, paletteIndex) => {
     const card = document.createElement('fieldset');
@@ -412,51 +475,33 @@ function createSpritePaletteEditor(
     palettes.append(card);
   });
 
-  const master = document.createElement('fieldset');
-  master.className = 'nes-master-palette animation-sprite-master-palette';
-  const masterLegend = document.createElement('legend');
-  masterLegend.textContent = t('nesMasterPaletteTitle');
-  const target = document.createElement('p');
-  target.className = 'nes-color-target';
-  const targetPalette = options.settings.spritePalette;
-  const targetCode =
-    options.paletteSet[targetPalette]?.[selectedColorIndex] ?? 0x0f;
-  target.textContent = t('nesColorEditTarget', {
-    palette: targetPalette,
-    color: selectedColorIndex,
-    code: hexadecimal(targetCode),
+  const editMasterButton = document.createElement('button');
+  editMasterButton.type = 'button';
+  editMasterButton.className = 'button secondary-button';
+  editMasterButton.textContent = t('nesMasterPaletteEdit');
+  editMasterButton.addEventListener('click', () => {
+    masterPalette.openFor(options.settings.spritePalette, selectedColorIndex);
   });
-  const colors = document.createElement('div');
-  colors.className = 'nes-color-grid';
-  NES_MASTER_PALETTE.forEach((_color, colorCode) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'nes-color-button';
-    button.style.backgroundColor = paletteCssColor(colorCode);
-    button.title = hexadecimal(colorCode);
-    button.setAttribute(
-      'aria-label',
-      t('nesColorButton', { code: hexadecimal(colorCode) }),
-    );
-    button.addEventListener('click', () => {
-      options.onPaletteColorChange(
-        targetPalette,
-        selectedColorIndex,
-        colorCode,
-      );
-    });
-    colors.append(button);
+
+  content.append(palettes, editMasterButton);
+  const panel = createCollapsiblePanel({
+    panelClassName: 'animation-palette-panel',
+    title: t('animationSpritePalettesTitle'),
+    summary: t('nesPaletteName', {
+      index: options.settings.spritePalette,
+    }),
+    isCollapsed: options.settings.paletteCollapsed ?? false,
+    onToggle: options.onTogglePaletteCollapse,
+    children: [hint, content],
   });
-  master.append(masterLegend, target, colors);
-  section.append(heading, hint, palettes, master);
-  return section;
+  panel.append(masterPalette.dialog);
+  return panel;
 }
 
 function createConfiguration(options: AnimationEditorOptions): HTMLElement {
-  const section = document.createElement('section');
-  section.className = 'panel animation-config-panel';
-  const heading = document.createElement('h2');
-  heading.textContent = t('animationEditorTitle');
+  const content = document.createElement('div');
+  content.className = 'animation-config-content';
+
   const hint = document.createElement('p');
   hint.className = 'muted';
   hint.textContent = t('animationEditorHint');
@@ -606,8 +651,7 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   }
   destination.append(destinationStatus);
 
-  section.append(
-    heading,
+  content.append(
     hint,
     fields,
     flipLabel,
@@ -615,7 +659,15 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
     transparencyHint,
     destination,
   );
-  return section;
+  return createCollapsiblePanel({
+    panelClassName: 'animation-config-panel',
+    title: t('animationEditorTitle'),
+    summary:
+      options.settings.name || options.settings.symbolPrefix || 'soldier',
+    isCollapsed: options.settings.configCollapsed ?? false,
+    onToggle: options.onToggleConfigCollapse,
+    children: [content],
+  });
 }
 
 function createSingleAnimationPreview(
@@ -1643,10 +1695,16 @@ function stat(label: string, value: string): HTMLDivElement {
   return item;
 }
 
-function downloadButton(label: string, onClick: () => void): HTMLButtonElement {
+function downloadButton(
+  label: string,
+  onClick: () => void,
+  primary: boolean,
+): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'button primary-button';
+  button.className = primary
+    ? 'button primary-button export-download-primary'
+    : 'button secondary-button export-download-secondary';
   button.textContent = label;
   button.addEventListener('click', onClick);
   return button;
@@ -1702,30 +1760,58 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
   const actions = document.createElement('div');
   actions.className = 'export-actions';
   actions.append(
-    downloadButton(t('animationDownloadChr'), () => {
-      options.onDownloadBytes(exportedChr, model.chr.output);
-    }),
-    downloadButton(t('animationDownloadPalette'), () => {
-      options.onDownloadBytes(
-        encodeNesBackgroundPalettes(options.paletteSet),
-        `${id}.pal`,
-      );
-    }),
-    downloadButton(t('animationDownloadJson'), () => {
-      options.onDownloadText(serializeAnimationMetadata(model), `${id}.json`);
-    }),
-    downloadButton(t('animationDownloadCHeader'), () => {
-      options.onDownloadText(c.header, c.headerFileName);
-    }),
-    downloadButton(t('animationDownloadCSource'), () => {
-      options.onDownloadText(c.source, c.sourceFileName);
-    }),
-    downloadButton(t('animationDownloadAsmInclude'), () => {
-      options.onDownloadText(asm.include, asm.includeFileName);
-    }),
-    downloadButton(t('animationDownloadAsmSource'), () => {
-      options.onDownloadText(asm.source, asm.sourceFileName);
-    }),
+    downloadButton(
+      t('animationDownloadChr'),
+      () => {
+        options.onDownloadBytes(exportedChr, model.chr.output);
+      },
+      true,
+    ),
+    downloadButton(
+      t('animationDownloadPalette'),
+      () => {
+        options.onDownloadBytes(
+          encodeNesBackgroundPalettes(options.paletteSet),
+          `${id}.pal`,
+        );
+      },
+      false,
+    ),
+    downloadButton(
+      t('animationDownloadJson'),
+      () => {
+        options.onDownloadText(serializeAnimationMetadata(model), `${id}.json`);
+      },
+      false,
+    ),
+    downloadButton(
+      t('animationDownloadCHeader'),
+      () => {
+        options.onDownloadText(c.header, c.headerFileName);
+      },
+      false,
+    ),
+    downloadButton(
+      t('animationDownloadCSource'),
+      () => {
+        options.onDownloadText(c.source, c.sourceFileName);
+      },
+      false,
+    ),
+    downloadButton(
+      t('animationDownloadAsmInclude'),
+      () => {
+        options.onDownloadText(asm.include, asm.includeFileName);
+      },
+      false,
+    ),
+    downloadButton(
+      t('animationDownloadAsmSource'),
+      () => {
+        options.onDownloadText(asm.source, asm.sourceFileName);
+      },
+      false,
+    ),
   );
   const estimate = document.createElement('small');
   estimate.textContent = t('animationEstimatedRom', {
@@ -1738,12 +1824,24 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
 export function createAnimationEditor(
   options: AnimationEditorOptions,
 ): readonly HTMLElement[] {
+  const configPanel = createConfiguration(options);
+  configPanel.id = 'section-asset';
+  const quantizationPanel = createAnimationQuantizationPanel(options);
+  quantizationPanel.id = 'section-quantization';
+  const palettePanel = createSpritePaletteEditor(options);
+  palettePanel.id = 'section-palettes';
+  const listPanel = createAnimationListPanel(options);
+  listPanel.id = 'section-animations';
+  const mappingPanel = createMapping(options);
+  mappingPanel.id = 'section-mapping';
+  const exportsPanel = createExports(options);
+  exportsPanel.id = 'section-export';
   return [
-    createConfiguration(options),
-    createAnimationQuantizationPanel(options),
-    createSpritePaletteEditor(options),
-    createAnimationListPanel(options),
-    createMapping(options),
-    createExports(options),
+    configPanel,
+    quantizationPanel,
+    palettePanel,
+    listPanel,
+    mappingPanel,
+    exportsPanel,
   ];
 }

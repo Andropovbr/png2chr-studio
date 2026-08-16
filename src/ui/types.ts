@@ -67,6 +67,10 @@ export interface AnimationSettings {
   /** Placement for a base CHR shorter than 8 KiB. */
   readonly destinationPatternTable: 0 | 1;
   readonly mappingCollapsed?: boolean;
+  /** UI-only flags (not persisted to any export). */
+  readonly configCollapsed?: boolean;
+  readonly paletteCollapsed?: boolean;
+  readonly quantizationCollapsed?: boolean;
 }
 
 export interface ProjectView {
@@ -97,6 +101,7 @@ export interface ProjectView {
   };
   readonly animation: AnimationSettings;
   readonly quantizationSettings: QuantizationSettings;
+  readonly quantizationCollapsed?: boolean;
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

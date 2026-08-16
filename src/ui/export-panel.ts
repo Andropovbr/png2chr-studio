@@ -25,10 +25,13 @@ function downloadButton(
   bytes: Uint8Array | null,
   fileName: string,
   onDownload: (bytes: Uint8Array, fileName: string) => void,
+  primary: boolean,
 ): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'button primary-button';
+  button.className = primary
+    ? 'button primary-button export-download-primary'
+    : 'button secondary-button export-download-secondary';
   button.disabled = bytes === null;
   button.textContent = label;
   button.addEventListener('click', () => {
@@ -76,12 +79,14 @@ export function createExportPanel(options: ExportPanelOptions): HTMLElement {
       options.chr,
       options.chrName,
       options.onDownload,
+      true,
     ),
     downloadButton(
       t('downloadPalette', { name: options.paletteName }),
       options.palette,
       options.paletteName,
       options.onDownload,
+      false,
     ),
   );
 
@@ -95,18 +100,21 @@ export function createExportPanel(options: ExportPanelOptions): HTMLElement {
         options.nametable,
         options.nametableName,
         options.onDownload,
+        false,
       ),
       downloadButton(
         t('downloadAttributeTable', { name: options.attributeTableName }),
         options.attributeTable,
         options.attributeTableName,
         options.onDownload,
+        false,
       ),
       downloadButton(
         t('downloadCollisionMap', { name: options.collisionMapName }),
         options.collisionMap,
         options.collisionMapName,
         options.onDownload,
+        false,
       ),
     );
     const note = document.createElement('small');

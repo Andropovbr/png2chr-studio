@@ -74,6 +74,7 @@ import {
   createQuantizationPanel,
   type QuantizationPreview,
 } from './ui/quantization-panel';
+import { createStickyNav } from './ui/sticky-nav';
 import { createTileGrid } from './ui/tile-grid';
 import {
   displayErrorFromAnalysis,
@@ -411,6 +412,14 @@ function createProjectQuantizationPanel(): HTMLElement {
     settings: project.quantizationSettings,
     previews: quantizationPreviews,
     previewsLoading: quantizationPreviewsLoading,
+    isCollapsed: project.quantizationCollapsed ?? false,
+    onToggleCollapse: () => {
+      project = {
+        ...project,
+        quantizationCollapsed: !(project.quantizationCollapsed ?? false),
+      };
+      render();
+    },
     onSettingsChange: (settings) => void changeQuantizationSettings(settings),
   });
 }
@@ -567,6 +576,39 @@ function toggleAnimationCollapse(animId: string): void {
       animations: project.animation.animations.map((a) =>
         a.id === animId ? { ...a, collapsed: !a.collapsed } : a,
       ),
+    },
+  };
+  render();
+}
+
+function toggleAnimationConfigCollapse(): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      configCollapsed: !(project.animation.configCollapsed ?? false),
+    },
+  };
+  render();
+}
+
+function toggleAnimationPaletteCollapse(): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      paletteCollapsed: !(project.animation.paletteCollapsed ?? false),
+    },
+  };
+  render();
+}
+
+function toggleAnimationQuantizationCollapse(): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      quantizationCollapsed: !(project.animation.quantizationCollapsed ?? false),
     },
   };
   render();
@@ -976,6 +1018,9 @@ function renderAnimationWorkspace(): void {
       };
       render();
     },
+    onToggleConfigCollapse: toggleAnimationConfigCollapse,
+    onTogglePaletteCollapse: toggleAnimationPaletteCollapse,
+    onToggleQuantizationCollapse: toggleAnimationQuantizationCollapse,
     onUpdateAnimation: updateAnimation,
     onAnimationSourceFile: (animId: string, file: File) => {
       void loadAnimationSourceFile(animId, file);
@@ -1051,7 +1096,13 @@ function renderAnimationWorkspace(): void {
     error.append(heading, message);
     workspace.append(error);
   }
-  app.replaceChildren(createHeader(), workspace);
+  const nav = createStickyNav({
+    mode: 'animation',
+    fileName: project.fileName,
+    quantizationMode: project.animation.quantizationMode,
+    onQuantizationModeChange: setGlobalAnimationQuantizationMode,
+  });
+  app.replaceChildren(createHeader(), nav, workspace);
 }
 
 function render(): void {
@@ -1130,6 +1181,8 @@ function render(): void {
   workspace.className = 'workspace';
   const editingWorkspace = document.createElement('div');
   editingWorkspace.className = 'playfield-editing-workspace';
+  const projectImageInput = createProjectImageInput();
+  projectImageInput.id = 'section-image';
   editingWorkspace.append(
     createImagePreview({
       image:
@@ -1177,7 +1230,8 @@ function render(): void {
         render();
       },
     }),
-    createPaletteEditor({
+  );
+  const paletteEditor = createPaletteEditor({
       image: project.indexedImage,
       paletteSet: project.paletteSet,
       assignments: project.paletteAssignments,
@@ -1225,24 +1279,11 @@ function render(): void {
         project = { ...project, pixelOverrides, paletteAssignments };
         render();
       },
-    }),
-  );
-  workspace.append(
-    createProjectImageInput(),
-    createProjectQuantizationPanel(),
-    editingWorkspace,
-    createDiagnostics({
-      width: project.width,
-      height: project.height,
-      indexedImage: mappedImage,
-      tileCount: visibleTiles.length,
-      chrSize: chr?.length ?? null,
-      playfieldMode: project.mode === 'playfield',
-      nametableSize: nametable?.length ?? null,
-      attributeTableSize: attributeTable?.length ?? null,
-      error: conversionError,
-    }),
-    createTileGrid(
+    });
+  paletteEditor.id = 'section-palettes';
+  const quantizationPanel = createProjectQuantizationPanel();
+  quantizationPanel.id = 'section-quantization';
+  const tileGrid = createTileGrid(
       visibleTiles,
       project.indexedImage,
       mappedTiles.length,
@@ -1266,8 +1307,9 @@ function render(): void {
       project.paletteSet,
       project.paletteAssignments,
       regionSize,
-    ),
-    createExportPanel({
+    );
+  tileGrid.id = 'section-tiles';
+  const exportPanel = createExportPanel({
       chrName: outputName,
       nametableName,
       attributeTableName,
@@ -1288,9 +1330,38 @@ function render(): void {
       palette: encodeNesBackgroundPalettes(project.paletteSet),
       collisionCellCount: countCollisionCells(project.collisionCells),
       onDownload: downloadBytes,
+    });
+  exportPanel.id = 'section-export';
+  workspace.append(
+    projectImageInput,
+    quantizationPanel,
+    editingWorkspace,
+    createDiagnostics({
+      width: project.width,
+      height: project.height,
+      indexedImage: mappedImage,
+      tileCount: visibleTiles.length,
+      chrSize: chr?.length ?? null,
+      playfieldMode: project.mode === 'playfield',
+      nametableSize: nametable?.length ?? null,
+      attributeTableSize: attributeTable?.length ?? null,
+      error: conversionError,
     }),
+    tileGrid,
+    exportPanel,
   );
-  app.replaceChildren(createHeader(), workspace);
+  const nav = createStickyNav({
+    mode: project.mode,
+    fileName: project.fileName,
+    quantizationMode: project.quantizationSettings.quantizationMode,
+    onQuantizationModeChange: (quantizationMode) => {
+      void changeQuantizationSettings({
+        ...project.quantizationSettings,
+        quantizationMode,
+      });
+    },
+  });
+  app.replaceChildren(createHeader(), nav, workspace);
 }
 
 function setProjectError(error: DisplayError): void {

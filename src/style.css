@@ -131,6 +131,11 @@ select {
   grid-row: 2;
 }
 
+.animation-workspace > .animation-quantization-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
 .animation-palette-panel {
   grid-row: 3;
 }
@@ -1757,4 +1762,159 @@ input:focus-visible + label {
   .animation-frame-duration {
     justify-content: space-between;
   }
+}
+
+/* ---- Sticky navigation ---- */
+
+.sticky-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.75rem;
+  background: rgb(13 18 24 / 92%);
+  backdrop-filter: blur(6px);
+}
+
+.sticky-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sticky-nav-link {
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.sticky-nav-link:hover {
+  color: var(--accent);
+  background: var(--accent-dark);
+}
+
+.sticky-nav-file {
+  max-width: 16rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quantization-segmented {
+  display: inline-flex;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  overflow: hidden;
+}
+
+.segmented-button {
+  border: 0;
+  padding: 0.35rem 0.6rem;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.segmented-button + .segmented-button {
+  border-left: 1px solid var(--panel-border);
+}
+
+.segmented-button[aria-pressed='true'] {
+  color: var(--accent-dark);
+  background: var(--accent);
+}
+
+/* ---- Collapsible panels ---- */
+
+.collapsible-panel .collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.collapsible-toggle {
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.collapsible-title {
+  margin: 0;
+  cursor: pointer;
+}
+
+.collapsible-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.collapsible-body {
+  padding-top: 0.9rem;
+}
+
+/* ---- Master palette modal ---- */
+
+.nes-master-dialog {
+  width: min(34rem, calc(100% - 2rem));
+  border: 1px solid var(--panel-border);
+  border-radius: 0.7rem;
+  padding: 1rem;
+  color: inherit;
+  background: var(--panel);
+}
+
+.nes-master-dialog::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+
+.nes-master-dialog .nes-master-palette {
+  margin-bottom: 0.9rem;
+}
+
+.nes-master-dialog .button {
+  width: 100%;
+}
+
+/* ---- Export actions ---- */
+
+.export-download-primary {
+  width: 100%;
+}
+
+.export-download-secondary {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.export-actions .export-download-secondary {
+  justify-content: flex-start;
+}
+
+/* ---- Anchor scroll offset under the sticky nav ---- */
+
+[id^='section-'] {
+  scroll-margin-top: 4.5rem;
 }
