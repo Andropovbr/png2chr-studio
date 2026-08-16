@@ -4,6 +4,7 @@ import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
+import type { FrameDetectionResult } from '../core/frame-detection';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
 import type {
@@ -47,6 +48,8 @@ export interface AnimationItemSetting {
   readonly frameDurations: readonly number[];
   readonly framePalettes?: readonly (number | null)[];
   readonly collapsed?: boolean;
+  /** Last automatic frame-grid detection result for this animation's source. */
+  readonly frameDetection?: FrameDetectionResult | null;
 }
 
 export interface AnimationSettings {
@@ -67,6 +70,10 @@ export interface AnimationSettings {
   /** Placement for a base CHR shorter than 8 KiB. */
   readonly destinationPatternTable: 0 | 1;
   readonly mappingCollapsed?: boolean;
+  /** UI-only flags (not persisted to any export). */
+  readonly configCollapsed?: boolean;
+  readonly paletteCollapsed?: boolean;
+  readonly quantizationCollapsed?: boolean;
 }
 
 export interface ProjectView {
@@ -97,6 +104,7 @@ export interface ProjectView {
   };
   readonly animation: AnimationSettings;
   readonly quantizationSettings: QuantizationSettings;
+  readonly quantizationCollapsed?: boolean;
   readonly error: DisplayError | null;
   readonly loading: boolean;
 }

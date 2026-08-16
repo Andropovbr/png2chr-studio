@@ -23,6 +23,10 @@ import {
   createEmptyCollisionMap,
   encodeCollisionMap,
 } from './core/collision-encoder';
+import {
+  decideFrameDimensions,
+  detectFrameGrid,
+} from './core/frame-detection';
 import { analyzeImage, imageHasTransparency } from './core/image-analysis';
 import { extractNromChr, InesRomError } from './core/ines-rom';
 import {
@@ -74,6 +78,7 @@ import {
   createQuantizationPanel,
   type QuantizationPreview,
 } from './ui/quantization-panel';
+import { createStickyNav } from './ui/sticky-nav';
 import { createTileGrid } from './ui/tile-grid';
 import {
   displayErrorFromAnalysis,
@@ -411,6 +416,14 @@ function createProjectQuantizationPanel(): HTMLElement {
     settings: project.quantizationSettings,
     previews: quantizationPreviews,
     previewsLoading: quantizationPreviewsLoading,
+    isCollapsed: project.quantizationCollapsed ?? false,
+    onToggleCollapse: () => {
+      project = {
+        ...project,
+        quantizationCollapsed: !(project.quantizationCollapsed ?? false),
+      };
+      render();
+    },
     onSettingsChange: (settings) => void changeQuantizationSettings(settings),
   });
 }
@@ -572,16 +585,55 @@ function toggleAnimationCollapse(animId: string): void {
   render();
 }
 
+function toggleAnimationConfigCollapse(): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      configCollapsed: !(project.animation.configCollapsed ?? false),
+    },
+  };
+  render();
+}
+
+function toggleAnimationPaletteCollapse(): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      paletteCollapsed: !(project.animation.paletteCollapsed ?? false),
+    },
+  };
+  render();
+}
+
+function toggleAnimationQuantizationCollapse(): void {
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      quantizationCollapsed: !(project.animation.quantizationCollapsed ?? false),
+    },
+  };
+  render();
+}
+
 function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
 ): void {
+  const manualDimensions =
+    'frameWidth' in patch || 'frameHeight' in patch;
+  const resolvedPatch =
+    manualDimensions && !('frameDetection' in patch)
+      ? { ...patch, frameDetection: null }
+      : patch;
   project = {
     ...project,
     animation: {
       ...project.animation,
       animations: project.animation.animations.map((a) =>
-        a.id === animId ? { ...a, ...patch } : a,
+        a.id === animId ? { ...a, ...resolvedPatch } : a,
       ),
     },
     error: null,
@@ -641,10 +693,16 @@ async function loadAnimationSourceFile(
       sourceImage: imageData,
       indexedImage,
     };
+    const detection = detectFrameGrid(imageData);
     const animations = project.animation.animations.map((anim) => {
       if (anim.id !== animId) return anim;
-      const columns = Math.floor(imageData.width / anim.frameWidth);
-      const rows = Math.floor(imageData.height / anim.frameHeight);
+      const { width, height } = decideFrameDimensions(
+        anim.frameWidth,
+        anim.frameHeight,
+        detection,
+      );
+      const columns = Math.floor(imageData.width / width);
+      const rows = Math.floor(imageData.height / height);
       const totalFrames = columns * rows;
       const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
       const validDurations = anim.frameDurations.slice(0, validIndices.length);
@@ -657,6 +715,9 @@ async function loadAnimationSourceFile(
         source,
         quantizationMode: quantMode,
         ditheringMode: dithMode,
+        frameWidth: width,
+        frameHeight: height,
+        frameDetection: detection,
         frameIndices: validIndices,
         frameDurations: validDurations,
         framePalettes: validPalettes,
@@ -677,6 +738,35 @@ async function loadAnimationSourceFile(
     };
   }
   render();
+}
+
+function reDetectAnimationFrames(animId: string): void {
+  const anim = project.animation.animations.find((a) => a.id === animId);
+  if (anim === undefined) return;
+  if (anim.source === null) return;
+  const detection = detectFrameGrid(anim.source.sourceImage);
+  const { width, height } = decideFrameDimensions(
+    anim.frameWidth,
+    anim.frameHeight,
+    detection,
+  );
+  const columns = Math.floor(anim.source.sourceImage.width / width);
+  const rows = Math.floor(anim.source.sourceImage.height / height);
+  const totalFrames = columns * rows;
+  const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
+  const validDurations = anim.frameDurations.slice(0, validIndices.length);
+  const validPalettes = (anim.framePalettes ?? []).slice(
+    0,
+    validIndices.length,
+  );
+  updateAnimation(animId, {
+    frameDetection: detection,
+    frameWidth: width,
+    frameHeight: height,
+    frameIndices: validIndices,
+    frameDurations: validDurations,
+    framePalettes: validPalettes,
+  });
 }
 
 function toggleAnimationFrame(animId: string, frameIndex: number): void {
@@ -976,10 +1066,14 @@ function renderAnimationWorkspace(): void {
       };
       render();
     },
+    onToggleConfigCollapse: toggleAnimationConfigCollapse,
+    onTogglePaletteCollapse: toggleAnimationPaletteCollapse,
+    onToggleQuantizationCollapse: toggleAnimationQuantizationCollapse,
     onUpdateAnimation: updateAnimation,
     onAnimationSourceFile: (animId: string, file: File) => {
       void loadAnimationSourceFile(animId, file);
     },
+    onFrameDetection: reDetectAnimationFrames,
     onFrameToggle: toggleAnimationFrame,
     onFrameMove: moveAnimationFrame,
     onFrameDurationChange: setAnimationFrameDuration,
@@ -1051,7 +1145,13 @@ function renderAnimationWorkspace(): void {
     error.append(heading, message);
     workspace.append(error);
   }
-  app.replaceChildren(createHeader(), workspace);
+  const nav = createStickyNav({
+    mode: 'animation',
+    fileName: project.fileName,
+    quantizationMode: project.animation.quantizationMode,
+    onQuantizationModeChange: setGlobalAnimationQuantizationMode,
+  });
+  app.replaceChildren(createHeader(), nav, workspace);
 }
 
 function render(): void {
@@ -1130,6 +1230,8 @@ function render(): void {
   workspace.className = 'workspace';
   const editingWorkspace = document.createElement('div');
   editingWorkspace.className = 'playfield-editing-workspace';
+  const projectImageInput = createProjectImageInput();
+  projectImageInput.id = 'section-image';
   editingWorkspace.append(
     createImagePreview({
       image:
@@ -1177,7 +1279,8 @@ function render(): void {
         render();
       },
     }),
-    createPaletteEditor({
+  );
+  const paletteEditor = createPaletteEditor({
       image: project.indexedImage,
       paletteSet: project.paletteSet,
       assignments: project.paletteAssignments,
@@ -1225,24 +1328,11 @@ function render(): void {
         project = { ...project, pixelOverrides, paletteAssignments };
         render();
       },
-    }),
-  );
-  workspace.append(
-    createProjectImageInput(),
-    createProjectQuantizationPanel(),
-    editingWorkspace,
-    createDiagnostics({
-      width: project.width,
-      height: project.height,
-      indexedImage: mappedImage,
-      tileCount: visibleTiles.length,
-      chrSize: chr?.length ?? null,
-      playfieldMode: project.mode === 'playfield',
-      nametableSize: nametable?.length ?? null,
-      attributeTableSize: attributeTable?.length ?? null,
-      error: conversionError,
-    }),
-    createTileGrid(
+    });
+  paletteEditor.id = 'section-palettes';
+  const quantizationPanel = createProjectQuantizationPanel();
+  quantizationPanel.id = 'section-quantization';
+  const tileGrid = createTileGrid(
       visibleTiles,
       project.indexedImage,
       mappedTiles.length,
@@ -1266,8 +1356,9 @@ function render(): void {
       project.paletteSet,
       project.paletteAssignments,
       regionSize,
-    ),
-    createExportPanel({
+    );
+  tileGrid.id = 'section-tiles';
+  const exportPanel = createExportPanel({
       chrName: outputName,
       nametableName,
       attributeTableName,
@@ -1288,9 +1379,38 @@ function render(): void {
       palette: encodeNesBackgroundPalettes(project.paletteSet),
       collisionCellCount: countCollisionCells(project.collisionCells),
       onDownload: downloadBytes,
+    });
+  exportPanel.id = 'section-export';
+  workspace.append(
+    projectImageInput,
+    quantizationPanel,
+    editingWorkspace,
+    createDiagnostics({
+      width: project.width,
+      height: project.height,
+      indexedImage: mappedImage,
+      tileCount: visibleTiles.length,
+      chrSize: chr?.length ?? null,
+      playfieldMode: project.mode === 'playfield',
+      nametableSize: nametable?.length ?? null,
+      attributeTableSize: attributeTable?.length ?? null,
+      error: conversionError,
     }),
+    tileGrid,
+    exportPanel,
   );
-  app.replaceChildren(createHeader(), workspace);
+  const nav = createStickyNav({
+    mode: project.mode,
+    fileName: project.fileName,
+    quantizationMode: project.quantizationSettings.quantizationMode,
+    onQuantizationModeChange: (quantizationMode) => {
+      void changeQuantizationSettings({
+        ...project.quantizationSettings,
+        quantizationMode,
+      });
+    },
+  });
+  app.replaceChildren(createHeader(), nav, workspace);
 }
 
 function setProjectError(error: DisplayError): void {
@@ -1487,6 +1607,8 @@ async function loadFile(file: File): Promise<void> {
     let nextAnimation = animation;
     let mappedImage: IndexedImage;
     if (mode === 'animation') {
+      const detection = detectFrameGrid(imageData);
+      const defaultFrames = decideFrameDimensions(16, 16, detection);
       const sourceData: AnimationSourceData = {
         fileName: file.name,
         sourceImage: imageData,
@@ -1494,7 +1616,18 @@ async function loadFile(file: File): Promise<void> {
       };
       const animations = animation.animations.map((anim, idx) => {
         if (idx === 0 && anim.source === null) {
-          return { ...anim, source: sourceData };
+          const { width, height } = decideFrameDimensions(
+            anim.frameWidth,
+            anim.frameHeight,
+            detection,
+          );
+          return {
+            ...anim,
+            source: sourceData,
+            frameWidth: width,
+            frameHeight: height,
+            frameDetection: detection,
+          };
         }
         return anim;
       });
@@ -1508,8 +1641,8 @@ async function loadFile(file: File): Promise<void> {
                   name: 'idle',
                   source: sourceData,
                   paletteIndex: null,
-                  frameWidth: 16,
-                  frameHeight: 16,
+                  frameWidth: defaultFrames.width,
+                  frameHeight: defaultFrames.height,
                   originX: 0,
                   originY: 0,
                   playback: 'loop',
@@ -1522,6 +1655,7 @@ async function loadFile(file: File): Promise<void> {
                   frameDurations: [],
                   framePalettes: [],
                   collapsed: false,
+                  frameDetection: detection,
                 },
               ]
             : animations,

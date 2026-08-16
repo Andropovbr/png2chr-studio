@@ -141,6 +141,11 @@ const en = {
   animationAllowVerticalFlip: 'Allow vertical variant',
   animationDefaultDurationLabel: 'Default frame duration',
   animationApplyDurationToAll: 'Apply to all frames',
+  frameDetectionApplied: 'Frames detected: {width} × {height}',
+  frameDetectionRetry: 'Detect again',
+  frameDetectionRecommended: 'recommended',
+  frameDetectionAmbiguous: 'uncertain',
+  frameDetectionLow: 'unclear',
   animationDefaultPaletteLabel: 'Asset default palette',
   animationPaletteLabel: 'Animation palette',
   animationPaletteInherit: 'Use asset default ({palette})',
@@ -165,6 +170,15 @@ const en = {
   animationListTitle: 'Animations',
   animationListHint:
     'Configure multiple animations with independent frames, playback modes, flips, and previews.',
+  navigationLabel: 'Section navigation',
+  navigationImage: 'Image',
+  navigationAsset: 'Asset',
+  navigationPalettes: 'Palettes',
+  navigationAnimations: 'Animations',
+  navigationMapping: 'Mapping',
+  navigationTiles: 'Tiles',
+  navigationExport: 'Export',
+  navigationImageValue: 'Image: {name}',
   animationErrorDuplicateName:
     'Animation names must be unique within the asset.',
   animationErrorDuplicateIdentifier:
@@ -287,6 +301,8 @@ const en = {
   nesColorEditTarget:
     'Editing palette {palette}, color index {color} ({code}). Choose its NES color below.',
   nesColorButton: 'Use NES color {code}',
+  nesMasterPaletteClose: 'Close',
+  nesMasterPaletteEdit: 'Edit selected NES color…',
   paletteRegionsTitle: 'Paint CHR color indices',
   paletteRegionsHint:
     'Click the main image preview to open a {size} x {size} region here. Palette and pixel color editing is available only in the zoomed region.',
@@ -559,6 +575,11 @@ const ptBr = {
   animationAllowVerticalFlip: 'Permitir variante vertical',
   animationDefaultDurationLabel: 'Duração padrão do frame',
   animationApplyDurationToAll: 'Aplicar a todos os frames',
+  frameDetectionApplied: 'Frames detectados: {width} × {height}',
+  frameDetectionRetry: 'Detectar novamente',
+  frameDetectionRecommended: 'recomendada',
+  frameDetectionAmbiguous: 'incerta',
+  frameDetectionLow: 'sem evidência',
   animationDefaultPaletteLabel: 'Paleta padrão do asset',
   animationPaletteLabel: 'Paleta da animação',
   animationPaletteInherit: 'Usar padrão do asset ({palette})',
@@ -584,6 +605,15 @@ const ptBr = {
   animationListTitle: 'Animações',
   animationListHint:
     'Configure múltiplas animações com frames, modos de reprodução, flips e prévias independentes.',
+  navigationLabel: 'Navegação por seções',
+  navigationImage: 'Imagem',
+  navigationAsset: 'Asset',
+  navigationPalettes: 'Paletas',
+  navigationAnimations: 'Animações',
+  navigationMapping: 'Mapeamento',
+  navigationTiles: 'Tiles',
+  navigationExport: 'Exportar',
+  navigationImageValue: 'Imagem: {name}',
   animationErrorDuplicateName:
     'Os nomes das animações devem ser exclusivos no asset.',
   animationErrorDuplicateIdentifier:
@@ -671,6 +701,8 @@ const ptBr = {
   nesColorEditTarget:
     'Editando a paleta {palette}, \u00edndice de cor {color} ({code}). Escolha abaixo a cor NES correspondente.',
   nesColorButton: 'Usar a cor NES {code}',
+  nesMasterPaletteClose: 'Fechar',
+  nesMasterPaletteEdit: 'Editar a cor NES selecionada\u2026',
   paletteRegionsTitle: 'Pintar \u00edndices de cor CHR',
   paletteRegionsHint:
     'Clique na pr\u00e9via principal da imagem para abrir aqui uma regi\u00e3o de {size} x {size}. A edi\u00e7\u00e3o de paleta e das cores dos pixels fica dispon\u00edvel somente na regi\u00e3o ampliada.',

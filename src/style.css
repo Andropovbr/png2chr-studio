@@ -131,6 +131,11 @@ select {
   grid-row: 2;
 }
 
+.animation-workspace > .animation-quantization-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
 .animation-palette-panel {
   grid-row: 3;
 }
@@ -353,6 +358,27 @@ select {
   padding-bottom: 0.35rem;
 }
 
+.animation-frame-filmstrip {
+  display: flex;
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.animation-frame-filmstrip .animation-frame-button {
+  flex: 0 0 auto;
+  width: 5rem;
+  min-width: 5rem;
+}
+
+.animation-frame-filmstrip .animation-frame-button canvas {
+  width: 4rem;
+  height: 4rem;
+  max-height: none;
+  object-fit: contain;
+  margin-inline: auto;
+}
+
 .animation-frame-button {
   display: grid;
   min-width: 5rem;
@@ -478,7 +504,21 @@ select {
 .animation-card-body {
   padding: 1rem;
   display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(13rem, 1fr);
   gap: 1.25rem;
+  align-items: start;
+}
+
+.animation-card-main {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.animation-card-preview {
+  min-width: 0;
+  position: sticky;
+  top: 4.5rem;
 }
 
 .animation-card-fields {
@@ -720,6 +760,54 @@ select {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
+}
+
+.animation-detection {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.01);
+  font-size: 0.82rem;
+}
+
+.animation-detection-status {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.animation-detection-confidence {
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.animation-detection-confidence-high {
+  color: var(--accent);
+  background: rgb(87 211 164 / 10%);
+}
+
+.animation-detection-confidence-medium {
+  color: #ffd569;
+  background: rgb(255 213 105 / 10%);
+}
+
+.animation-detection-confidence-low {
+  color: var(--danger);
+  background: rgb(255 99 88 / 10%);
+}
+
+.animation-detect-btn {
+  margin-left: auto;
+  font-size: 0.8rem;
+  padding: 0.45rem 0.75rem;
+  white-space: nowrap;
+  height: fit-content;
 }
 
 .animation-apply-all-btn {
@@ -1722,6 +1810,14 @@ input:focus-visible + label {
   .tiles-panel {
     max-height: none;
   }
+
+  .animation-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .animation-card-preview {
+    position: static;
+  }
 }
 
 @media (max-width: 30rem) {
@@ -1757,4 +1853,159 @@ input:focus-visible + label {
   .animation-frame-duration {
     justify-content: space-between;
   }
+}
+
+/* ---- Sticky navigation ---- */
+
+.sticky-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.75rem;
+  background: rgb(13 18 24 / 92%);
+  backdrop-filter: blur(6px);
+}
+
+.sticky-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sticky-nav-link {
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.sticky-nav-link:hover {
+  color: var(--accent);
+  background: var(--accent-dark);
+}
+
+.sticky-nav-file {
+  max-width: 16rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quantization-segmented {
+  display: inline-flex;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.45rem;
+  overflow: hidden;
+}
+
+.segmented-button {
+  border: 0;
+  padding: 0.35rem 0.6rem;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.segmented-button + .segmented-button {
+  border-left: 1px solid var(--panel-border);
+}
+
+.segmented-button[aria-pressed='true'] {
+  color: var(--accent-dark);
+  background: var(--accent);
+}
+
+/* ---- Collapsible panels ---- */
+
+.collapsible-panel .collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.collapsible-toggle {
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.collapsible-title {
+  margin: 0;
+  cursor: pointer;
+}
+
+.collapsible-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.collapsible-body {
+  padding-top: 0.9rem;
+}
+
+/* ---- Master palette modal ---- */
+
+.nes-master-dialog {
+  width: min(34rem, calc(100% - 2rem));
+  border: 1px solid var(--panel-border);
+  border-radius: 0.7rem;
+  padding: 1rem;
+  color: inherit;
+  background: var(--panel);
+}
+
+.nes-master-dialog::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+
+.nes-master-dialog .nes-master-palette {
+  margin-bottom: 0.9rem;
+}
+
+.nes-master-dialog .button {
+  width: 100%;
+}
+
+/* ---- Export actions ---- */
+
+.export-download-primary {
+  width: 100%;
+}
+
+.export-download-secondary {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.export-actions .export-download-secondary {
+  justify-content: flex-start;
+}
+
+/* ---- Anchor scroll offset under the sticky nav ---- */
+
+[id^='section-'] {
+  scroll-margin-top: 4.5rem;
 }
