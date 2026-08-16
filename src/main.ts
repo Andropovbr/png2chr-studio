@@ -23,6 +23,10 @@ import {
   createEmptyCollisionMap,
   encodeCollisionMap,
 } from './core/collision-encoder';
+import {
+  decideFrameDimensions,
+  detectFrameGrid,
+} from './core/frame-detection';
 import { analyzeImage, imageHasTransparency } from './core/image-analysis';
 import { extractNromChr, InesRomError } from './core/ines-rom';
 import {
@@ -618,12 +622,18 @@ function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
 ): void {
+  const manualDimensions =
+    'frameWidth' in patch || 'frameHeight' in patch;
+  const resolvedPatch =
+    manualDimensions && !('frameDetection' in patch)
+      ? { ...patch, frameDetection: null }
+      : patch;
   project = {
     ...project,
     animation: {
       ...project.animation,
       animations: project.animation.animations.map((a) =>
-        a.id === animId ? { ...a, ...patch } : a,
+        a.id === animId ? { ...a, ...resolvedPatch } : a,
       ),
     },
     error: null,
@@ -683,10 +693,16 @@ async function loadAnimationSourceFile(
       sourceImage: imageData,
       indexedImage,
     };
+    const detection = detectFrameGrid(imageData);
     const animations = project.animation.animations.map((anim) => {
       if (anim.id !== animId) return anim;
-      const columns = Math.floor(imageData.width / anim.frameWidth);
-      const rows = Math.floor(imageData.height / anim.frameHeight);
+      const { width, height } = decideFrameDimensions(
+        anim.frameWidth,
+        anim.frameHeight,
+        detection,
+      );
+      const columns = Math.floor(imageData.width / width);
+      const rows = Math.floor(imageData.height / height);
       const totalFrames = columns * rows;
       const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
       const validDurations = anim.frameDurations.slice(0, validIndices.length);
@@ -699,6 +715,9 @@ async function loadAnimationSourceFile(
         source,
         quantizationMode: quantMode,
         ditheringMode: dithMode,
+        frameWidth: width,
+        frameHeight: height,
+        frameDetection: detection,
         frameIndices: validIndices,
         frameDurations: validDurations,
         framePalettes: validPalettes,
@@ -719,6 +738,35 @@ async function loadAnimationSourceFile(
     };
   }
   render();
+}
+
+function reDetectAnimationFrames(animId: string): void {
+  const anim = project.animation.animations.find((a) => a.id === animId);
+  if (anim === undefined) return;
+  if (anim.source === null) return;
+  const detection = detectFrameGrid(anim.source.sourceImage);
+  const { width, height } = decideFrameDimensions(
+    anim.frameWidth,
+    anim.frameHeight,
+    detection,
+  );
+  const columns = Math.floor(anim.source.sourceImage.width / width);
+  const rows = Math.floor(anim.source.sourceImage.height / height);
+  const totalFrames = columns * rows;
+  const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
+  const validDurations = anim.frameDurations.slice(0, validIndices.length);
+  const validPalettes = (anim.framePalettes ?? []).slice(
+    0,
+    validIndices.length,
+  );
+  updateAnimation(animId, {
+    frameDetection: detection,
+    frameWidth: width,
+    frameHeight: height,
+    frameIndices: validIndices,
+    frameDurations: validDurations,
+    framePalettes: validPalettes,
+  });
 }
 
 function toggleAnimationFrame(animId: string, frameIndex: number): void {
@@ -1025,6 +1073,7 @@ function renderAnimationWorkspace(): void {
     onAnimationSourceFile: (animId: string, file: File) => {
       void loadAnimationSourceFile(animId, file);
     },
+    onFrameDetection: reDetectAnimationFrames,
     onFrameToggle: toggleAnimationFrame,
     onFrameMove: moveAnimationFrame,
     onFrameDurationChange: setAnimationFrameDuration,
@@ -1558,6 +1607,8 @@ async function loadFile(file: File): Promise<void> {
     let nextAnimation = animation;
     let mappedImage: IndexedImage;
     if (mode === 'animation') {
+      const detection = detectFrameGrid(imageData);
+      const defaultFrames = decideFrameDimensions(16, 16, detection);
       const sourceData: AnimationSourceData = {
         fileName: file.name,
         sourceImage: imageData,
@@ -1565,7 +1616,18 @@ async function loadFile(file: File): Promise<void> {
       };
       const animations = animation.animations.map((anim, idx) => {
         if (idx === 0 && anim.source === null) {
-          return { ...anim, source: sourceData };
+          const { width, height } = decideFrameDimensions(
+            anim.frameWidth,
+            anim.frameHeight,
+            detection,
+          );
+          return {
+            ...anim,
+            source: sourceData,
+            frameWidth: width,
+            frameHeight: height,
+            frameDetection: detection,
+          };
         }
         return anim;
       });
@@ -1579,8 +1641,8 @@ async function loadFile(file: File): Promise<void> {
                   name: 'idle',
                   source: sourceData,
                   paletteIndex: null,
-                  frameWidth: 16,
-                  frameHeight: 16,
+                  frameWidth: defaultFrames.width,
+                  frameHeight: defaultFrames.height,
                   originX: 0,
                   originY: 0,
                   playback: 'loop',
@@ -1593,6 +1655,7 @@ async function loadFile(file: File): Promise<void> {
                   frameDurations: [],
                   framePalettes: [],
                   collapsed: false,
+                  frameDetection: detection,
                 },
               ]
             : animations,

@@ -58,6 +58,7 @@ export interface AnimationEditorOptions {
     patch: Partial<AnimationItemSetting>,
   ) => void;
   readonly onAnimationSourceFile: (animationId: string, file: File) => void;
+  readonly onFrameDetection: (animationId: string) => void;
   readonly onFrameToggle: (animationId: string, frameIndex: number) => void;
   readonly onFrameMove: (
     animationId: string,
@@ -1372,6 +1373,48 @@ function createAnimationCard(
       },
     );
 
+    // Frame grid detection
+    const detectionElements: HTMLElement[] = [];
+    if (anim.source !== null) {
+      const detectionBlock = document.createElement('div');
+      detectionBlock.className = 'animation-detection';
+      const detectBtn = document.createElement('button');
+      detectBtn.type = 'button';
+      detectBtn.className = 'button secondary-button animation-detect-btn';
+      detectBtn.textContent = t('frameDetectionRetry');
+      detectBtn.addEventListener('click', () => {
+        options.onFrameDetection(anim.id);
+      });
+
+      const detection = anim.frameDetection ?? null;
+      if (detection !== null) {
+        const status = document.createElement('span');
+        status.className = 'animation-detection-status';
+        status.textContent = t('frameDetectionApplied', {
+          width: detection.recommendedWidth,
+          height: detection.recommendedHeight,
+        });
+        const confidence = document.createElement('span');
+        confidence.className =
+          detection.confidence === 'high'
+            ? 'animation-detection-confidence animation-detection-confidence-high'
+            : detection.confidence === 'medium'
+              ? 'animation-detection-confidence animation-detection-confidence-medium'
+              : 'animation-detection-confidence animation-detection-confidence-low';
+        confidence.textContent = t(
+          detection.confidence === 'high'
+            ? 'frameDetectionRecommended'
+            : detection.confidence === 'medium'
+              ? 'frameDetectionAmbiguous'
+              : 'frameDetectionLow',
+        );
+        detectionBlock.append(status, confidence, detectBtn);
+      } else {
+        detectionBlock.append(detectBtn);
+      }
+      detectionElements.push(detectionBlock);
+    }
+
     // Origin X / Y
     const originXField = numberInput(
       t('animationOriginX'),
@@ -1475,6 +1518,7 @@ function createAnimationCard(
       paletteField,
       widthField,
       heightField,
+      ...detectionElements,
       originXField,
       originYField,
       playbackLabelElem,
