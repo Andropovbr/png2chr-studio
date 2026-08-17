@@ -236,6 +236,62 @@ function findMatchingAssetFile(
   );
 }
 
+function imageDataToDataUrl(imageData: ImageData): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+async function decodeDataUrl(dataUrl: string): Promise<ImageData> {
+  return new Promise<ImageData>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          reject(new Error('Canvas 2D unavailable'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        resolve(ctx.getImageData(0, 0, img.width, img.height));
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+    img.onerror = () => {
+      reject(new Error('Failed to load image from dataUrl'));
+    };
+    img.src = dataUrl;
+  });
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i += 1) {
+    binary += String.fromCharCode(bytes[i] ?? 0);
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
+  const cleanBase64 = base64.replace(/^data:[^;]+;base64,/, '');
+  const binary = atob(cleanBase64);
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 function buildCurrentStudioProject(): StudioProject {
   const tileset: ProjectTilesetConfig = {
     asset:
@@ -244,6 +300,10 @@ function buildCurrentStudioProject(): StudioProject {
             path: project.fileName,
             name: project.fileName,
             sourceKind: project.sourceKind ?? undefined,
+            dataUrl:
+              project.sourceImage !== null
+                ? imageDataToDataUrl(project.sourceImage)
+                : undefined,
           }
         : null,
     paletteAssignments:
@@ -263,6 +323,10 @@ function buildCurrentStudioProject(): StudioProject {
             path: project.fileName,
             name: project.fileName,
             sourceKind: project.sourceKind ?? 'png',
+            dataUrl:
+              project.sourceImage !== null
+                ? imageDataToDataUrl(project.sourceImage)
+                : undefined,
           }
         : null,
     collisionCells: Array.from(project.collisionCells),
@@ -289,6 +353,7 @@ function buildCurrentStudioProject(): StudioProject {
               path: anim.source.fileName,
               name: anim.source.fileName,
               sourceKind: 'png',
+              dataUrl: imageDataToDataUrl(anim.source.sourceImage),
             }
           : null,
       paletteIndex: anim.paletteIndex ?? null,
@@ -328,6 +393,10 @@ function buildCurrentStudioProject(): StudioProject {
             path: project.animation.destinationChrName,
             name: project.animation.destinationChrName,
             sourceKind: 'chr',
+            dataUrl:
+              project.animation.destinationChr.length > 0
+                ? `data:application/octet-stream;base64,${uint8ArrayToBase64(project.animation.destinationChr)}`
+                : undefined,
           }
         : null,
     animations,
@@ -503,6 +572,23 @@ async function loadProjectFile(
           } catch {
             source = null;
           }
+        } else if (anim.asset?.dataUrl) {
+          try {
+            const imageData = await decodeDataUrl(anim.asset.dataUrl);
+            const indexedImage = quantizePngSource(imageData, 'animation', {
+              quantizationMode: quantMode,
+              ditheringMode: dithMode,
+              colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
+            });
+            source = {
+              fileName: anim.asset.name ?? anim.asset.path,
+              sourceImage: imageData,
+              indexedImage,
+            };
+            detection = detectFrameGrid(imageData);
+          } catch {
+            source = null;
+          }
         }
 
         const totalFrames = source
@@ -558,6 +644,14 @@ async function loadProjectFile(
         if (chrFile) {
           try {
             destinationChr = new Uint8Array(await chrFile.arrayBuffer());
+          } catch {
+            destinationChr = new Uint8Array();
+          }
+        } else if (animSettings.destinationChr.dataUrl) {
+          try {
+            destinationChr = base64ToUint8Array(
+              animSettings.destinationChr.dataUrl,
+            );
           } catch {
             destinationChr = new Uint8Array();
           }
@@ -689,6 +783,63 @@ async function loadProjectFile(
           tiles = decodedTiles;
         } else {
           sourceImage = await decodeImage(matchingFile);
+          width = sourceImage.width;
+          height = sourceImage.height;
+          indexedImage = quantizePngSource(
+            sourceImage,
+            loaded.mode,
+            loaded.settings.quantization,
+          );
+          if (paletteAssignments.length === 0) {
+            paletteAssignments = new Uint8Array(
+              assignmentsForImage(indexedImage, loaded.mode),
+            );
+          }
+          if (pixelOverrides.length === 0) {
+            pixelOverrides = new Uint8Array(indexedImage.pixels.length);
+          }
+          const regionSize = paletteRegionSize(loaded.mode, indexedImage);
+          const mapped = mapImageToNesPalettes(
+            indexedImage,
+            loaded.palette.paletteSet,
+            paletteAssignments,
+            regionSize,
+            pixelOverrides,
+            false,
+            loaded.settings.quantization.colorDistanceMode,
+          );
+          tiles = extractTiles(mapped);
+        }
+      } catch {
+        // file decode failed
+      }
+    } else if (assetRef?.dataUrl) {
+      const lowerName = (assetRef.name ?? assetRef.path).toLowerCase();
+      const isChr = lowerName.endsWith('.chr');
+      const isNes = lowerName.endsWith('.nes');
+      try {
+        if (isChr || isNes) {
+          const rawBuffer = base64ToUint8Array(assetRef.dataUrl);
+          const chrBytes = isNes ? extractNromChr(rawBuffer).chr : rawBuffer;
+          const decodedTiles = decodeChr(chrBytes);
+          const previewColors = loaded.palette.paletteSet[0].map(
+            (c) => NES_MASTER_PALETTE[c] ?? { red: 0, green: 0, blue: 0 },
+          );
+          indexedImage = chrTilesToIndexedImage(decodedTiles, previewColors);
+          sourceImage = null;
+          width = indexedImage.width;
+          height = indexedImage.height;
+          if (paletteAssignments.length === 0) {
+            paletteAssignments = new Uint8Array(
+              assignmentsForImage(indexedImage, 'tileset'),
+            );
+          }
+          if (pixelOverrides.length === 0) {
+            pixelOverrides = new Uint8Array(indexedImage.pixels);
+          }
+          tiles = decodedTiles;
+        } else {
+          sourceImage = await decodeDataUrl(assetRef.dataUrl);
           width = sourceImage.width;
           height = sourceImage.height;
           indexedImage = quantizePngSource(

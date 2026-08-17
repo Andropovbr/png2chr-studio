@@ -24,6 +24,8 @@ export interface ProjectAssetReference {
   readonly name?: string;
   /** Source kind: png, chr, or nes. */
   readonly sourceKind?: 'png' | 'chr' | 'nes';
+  /** Optional embedded data URL or Base64 for instant self-contained reconstruction. */
+  readonly dataUrl?: string;
 }
 
 export interface ProjectAnimationItemConfig {
@@ -624,6 +626,10 @@ function parseAssetReference(value: unknown): ProjectAssetReference | null {
       raw.sourceKind === 'nes'
         ? raw.sourceKind
         : undefined,
+    dataUrl:
+      typeof raw.dataUrl === 'string' && raw.dataUrl.trim() !== ''
+        ? raw.dataUrl
+        : undefined,
   };
 }
 
@@ -644,6 +650,7 @@ export function findMissingAssets(
 
   const check = (ref: ProjectAssetReference | null | undefined) => {
     if (!ref?.path) return;
+    if (ref.dataUrl) return;
     if (!assetExists(ref.path)) {
       missing.push({
         name: ref.name ?? ref.path.split('/').pop() ?? ref.path,
