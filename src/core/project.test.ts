@@ -117,7 +117,14 @@ describe('StudioProject core infrastructure', () => {
               name: 'hero_walk.png',
               sourceKind: 'png',
             },
+            paletteId: original.palette.palettes?.[1]?.id ?? 'pal_1',
             paletteIndex: 1,
+            framePaletteIds: [
+              original.palette.palettes?.[1]?.id ?? 'pal_1',
+              original.palette.palettes?.[1]?.id ?? 'pal_1',
+              original.palette.palettes?.[2]?.id ?? 'pal_2',
+              original.palette.palettes?.[1]?.id ?? 'pal_1',
+            ],
             quantizationMode: 'median-cut',
             ditheringMode: 'none',
             frameWidth: 16,
@@ -424,6 +431,155 @@ describe('StudioProject core infrastructure', () => {
           '0_0': { 0: 3, 1: 2, 63: 1 },
           '1_0': { 10: 2 },
         });
+      }
+    });
+
+    it('round-trips palettes and activeSpritePaletteSlots', () => {
+      const defaultProj = createDefaultProject('animation');
+      const project: StudioProject = {
+        ...defaultProj,
+        name: 'Palettes Test',
+        palette: {
+          paletteSet: defaultProj.palette.paletteSet,
+          activePaletteIndex: 1,
+          activeColorIndex: 2,
+          palettes: [
+            {
+              id: 'pal_soldier_blue',
+              name: 'Soldier Blue',
+              colors: [0x0f, 0x01, 0x11, 0x21],
+            },
+            {
+              id: 'pal_bat_purple',
+              name: 'Bat Purple',
+              colors: [0x0f, 0x03, 0x13, 0x23],
+            },
+          ],
+          activeSpritePaletteSlots: ['pal_soldier_blue', 'pal_bat_purple', null, null],
+        },
+        animation: {
+          ...defaultProj.animation!,
+          animations: [
+            {
+              id: 'anim_1',
+              name: 'walk',
+              entity: 'Soldier',
+              asset: null,
+              paletteId: 'pal_soldier_blue',
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0],
+              frameDurations: [8],
+            },
+          ],
+        },
+      };
+
+      const serialized = serializeProject(project);
+      const deserialized = deserializeProject(serialized);
+      expect(deserialized.success).toBe(true);
+      if (deserialized.success) {
+        expect(deserialized.project.palette.palettes).toEqual([
+          {
+            id: 'pal_soldier_blue',
+            name: 'Soldier Blue',
+            colors: [0x0f, 0x01, 0x11, 0x21],
+          },
+          {
+            id: 'pal_bat_purple',
+            name: 'Bat Purple',
+            colors: [0x0f, 0x03, 0x13, 0x23],
+          },
+        ]);
+        expect(deserialized.project.palette.activeSpritePaletteSlots).toEqual([
+          'pal_soldier_blue',
+          'pal_bat_purple',
+          null,
+          null,
+        ]);
+        expect(deserialized.project.animation?.animations[0]?.paletteId).toBe(
+          'pal_soldier_blue',
+        );
+      }
+    });
+
+    it('migrates legacy project without palettes into PaletteDefinitions and active slots', () => {
+      const legacyJson = JSON.stringify({
+        formatVersion: 1,
+        name: 'Legacy Project',
+        mode: 'animation',
+        settings: {
+          deduplicationEnabled: false,
+          flipDeduplicationEnabled: true,
+          quantization: {
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            colorDistanceMode: 'perceptual',
+          },
+        },
+        palette: {
+          paletteSet: [
+            [0x0f, 0x01, 0x11, 0x21],
+            [0x0f, 0x05, 0x15, 0x25],
+            [0x0f, 0x09, 0x19, 0x29],
+            [0x0f, 0x0c, 0x1c, 0x2c],
+          ],
+        },
+        animation: {
+          name: 'Hero',
+          symbolPrefix: 'hero',
+          defaultPaletteIndex: 0,
+          quantizationMode: 'median-cut',
+          ditheringMode: 'none',
+          flipDeduplication: true,
+          spritePalette: 0,
+          spriteColorIndex: 1,
+          patternTable: 0,
+          destinationPatternTable: 0,
+          destinationChr: null,
+          animations: [
+            {
+              id: 'anim_1',
+              name: 'walk',
+              entity: 'Hero',
+              paletteIndex: 1,
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0],
+              frameDurations: [8],
+            },
+          ],
+        },
+      });
+
+      const deserialized = deserializeProject(legacyJson);
+      expect(deserialized.success).toBe(true);
+      if (deserialized.success) {
+        const palettes = deserialized.project.palette.palettes;
+        expect(palettes).toBeDefined();
+        expect(palettes).toHaveLength(4);
+        expect(palettes?.[0]?.colors).toEqual([0x0f, 0x01, 0x11, 0x21]);
+        expect(palettes?.[1]?.colors).toEqual([0x0f, 0x05, 0x15, 0x25]);
+
+        const slots = deserialized.project.palette.activeSpritePaletteSlots;
+        expect(slots).toBeDefined();
+        expect(slots).toEqual(palettes!.map((p) => p.id));
+
+        // Legacy paletteIndex 1 migrated to palettes[1].id
+        const animItem = deserialized.project.animation?.animations[0];
+        expect(animItem?.paletteId).toBe(palettes?.[1]?.id);
       }
     });
   });

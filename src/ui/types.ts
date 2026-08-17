@@ -3,6 +3,7 @@ import type { AnimationPlayback } from '../core/animation-model';
 import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
+import type { PaletteDefinition } from '../core/palette-manager';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { FrameDetectionResult } from '../core/frame-detection';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
@@ -37,7 +38,9 @@ export interface AnimationItemSetting {
   readonly name: string;
   readonly entity?: string;
   readonly source: AnimationSourceData | null;
+  readonly paletteId?: string | null;
   readonly paletteIndex?: number | null;
+  readonly framePaletteIds?: readonly (string | null)[];
   readonly quantizationMode?: QuantizationMode;
   readonly ditheringMode?: DitheringMode;
   readonly pixelOverrides?: TilePixelOverrides;
@@ -99,6 +102,8 @@ export interface ProjectView {
   readonly randomPlayfieldFeatures: readonly RandomPlayfieldFeature[];
   readonly previewTool: PreviewTool;
   readonly paletteSet: NesPaletteSet;
+  readonly palettes?: readonly PaletteDefinition[];
+  readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly paletteAssignments: Uint8Array;
   readonly pixelOverrides: Uint8Array;
   readonly activePaletteIndex: number;

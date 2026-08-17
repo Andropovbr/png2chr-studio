@@ -6,7 +6,11 @@ import {
   TILE_SIZE,
   type TilePixelOverrides,
 } from '../core/pixel-overrides';
-import { NES_MASTER_PALETTE, type NesPaletteSet } from '../core/nes-palette';
+import {
+  NES_MASTER_PALETTE,
+  type NesPalette,
+  type NesPaletteSet,
+} from '../core/nes-palette';
 import { t } from '../i18n';
 import type { IndexedImage } from '../core/types';
 
@@ -20,8 +24,9 @@ export interface TilePixelEditorOptions {
   readonly frameWidth: number;
   readonly frameHeight: number;
   readonly indexedImage: IndexedImage;
-  readonly paletteSet: NesPaletteSet;
-  readonly effectivePaletteIndex: number;
+  readonly paletteSet?: NesPaletteSet;
+  readonly effectivePaletteIndex?: number;
+  readonly effectivePalette?: NesPalette;
   readonly overrides?: TilePixelOverrides;
   readonly onSetPixel: (
     animationId: string,
@@ -114,7 +119,9 @@ export function createTilePixelEditor(
   let activeIndex = 1;
   const paletteIndices = [0, 1, 2, 3] as const;
   const subPalette =
-    options.paletteSet[options.effectivePaletteIndex] ?? [0x0f, 0x00, 0x10, 0x30];
+    options.effectivePalette ??
+    options.paletteSet?.[options.effectivePaletteIndex ?? 0] ??
+    [0x0f, 0x00, 0x10, 0x30];
 
   const paletteSelector = document.createElement('div');
   paletteSelector.className = 'tile-pixel-palette-selector';

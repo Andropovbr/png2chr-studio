@@ -36,13 +36,19 @@ export interface ProjectAssetReference {
 }
 
 import type { TilePixelOverrides } from './pixel-overrides';
+import {
+  createDefaultPaletteDefinitions,
+  type PaletteDefinition,
+} from './palette-manager';
 
 export interface ProjectAnimationItemConfig {
   readonly id: string;
   readonly name: string;
   readonly entity?: string;
   readonly asset: ProjectAssetReference | null;
+  readonly paletteId?: string | null;
   readonly paletteIndex?: number | null;
+  readonly framePaletteIds?: readonly (string | null)[];
   readonly quantizationMode?: QuantizationMode;
   readonly ditheringMode?: DitheringMode;
   readonly pixelOverrides?: TilePixelOverrides;
@@ -91,6 +97,14 @@ export interface ProjectPlayfieldConfig {
   readonly pixelOverrides?: readonly number[];
 }
 
+export interface ProjectPaletteConfig {
+  readonly paletteSet: NesPaletteSet;
+  readonly activePaletteIndex?: number;
+  readonly activeColorIndex?: number;
+  readonly palettes?: readonly PaletteDefinition[];
+  readonly activeSpritePaletteSlots?: readonly (string | null)[];
+}
+
 export interface StudioProject {
   readonly formatVersion: 1;
   readonly name: string;
@@ -100,11 +114,7 @@ export interface StudioProject {
     readonly flipDeduplicationEnabled: boolean;
     readonly quantization: QuantizationSettings;
   };
-  readonly palette: {
-    readonly paletteSet: NesPaletteSet;
-    readonly activePaletteIndex?: number;
-    readonly activeColorIndex?: number;
-  };
+  readonly palette: ProjectPaletteConfig;
   readonly tileset?: ProjectTilesetConfig;
   readonly playfield?: ProjectPlayfieldConfig;
   readonly animation?: ProjectAnimationSettingsConfig;
@@ -254,6 +264,10 @@ export function createDefaultProject(
   name = 'Untitled Project',
   mode: ProjectMode = 'tileset',
 ): StudioProject {
+  const defaultPaletteSet = createDefaultNesPaletteSet();
+  const defaultPalettes = createDefaultPaletteDefinitions(defaultPaletteSet);
+  const defaultActiveSlots = defaultPalettes.map((p) => p.id);
+
   return {
     formatVersion: 1,
     name,
@@ -264,9 +278,11 @@ export function createDefaultProject(
       quantization: DEFAULT_QUANTIZATION_SETTINGS,
     },
     palette: {
-      paletteSet: createDefaultNesPaletteSet(),
+      paletteSet: defaultPaletteSet,
       activePaletteIndex: 0,
       activeColorIndex: 1,
+      palettes: defaultPalettes,
+      activeSpritePaletteSlots: defaultActiveSlots,
     },
     tileset: {
       asset: null,
@@ -293,13 +309,14 @@ export function createDefaultProject(
           name: 'idle',
           entity: 'entity',
           asset: null,
+          paletteId: defaultPalettes[0]?.id ?? null,
           paletteIndex: null,
           quantizationMode: 'median-cut',
           ditheringMode: 'none',
           frameWidth: 16,
           frameHeight: 16,
-          originX: 0,
-          originY: 0,
+          originX: 8,
+          originY: 16,
           playback: 'loop',
           allowHorizontalFlip: false,
           allowVerticalFlip: false,
@@ -421,6 +438,24 @@ export function deserializeProject(
       : {};
 
   const paletteSet = parsePaletteSet(rawPalette.paletteSet);
+  const parsedPalettes = parsePaletteDefinitions(rawPalette.palettes);
+  const parsedSlots = parseActiveSlots(rawPalette.activeSpritePaletteSlots);
+
+  const palettes: readonly PaletteDefinition[] =
+    parsedPalettes && parsedPalettes.length > 0
+      ? parsedPalettes
+      : createDefaultPaletteDefinitions(paletteSet);
+
+  const activeSpritePaletteSlots: readonly (string | null)[] =
+    parsedSlots && parsedSlots.length === 4
+      ? parsedSlots
+      : [
+          palettes[0]?.id ?? null,
+          palettes[1]?.id ?? null,
+          palettes[2]?.id ?? null,
+          palettes[3]?.id ?? null,
+        ];
+
   const activePaletteIndex =
     typeof rawPalette.activePaletteIndex === 'number'
       ? Math.max(0, Math.min(3, Math.floor(rawPalette.activePaletteIndex)))
@@ -470,6 +505,41 @@ export function deserializeProject(
     for (const item of rawItems) {
       if (typeof item !== 'object' || item === null) continue;
       const rawItem = item as Record<string, unknown>;
+
+      const rawPaletteId =
+        typeof rawItem.paletteId === 'string' && rawItem.paletteId.trim() !== ''
+          ? rawItem.paletteId.trim()
+          : undefined;
+
+      const rawPaletteIndex =
+        typeof rawItem.paletteIndex === 'number'
+          ? rawItem.paletteIndex
+          : null;
+
+      // Migrate paletteIndex to paletteId if paletteId is not explicitly set
+      const resolvedPaletteId =
+        rawPaletteId ??
+        (rawPaletteIndex !== null &&
+        rawPaletteIndex >= 0 &&
+        rawPaletteIndex < palettes.length
+          ? palettes[rawPaletteIndex]?.id ?? null
+          : palettes[0]?.id ?? null);
+
+      const rawFramePaletteIds = parseStringArray(rawItem.framePaletteIds);
+      const rawFramePalettes = Array.isArray(rawItem.framePalettes)
+        ? rawItem.framePalettes.map((p) => (typeof p === 'number' ? p : null))
+        : undefined;
+
+      const resolvedFramePaletteIds =
+        rawFramePaletteIds ??
+        (rawFramePalettes
+          ? rawFramePalettes.map((pIdx) =>
+              pIdx !== null && pIdx >= 0 && pIdx < palettes.length
+                ? palettes[pIdx]?.id ?? null
+                : null,
+            )
+          : undefined);
+
       items.push({
         id:
           typeof rawItem.id === 'string' && rawItem.id.trim() !== ''
@@ -484,10 +554,10 @@ export function deserializeProject(
             ? rawItem.entity.trim()
             : 'entity',
         asset: parseAssetReference(rawItem.asset),
-        paletteIndex:
-          typeof rawItem.paletteIndex === 'number'
-            ? rawItem.paletteIndex
-            : null,
+        paletteId: resolvedPaletteId,
+        paletteIndex: rawPaletteIndex,
+        framePaletteIds: resolvedFramePaletteIds,
+        framePalettes: rawFramePalettes,
         quantizationMode:
           rawItem.quantizationMode === 'nearest' ||
           rawItem.quantizationMode === 'median-cut' ||
@@ -522,9 +592,6 @@ export function deserializeProject(
         pixelOverrides: parseTilePixelOverrides(rawItem.pixelOverrides),
         frameIndices: parseNumberArray(rawItem.frameIndices) ?? [],
         frameDurations: parseNumberArray(rawItem.frameDurations) ?? [],
-        framePalettes: Array.isArray(rawItem.framePalettes)
-          ? rawItem.framePalettes.map((p) => (typeof p === 'number' ? p : null))
-          : undefined,
       });
     }
 
@@ -587,6 +654,8 @@ export function deserializeProject(
       paletteSet,
       activePaletteIndex,
       activeColorIndex,
+      palettes,
+      activeSpritePaletteSlots,
     },
     tileset,
     playfield,
@@ -614,6 +683,48 @@ function parsePaletteSet(value: unknown): NesPaletteSet {
     }
   }
   return createDefaultNesPaletteSet();
+}
+
+function parsePaletteDefinitions(
+  value: unknown,
+): PaletteDefinition[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: PaletteDefinition[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue;
+    const rawDef = item as Record<string, unknown>;
+    if (typeof rawDef.id !== 'string' || rawDef.id.trim() === '') continue;
+    const id = rawDef.id.trim();
+    const name =
+      typeof rawDef.name === 'string' && rawDef.name.trim() !== ''
+        ? rawDef.name.trim()
+        : 'Palette';
+    let colors: [number, number, number, number] = [0x0f, 0x00, 0x10, 0x30];
+    if (Array.isArray(rawDef.colors) && rawDef.colors.length === 4) {
+      colors = [
+        typeof rawDef.colors[0] === 'number' ? rawDef.colors[0] & 0x3f : 0x0f,
+        typeof rawDef.colors[1] === 'number' ? rawDef.colors[1] & 0x3f : 0x00,
+        typeof rawDef.colors[2] === 'number' ? rawDef.colors[2] & 0x3f : 0x10,
+        typeof rawDef.colors[3] === 'number' ? rawDef.colors[3] & 0x3f : 0x30,
+      ];
+    }
+    result.push({ id, name, colors });
+  }
+  return result.length > 0 ? result : undefined;
+}
+
+function parseActiveSlots(value: unknown): (string | null)[] | undefined {
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  return value.map((slot) =>
+    typeof slot === 'string' && slot.trim() !== '' ? slot.trim() : null,
+  );
+}
+
+function parseStringArray(value: unknown): (string | null)[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.map((v) =>
+    typeof v === 'string' && v.trim() !== '' ? v.trim() : null,
+  );
 }
 
 function parseAssetReference(value: unknown): ProjectAssetReference | null {

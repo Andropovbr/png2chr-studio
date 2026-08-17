@@ -4,6 +4,7 @@ import {
   mapImageToNesPalettes,
   NES_BACKGROUND_PALETTE_COUNT,
   NES_MASTER_PALETTE,
+  type NesPalette,
   type NesPaletteSet,
 } from './nes-palette';
 import type { IndexedImage, RawImageData } from './types';
@@ -66,12 +67,10 @@ export function mapAnimationImageToNesPalette(
   };
 }
 
-export function renderAnimationToRawImageData(
+export function renderIndexedImageWithPalette(
   image: IndexedImage,
-  paletteSet: NesPaletteSet,
-  paletteIndex: number,
+  palette: NesPalette,
 ): RawImageData {
-  const activePalette = paletteSet[paletteIndex] ?? [0x0f, 0x00, 0x10, 0x30];
   const data = new Uint8Array(image.width * image.height * 4);
 
   for (let i = 0; i < image.pixels.length; i += 1) {
@@ -84,7 +83,7 @@ export function renderAnimationToRawImageData(
       data[offset + 3] = 0;
     } else {
       const slot = Math.max(0, Math.min(3, pixel));
-      const colorCode = activePalette[slot] ?? 0x0f;
+      const colorCode = palette[slot] ?? 0x0f;
       const rgb = NES_MASTER_PALETTE[colorCode] ?? {
         red: 0,
         green: 0,
@@ -102,4 +101,13 @@ export function renderAnimationToRawImageData(
     height: image.height,
     data,
   };
+}
+
+export function renderAnimationToRawImageData(
+  image: IndexedImage,
+  paletteSet: NesPaletteSet,
+  paletteIndex: number,
+): RawImageData {
+  const activePalette = paletteSet[paletteIndex] ?? [0x0f, 0x00, 0x10, 0x30];
+  return renderIndexedImageWithPalette(image, activePalette);
 }

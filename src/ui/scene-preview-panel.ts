@@ -11,8 +11,14 @@ import {
   type InstancePlaybackState,
   type ScenePreviewInstance,
 } from '../core/scene-preview';
-import { renderAnimationToRawImageData } from '../core/animation-palette';
+import { renderIndexedImageWithPalette } from '../core/animation-palette';
 import { applyPixelOverridesToImage } from '../core/pixel-overrides';
+import {
+  analyzeScenePalettes,
+  resolveEffectivePaletteColors,
+  resolveSpritePaletteSlot,
+  type PaletteDefinition,
+} from '../core/palette-manager';
 import type { NesPaletteSet } from '../core/nes-palette';
 import { t } from '../i18n';
 import type { AnimationItemSetting } from './types';
@@ -22,6 +28,8 @@ export interface ScenePreviewPanelOptions {
   readonly instances: readonly ScenePreviewInstance[];
   readonly animations: readonly AnimationItemSetting[];
   readonly paletteSet: NesPaletteSet;
+  readonly palettes?: readonly PaletteDefinition[];
+  readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly defaultPaletteIndex: number;
   readonly onAddInstance: (instance: ScenePreviewInstance) => void;
   readonly onRemoveInstance: (instanceId: string) => void;
@@ -53,14 +61,30 @@ export function createScenePreviewPanel(
 
   titleGroup.append(title, hint);
 
-  // Stats badge
+  // Palette analysis & Stats badge
   const availableEntities = getAvailableEntities(options.animations);
+  const visiblePaletteIds = options.instances
+    .filter((i) => i.visible)
+    .map((i) => {
+      const anim = resolveInstanceAnimation(i, options.animations);
+      return anim?.paletteId ?? '';
+    });
+  const paletteAnalysis = analyzeScenePalettes(
+    visiblePaletteIds,
+    options.activeSpritePaletteSlots ?? [],
+    options.palettes ?? [],
+  );
+
   const statsBadge = document.createElement('span');
   statsBadge.className = 'status-badge scene-preview-stats-badge';
-  statsBadge.textContent = t('scenePreviewStats', {
+  const slotWarningText =
+    paletteAnalysis.unassignedPaletteIds.length > 0
+      ? ` (⚠️ ${t('scenePreviewSlotWarning', { count: paletteAnalysis.unassignedPaletteIds.length })})`
+      : '';
+  statsBadge.textContent = `${t('scenePreviewStats', {
     entities: availableEntities.length,
     instances: options.instances.length,
-  });
+  })} · ${t('scenePreviewPalettesUsed', { count: paletteAnalysis.requiredCount })}${slotWarningText}`;
 
   // Action controls
   const toolbar = document.createElement('div');
@@ -199,6 +223,28 @@ export function createScenePreviewPanel(
         e.stopPropagation();
         options.onRemoveInstance(inst.id);
       });
+
+      const instAnim = resolveInstanceAnimation(inst, options.animations);
+      const effectivePaletteId = instAnim?.paletteId;
+      const slotRes = resolveSpritePaletteSlot(
+        effectivePaletteId,
+        options.activeSpritePaletteSlots,
+        options.palettes,
+      );
+
+      if (
+        effectivePaletteId &&
+        options.palettes &&
+        options.palettes.length > 0
+      ) {
+        const slotBadge = document.createElement('span');
+        slotBadge.className = `status-badge ${slotRes.isActive ? 'scene-slot-active-badge' : 'scene-slot-inactive-badge'}`;
+        slotBadge.textContent = slotRes.isActive
+          ? `Slot ${String(slotRes.slotIndex)}`
+          : `⚠️ ${t('paletteManagerSlotInactive')}`;
+        slotBadge.title = slotRes.definition?.name ?? '';
+        cardActions.append(slotBadge);
+      }
 
       cardActions.append(btnVisible, btnRemove);
       cardHeader.append(cardTitle, cardActions);
@@ -374,18 +420,23 @@ export function createScenePreviewPanel(
           : 0;
 
       const sourceFrameIndex = anim.frameIndices[safeIndex] ?? 0;
-      const effectivePalette =
+      const effectivePaletteId =
+        anim.framePaletteIds?.[safeIndex] ?? anim.paletteId;
+      const effectiveColors = resolveEffectivePaletteColors(
+        effectivePaletteId,
+        options.palettes,
         anim.framePalettes?.[safeIndex] ??
-        anim.paletteIndex ??
-        options.defaultPaletteIndex;
+          anim.paletteIndex ??
+          options.defaultPaletteIndex,
+        options.paletteSet,
+      );
 
-      const nesImage = renderAnimationToRawImageData(
+      const nesImage = renderIndexedImageWithPalette(
         applyPixelOverridesToImage(
           anim.source.indexedImage,
           anim.pixelOverrides,
         ),
-        options.paletteSet,
-        effectivePalette,
+        effectiveColors,
       );
 
       const frameCols = Math.floor(nesImage.width / anim.frameWidth);

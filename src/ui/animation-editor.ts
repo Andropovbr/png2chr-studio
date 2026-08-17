@@ -10,13 +10,21 @@ import type {
   AnimationProjectModel,
   MetaspriteTile,
 } from '../core/animation-model';
-import { renderAnimationToRawImageData } from '../core/animation-palette';
+import {
+  renderAnimationToRawImageData,
+  renderIndexedImageWithPalette,
+} from '../core/animation-palette';
 import type { ColorDistanceMode } from '../core/color-distance';
 import {
   encodeNesBackgroundPalettes,
   NES_MASTER_PALETTE,
   type NesPaletteSet,
 } from '../core/nes-palette';
+import {
+  resolveEffectivePaletteColors,
+  resolveSpritePaletteSlot,
+  type PaletteDefinition,
+} from '../core/palette-manager';
 import { analyzeImage, imageHasTransparency } from '../core/image-analysis';
 import { quantizeImageToNes } from '../core/image-quantization';
 import {
@@ -40,6 +48,7 @@ import {
   hasTileOverride,
 } from '../core/pixel-overrides';
 import { createTilePixelEditor } from './tile-pixel-editor';
+import { createPaletteManagerPanel } from './palette-manager-panel';
 
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
   nearest: 'quantizationNearest',
@@ -52,6 +61,8 @@ export interface AnimationEditorOptions {
   readonly model: AnimationProjectModel | null;
   readonly modelError: AnimationModelError | null;
   readonly paletteSet: NesPaletteSet;
+  readonly palettes?: readonly PaletteDefinition[];
+  readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly colorDistanceMode?: ColorDistanceMode;
   readonly scenePreview?: ProjectScenePreviewConfig;
   readonly onSettingsChange: (settings: AnimationSettings) => void;
@@ -103,6 +114,7 @@ export interface AnimationEditorOptions {
     animationId: string,
     frameOrderIndex: number,
     paletteIndex: number | null,
+    paletteId?: string | null,
   ) => void;
   readonly onApplyDefaultDurationToAll: (animationId: string) => void;
   readonly onFrameRemoveFromAnimation: (
@@ -117,6 +129,19 @@ export interface AnimationEditorOptions {
     paletteIndex: number,
     colorIndex: number,
     colorCode: number,
+  ) => void;
+  readonly onCreatePalette?: (name?: string) => void;
+  readonly onUpdatePaletteName?: (paletteId: string, name: string) => void;
+  readonly onUpdatePaletteColorDef?: (
+    paletteId: string,
+    colorSlotIndex: number,
+    colorCode: number,
+  ) => void;
+  readonly onDuplicatePalette?: (paletteId: string) => void;
+  readonly onDeletePalette?: (paletteId: string) => void;
+  readonly onUpdateActiveSlot?: (
+    slotIndex: 0 | 1 | 2 | 3,
+    paletteId: string | null,
   ) => void;
   readonly onDestinationFile: (file: File) => void;
   readonly onDestinationClear: () => void;
@@ -289,6 +314,31 @@ function createSpriteMasterPaletteDialog(options: AnimationEditorOptions): {
 function createSpritePaletteEditor(
   options: AnimationEditorOptions,
 ): HTMLElement {
+  if (
+    options.onCreatePalette &&
+    options.palettes &&
+    options.palettes.length > 0
+  ) {
+    const managerPanel = createPaletteManagerPanel({
+      palettes: options.palettes,
+      activeSpritePaletteSlots: options.activeSpritePaletteSlots ?? [],
+      animations: options.settings.animations,
+      onCreatePalette: options.onCreatePalette,
+      onUpdatePaletteName: options.onUpdatePaletteName ?? (() => {}),
+      onUpdatePaletteColor: options.onUpdatePaletteColorDef ?? (() => {}),
+      onDuplicatePalette: options.onDuplicatePalette ?? (() => {}),
+      onDeletePalette: options.onDeletePalette ?? (() => {}),
+      onUpdateActiveSlot: options.onUpdateActiveSlot ?? (() => {}),
+    });
+
+    return createCollapsiblePanel({
+      title: t('paletteManagerTitle'),
+      isCollapsed: options.settings.paletteCollapsed ?? false,
+      onToggle: options.onTogglePaletteCollapse,
+      children: [managerPanel],
+    });
+  }
+
   const hint = document.createElement('p');
   hint.className = 'muted';
   hint.textContent = t('animationSpritePalettesHint');
@@ -528,16 +578,19 @@ function createSingleAnimationPreview(
   const stage = document.createElement('div');
   stage.className = 'animation-preview-stage';
 
-  const effectivePalette =
-    anim.paletteIndex ?? options.settings.defaultPaletteIndex;
+  const effectivePaletteColors = resolveEffectivePaletteColors(
+    anim.paletteId,
+    options.palettes,
+    anim.paletteIndex ?? options.settings.defaultPaletteIndex,
+    options.paletteSet,
+  );
   const nesImage = anim.source
-    ? renderAnimationToRawImageData(
+    ? renderIndexedImageWithPalette(
         applyPixelOverridesToImage(
           anim.source.indexedImage,
           anim.pixelOverrides,
         ),
-        options.paletteSet,
-        effectivePalette,
+        effectivePaletteColors,
       )
     : null;
 
@@ -825,17 +878,20 @@ function createAnimationCardFrameGrid(
   hint.textContent = t('animationFrameGridHint');
   container.append(heading, hint);
 
-  const effectiveAnimPalette =
-    anim.paletteIndex ?? options.settings.defaultPaletteIndex;
+  const effectiveColors = resolveEffectivePaletteColors(
+    anim.paletteId,
+    options.palettes,
+    anim.paletteIndex ?? options.settings.defaultPaletteIndex,
+    options.paletteSet,
+  );
 
   const nesImage = anim.source
-    ? renderAnimationToRawImageData(
+    ? renderIndexedImageWithPalette(
         applyPixelOverridesToImage(
           anim.source.indexedImage,
           anim.pixelOverrides,
         ),
-        options.paletteSet,
-        effectiveAnimPalette,
+        effectiveColors,
       )
     : null;
 
@@ -985,26 +1041,66 @@ function createFrameOrderList(
     frameDefaultOpt.value = '';
     frameDefaultOpt.textContent = t('animationFramePaletteDefault');
     framePaletteSelect.append(frameDefaultOpt);
-    for (let p = 0; p < 4; p += 1) {
-      const opt = document.createElement('option');
-      opt.value = String(p);
-      opt.textContent = t('nesPaletteName', { index: p });
-      framePaletteSelect.append(opt);
+
+    if (options.palettes && options.palettes.length > 0) {
+      options.palettes.forEach((pal) => {
+        const slotRes = resolveSpritePaletteSlot(
+          pal.id,
+          options.activeSpritePaletteSlots,
+          options.palettes,
+        );
+        const opt = document.createElement('option');
+        opt.value = pal.id;
+        const slotInfo = slotRes.isActive
+          ? ` (Slot ${String(slotRes.slotIndex)})`
+          : ` (${t('paletteManagerSlotInactive')})`;
+        opt.textContent = `${pal.name}${slotInfo}`;
+        framePaletteSelect.append(opt);
+      });
+
+      const currentFramePalId =
+        anim.framePaletteIds?.[orderIndex] ??
+        (anim.framePalettes?.[orderIndex] !== null &&
+        anim.framePalettes?.[orderIndex] !== undefined &&
+        options.palettes[anim.framePalettes[orderIndex]!]
+          ? options.palettes[anim.framePalettes[orderIndex]!]?.id ?? ''
+          : '');
+
+      framePaletteSelect.value = currentFramePalId;
+      framePaletteSelect.addEventListener('change', () => {
+        const selId =
+          framePaletteSelect.value.trim() !== ''
+            ? framePaletteSelect.value.trim()
+            : null;
+        options.onFramePaletteChange(
+          anim.id,
+          orderIndex,
+          null,
+          selId,
+        );
+      });
+    } else {
+      for (let p = 0; p < 4; p += 1) {
+        const opt = document.createElement('option');
+        opt.value = String(p);
+        opt.textContent = t('nesPaletteName', { index: p });
+        framePaletteSelect.append(opt);
+      }
+      const currentFramePalette = anim.framePalettes?.[orderIndex];
+      framePaletteSelect.value =
+        currentFramePalette === null || currentFramePalette === undefined
+          ? ''
+          : String(currentFramePalette);
+      framePaletteSelect.addEventListener('change', () => {
+        options.onFramePaletteChange(
+          anim.id,
+          orderIndex,
+          framePaletteSelect.value === ''
+            ? null
+            : Number(framePaletteSelect.value),
+        );
+      });
     }
-    const currentFramePalette = anim.framePalettes?.[orderIndex];
-    framePaletteSelect.value =
-      currentFramePalette === null || currentFramePalette === undefined
-        ? ''
-        : String(currentFramePalette);
-    framePaletteSelect.addEventListener('change', () => {
-      options.onFramePaletteChange(
-        anim.id,
-        orderIndex,
-        framePaletteSelect.value === ''
-          ? null
-          : Number(framePaletteSelect.value),
-      );
-    });
     framePaletteLabel.append(framePaletteSelect);
 
     const actions = document.createElement('span');
@@ -1061,16 +1157,19 @@ function createAnimationTilePixelSection(
   }
 
   const animSource = anim.source;
-  const effectivePalette =
-    anim.paletteIndex ?? options.settings.defaultPaletteIndex;
+  const effectivePaletteColors = resolveEffectivePaletteColors(
+    anim.paletteId,
+    options.palettes,
+    anim.paletteIndex ?? options.settings.defaultPaletteIndex,
+    options.paletteSet,
+  );
   const effectiveIndexed = applyPixelOverridesToImage(
     animSource.indexedImage,
     anim.pixelOverrides,
   );
-  const nesImage = renderAnimationToRawImageData(
+  const nesImage = renderIndexedImageWithPalette(
     effectiveIndexed,
-    options.paletteSet,
-    effectivePalette,
+    effectivePaletteColors,
   );
 
   const frameCols = Math.floor(nesImage.width / anim.frameWidth);
@@ -1113,8 +1212,14 @@ function createAnimationTilePixelSection(
     const frameIndex = anim.frameIndices[selectedFrameOrder] ?? 0;
     const sourceX = (frameIndex % frameCols) * anim.frameWidth;
     const sourceY = Math.floor(frameIndex / frameCols) * anim.frameHeight;
-    const frameEffectivePalette =
-      anim.framePalettes?.[selectedFrameOrder] ?? effectivePalette;
+
+    const framePaletteId = anim.framePaletteIds?.[selectedFrameOrder] ?? anim.paletteId;
+    const frameEffectiveColors = resolveEffectivePaletteColors(
+      framePaletteId,
+      options.palettes,
+      anim.framePalettes?.[selectedFrameOrder] ?? anim.paletteIndex ?? options.settings.defaultPaletteIndex,
+      options.paletteSet,
+    );
 
     // Render tile buttons for the selected frame
     tilesContainer.replaceChildren();
@@ -1184,8 +1289,7 @@ function createAnimationTilePixelSection(
       frameWidth: anim.frameWidth,
       frameHeight: anim.frameHeight,
       indexedImage: animSource.indexedImage,
-      paletteSet: options.paletteSet,
-      effectivePaletteIndex: frameEffectivePalette,
+      effectivePalette: frameEffectiveColors,
       overrides: anim.pixelOverrides,
       onSetPixel: options.onSetTilePixel,
       onResetTile: options.onResetTileOverride,
@@ -1443,30 +1547,76 @@ function createAnimationCard(
     const paletteFieldText = document.createElement('span');
     paletteFieldText.textContent = t('animationPaletteLabel');
     const paletteSelect = document.createElement('select');
-    const defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = t('animationPaletteInherit', {
-      palette: t('nesPaletteName', {
-        index: options.settings.defaultPaletteIndex,
-      }),
-    });
-    paletteSelect.append(defaultOpt);
-    for (let p = 0; p < 4; p += 1) {
-      const opt = document.createElement('option');
-      opt.value = String(p);
-      opt.textContent = t('nesPaletteName', { index: p });
-      paletteSelect.append(opt);
-    }
-    paletteSelect.value =
-      anim.paletteIndex === null || anim.paletteIndex === undefined
-        ? ''
-        : String(anim.paletteIndex);
-    paletteSelect.addEventListener('change', () => {
-      options.onUpdateAnimation(anim.id, {
-        paletteIndex:
-          paletteSelect.value === '' ? null : Number(paletteSelect.value),
+
+    if (options.palettes && options.palettes.length > 0) {
+      options.palettes.forEach((pal) => {
+        const slotRes = resolveSpritePaletteSlot(
+          pal.id,
+          options.activeSpritePaletteSlots,
+          options.palettes,
+        );
+        const opt = document.createElement('option');
+        opt.value = pal.id;
+        const slotInfo = slotRes.isActive
+          ? ` (Slot ${String(slotRes.slotIndex)})`
+          : ` (${t('paletteManagerSlotInactive')})`;
+        opt.textContent = `${pal.name}${slotInfo}`;
+        paletteSelect.append(opt);
       });
-    });
+
+      let effectiveSelectedId = anim.paletteId;
+      if (
+        !effectiveSelectedId ||
+        !options.palettes.some((p) => p.id === effectiveSelectedId)
+      ) {
+        if (
+          typeof anim.paletteIndex === 'number' &&
+          anim.paletteIndex >= 0 &&
+          anim.paletteIndex < options.palettes.length
+        ) {
+          effectiveSelectedId =
+            options.palettes[anim.paletteIndex]?.id ??
+            options.palettes[0]?.id ??
+            '';
+        } else {
+          effectiveSelectedId = options.palettes[0]?.id ?? '';
+        }
+      }
+
+      paletteSelect.value = effectiveSelectedId;
+      paletteSelect.addEventListener('change', () => {
+        const selId =
+          paletteSelect.value.trim() !== '' ? paletteSelect.value.trim() : null;
+        options.onUpdateAnimation(anim.id, {
+          paletteId: selId,
+        });
+      });
+    } else {
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = t('animationPaletteInherit', {
+        palette: t('nesPaletteName', {
+          index: options.settings.defaultPaletteIndex,
+        }),
+      });
+      paletteSelect.append(defaultOpt);
+      for (let p = 0; p < 4; p += 1) {
+        const opt = document.createElement('option');
+        opt.value = String(p);
+        opt.textContent = t('nesPaletteName', { index: p });
+        paletteSelect.append(opt);
+      }
+      paletteSelect.value =
+        anim.paletteIndex === null || anim.paletteIndex === undefined
+          ? ''
+          : String(anim.paletteIndex);
+      paletteSelect.addEventListener('change', () => {
+        options.onUpdateAnimation(anim.id, {
+          paletteIndex:
+            paletteSelect.value === '' ? null : Number(paletteSelect.value),
+        });
+      });
+    }
     paletteField.append(paletteFieldText, paletteSelect);
 
     // Frame width / height
@@ -1998,6 +2148,8 @@ export function createAnimationEditor(
     instances: options.scenePreview?.instances ?? [],
     animations: options.settings.animations,
     paletteSet: options.paletteSet,
+    palettes: options.palettes,
+    activeSpritePaletteSlots: options.activeSpritePaletteSlots,
     defaultPaletteIndex: options.settings.defaultPaletteIndex,
     onAddInstance: options.onAddSceneInstance,
     onRemoveInstance: options.onRemoveSceneInstance,

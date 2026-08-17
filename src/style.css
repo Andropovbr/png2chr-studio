@@ -2522,3 +2522,193 @@ input:focus-visible + label {
 [id^='section-'] {
   scroll-margin-top: 4.5rem;
 }
+
+/* ---- Palette Manager Panel ---- */
+
+.palette-manager-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.palette-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.active-slots-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.active-slots-header h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.active-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem;
+}
+
+.active-slot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #141d2b;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 0.4rem;
+  padding: 0.75rem;
+}
+
+.active-slot-label {
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.active-slot-select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 0.3rem;
+  background: #0b1017;
+  color: inherit;
+  border: 1px solid rgb(255 255 255 / 15%);
+}
+
+.active-slot-swatches {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.active-slot-swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgb(255 255 255 / 20%);
+}
+
+.active-slot-swatch.is-transparent-slot {
+  background:
+    linear-gradient(45deg, #1f242d 25%, transparent 25%),
+    linear-gradient(-45deg, #1f242d 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1f242d 75%),
+    linear-gradient(-45deg, transparent 75%, #1f242d 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+}
+
+.palette-definitions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.palette-definitions-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.palette-definitions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.palette-definition-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+
+.palette-definition-name-input {
+  min-width: 10rem;
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.35rem;
+  background: #141d2b;
+  color: inherit;
+  border: 1px solid rgb(255 255 255 / 15%);
+  font-size: 0.9rem;
+}
+
+.palette-definition-colors-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.palette-color-swatch-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #141d2b;
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: border-color 0.15s;
+}
+
+.palette-color-swatch-btn:hover {
+  border-color: var(--accent);
+}
+
+.palette-color-swatch {
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 0.2rem;
+  border: 1px solid rgb(255 255 255 / 25%);
+  flex-shrink: 0;
+}
+
+.palette-color-swatch.is-transparent-sprite {
+  background:
+    linear-gradient(45deg, #1f242d 25%, transparent 25%),
+    linear-gradient(-45deg, #1f242d 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1f242d 75%),
+    linear-gradient(-45deg, transparent 75%, #1f242d 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+}
+
+.palette-definition-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Scene Preview Slot Badges */
+.scene-slot-active-badge {
+  background: rgb(87 211 164 / 15%);
+  color: #57d3a4;
+  border: 1px solid rgb(87 211 164 / 30%);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.3rem;
+}
+
+.scene-slot-inactive-badge {
+  background: rgb(245 158 11 / 15%);
+  color: #f59e0b;
+  border: 1px solid rgb(245 158 11 / 30%);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.3rem;
+}
+

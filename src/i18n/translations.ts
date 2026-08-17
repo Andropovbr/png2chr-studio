@@ -218,8 +218,27 @@ const en = {
   scenePreviewInstanceLabel: 'Instance',
   scenePreviewStats:
     '{entities} entities · {instances} instances (NES 256×240)',
+  scenePreviewPalettesUsed: 'Sprite palettes: {count} / 4',
+  scenePreviewSlotWarning: '{count} without active slot',
   scenePreviewInvalidEntityWarning:
     'Entity "{name}" was not found in project animations.',
+  paletteManagerTitle: 'Project Palettes',
+  paletteManagerHint:
+    'Manage reusable NES palette definitions and configure active sprite palette slots.',
+  paletteManagerNewPalette: '+ New Palette',
+  paletteManagerActiveSlotsTitle: 'Active Sprite Palette Slots (0..3)',
+  paletteManagerActiveSlotsHint:
+    'Hardware slots used by the NES PPU to render sprites on screen.',
+  paletteManagerSlotLabel: 'Slot {index}:',
+  paletteManagerSlotEmpty: '(None)',
+  paletteManagerSlotInactive: 'No active slot',
+  paletteManagerListTitle: 'Palette Definitions',
+  paletteManagerNamePlaceholder: 'Palette Name',
+  paletteManagerDuplicate: 'Duplicate',
+  paletteManagerDelete: 'Delete',
+  paletteManagerDeleteConfirmUsed:
+    'The palette "{name}" is currently referenced by other entities/animations or slots. Are you sure you want to delete it?',
+  animationPaletteDefaultOption: 'Default (inherit)',
   tilePixelEditorTitle: 'Tile Pixel Editor',
   tilePixelEditorHint:
     'Fine-tune 8×8 tile pixels between NES color indices 0, 1, 2, and 3.',
@@ -706,8 +725,27 @@ const ptBr = {
   scenePreviewInstanceLabel: 'Instância',
   scenePreviewStats:
     '{entities} entidades · {instances} instâncias (NES 256×240)',
+  scenePreviewPalettesUsed: 'Paletas de sprite: {count} / 4',
+  scenePreviewSlotWarning: '{count} sem slot ativo',
   scenePreviewInvalidEntityWarning:
     'A entidade "{name}" não foi encontrada nas animações do projeto.',
+  paletteManagerTitle: 'Paletas do Projeto',
+  paletteManagerHint:
+    'Gerencie definições reutilizáveis de paletas NES e configure os slots de sprite ativos.',
+  paletteManagerNewPalette: '+ Nova Paleta',
+  paletteManagerActiveSlotsTitle: 'Slots Ativos de Paleta de Sprite (0..3)',
+  paletteManagerActiveSlotsHint:
+    'Slots de hardware usados pela PPU do NES para desenhar sprites na tela.',
+  paletteManagerSlotLabel: 'Slot {index}:',
+  paletteManagerSlotEmpty: '(Nenhum)',
+  paletteManagerSlotInactive: 'Sem slot ativo',
+  paletteManagerListTitle: 'Definições de Paleta',
+  paletteManagerNamePlaceholder: 'Nome da paleta',
+  paletteManagerDuplicate: 'Duplicar',
+  paletteManagerDelete: 'Excluir',
+  paletteManagerDeleteConfirmUsed:
+    'A paleta "{name}" está sendo referenciada por entidades/animações ou slots ativos. Deseja realmente excluí-la?',
+  animationPaletteDefaultOption: 'Padrão (herdar)',
   tilePixelEditorTitle: 'Editor de Pixels do Tile',
   tilePixelEditorHint:
     'Ajuste fino dos pixels do tile 8×8 entre os índices de cor NES 0, 1, 2 e 3.',
