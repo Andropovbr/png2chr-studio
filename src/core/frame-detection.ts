@@ -93,10 +93,7 @@ export function detectFrameGrid(image: RawImageData): FrameDetectionResult {
   }
 
   scored.sort(
-    (a, b) =>
-      b.score - a.score ||
-      b.width - a.width ||
-      b.height - a.height,
+    (a, b) => b.score - a.score || b.width - a.width || b.height - a.height,
   );
 
   const best = scored[0];
@@ -142,10 +139,7 @@ export function decideFrameDimensions(
   };
 }
 
-function candidateSizes(
-  total: number,
-  gutters: readonly number[],
-): number[] {
+function candidateSizes(total: number, gutters: readonly number[]): number[] {
   const sizes = new Set<number>();
   for (let size = MIN_FRAME_SIZE; size <= total; size += 1) {
     if (total % size === 0) {
@@ -308,7 +302,8 @@ function alignmentAtColumn(
   x: number,
 ): number {
   const density = columnDensity(opaque, width, height, x);
-  const left = x - 1 >= 0 ? columnDensity(opaque, width, height, x - 1) : density;
+  const left =
+    x - 1 >= 0 ? columnDensity(opaque, width, height, x - 1) : density;
   const right =
     x + 1 < width ? columnDensity(opaque, width, height, x + 1) : density;
   const neighbor = (left + right) / 2;
@@ -324,8 +319,7 @@ function alignmentAtRow(
 ): number {
   const density = rowDensity(opaque, width, y);
   const above = y - 1 >= 0 ? rowDensity(opaque, width, y - 1) : density;
-  const below =
-    y + 1 < height ? rowDensity(opaque, width, y + 1) : density;
+  const below = y + 1 < height ? rowDensity(opaque, width, y + 1) : density;
   const neighbor = (above + below) / 2;
   if (neighbor <= 1e-9) return density <= 1e-9 ? 1 : 0;
   return 1 - Math.min(1, density / neighbor);
@@ -344,11 +338,7 @@ function columnDensity(
   return count / height;
 }
 
-function rowDensity(
-  opaque: Uint8Array,
-  width: number,
-  y: number,
-): number {
+function rowDensity(opaque: Uint8Array, width: number, y: number): number {
   let count = 0;
   for (let x = 0; x < width; x += 1) {
     count += opaque[y * width + x] ?? 0;

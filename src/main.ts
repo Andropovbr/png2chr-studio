@@ -23,10 +23,7 @@ import {
   createEmptyCollisionMap,
   encodeCollisionMap,
 } from './core/collision-encoder';
-import {
-  decideFrameDimensions,
-  detectFrameGrid,
-} from './core/frame-detection';
+import { decideFrameDimensions, detectFrameGrid } from './core/frame-detection';
 import { analyzeImage, imageHasTransparency } from './core/image-analysis';
 import { extractNromChr, InesRomError } from './core/ines-rom';
 import {
@@ -56,6 +53,16 @@ import {
 import { extractTiles } from './core/tile-extraction';
 import { ImageAnalysisError, type IndexedImage } from './core/types';
 import { quantizeImageToNes } from './core/image-quantization';
+import {
+  deserializeProject,
+  findMissingAssets,
+  serializeProject,
+  type ProjectAnimationItemConfig,
+  type ProjectAnimationSettingsConfig,
+  type ProjectPlayfieldConfig,
+  type ProjectTilesetConfig,
+  type StudioProject,
+} from './core/project';
 import {
   QUANTIZATION_MODES,
   loadQuantizationSettings,
@@ -197,6 +204,423 @@ let project: ProjectView = {
   error: null,
   loading: false,
 };
+
+let projectName = t('defaultProjectName');
+let projectDirty = false;
+
+function markDirty(): void {
+  projectDirty = true;
+}
+
+function buildCurrentStudioProject(): StudioProject {
+  const tileset: ProjectTilesetConfig = {
+    asset:
+      project.fileName !== null && project.mode === 'tileset'
+        ? {
+            path: project.fileName,
+            name: project.fileName,
+            sourceKind: project.sourceKind ?? undefined,
+          }
+        : null,
+    paletteAssignments:
+      project.paletteAssignments.length > 0
+        ? Array.from(project.paletteAssignments)
+        : undefined,
+    pixelOverrides:
+      project.pixelOverrides.length > 0
+        ? Array.from(project.pixelOverrides)
+        : undefined,
+  };
+
+  const playfield: ProjectPlayfieldConfig = {
+    asset:
+      project.fileName !== null && project.mode === 'playfield'
+        ? {
+            path: project.fileName,
+            name: project.fileName,
+            sourceKind: project.sourceKind ?? 'png',
+          }
+        : null,
+    collisionCells: Array.from(project.collisionCells),
+    activeCollisionType: project.activeCollisionType,
+    randomPlayfieldFeatures: [...project.randomPlayfieldFeatures],
+    paletteAssignments:
+      project.paletteAssignments.length > 0
+        ? Array.from(project.paletteAssignments)
+        : undefined,
+    pixelOverrides:
+      project.pixelOverrides.length > 0
+        ? Array.from(project.pixelOverrides)
+        : undefined,
+  };
+
+  const animations: ProjectAnimationItemConfig[] =
+    project.animation.animations.map((anim) => ({
+      id: anim.id,
+      name: anim.name,
+      asset:
+        anim.source !== null
+          ? {
+              path: anim.source.fileName,
+              name: anim.source.fileName,
+              sourceKind: 'png',
+            }
+          : null,
+      paletteIndex: anim.paletteIndex ?? null,
+      frameWidth: anim.frameWidth,
+      frameHeight: anim.frameHeight,
+      originX: anim.originX,
+      originY: anim.originY,
+      playback: anim.playback,
+      allowHorizontalFlip: anim.allowHorizontalFlip,
+      allowVerticalFlip: anim.allowVerticalFlip,
+      ...(anim.flipH !== undefined ? { flipH: anim.flipH } : {}),
+      ...(anim.flipV !== undefined ? { flipV: anim.flipV } : {}),
+      defaultDuration: anim.defaultDuration,
+      frameIndices: [...anim.frameIndices],
+      frameDurations: [...anim.frameDurations],
+      ...(anim.framePalettes !== undefined
+        ? { framePalettes: [...anim.framePalettes] }
+        : {}),
+    }));
+
+  const animation: ProjectAnimationSettingsConfig = {
+    name: project.animation.name,
+    symbolPrefix: project.animation.symbolPrefix,
+    defaultPaletteIndex: project.animation.defaultPaletteIndex,
+    quantizationMode: project.animation.quantizationMode,
+    ditheringMode: project.animation.ditheringMode,
+    flipDeduplication: project.animation.flipDeduplication,
+    spritePalette: project.animation.spritePalette,
+    spriteColorIndex: project.animation.spriteColorIndex,
+    patternTable: project.animation.patternTable,
+    destinationPatternTable: project.animation.destinationPatternTable,
+    destinationChr:
+      project.animation.destinationChrName !== null
+        ? {
+            path: project.animation.destinationChrName,
+            name: project.animation.destinationChrName,
+            sourceKind: 'chr',
+          }
+        : null,
+    animations,
+  };
+
+  return {
+    formatVersion: 1,
+    name: projectName,
+    mode: project.mode,
+    settings: {
+      deduplicationEnabled: project.deduplicationEnabled,
+      flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+      quantization: project.quantizationSettings,
+    },
+    palette: {
+      paletteSet: project.paletteSet,
+      activePaletteIndex: project.activePaletteIndex,
+      activeColorIndex: project.activeColorIndex,
+    },
+    tileset,
+    playfield,
+    animation,
+  };
+}
+
+function handleSaveProject(): void {
+  const current = buildCurrentStudioProject();
+  const json = serializeProject(current);
+  const baseName = normalizeCIdentifier(projectName) || 'project';
+  downloadText(json, `${baseName}.p2c.json`);
+  projectDirty = false;
+  render();
+}
+
+function handleSaveProjectAs(): void {
+  const newName = window.prompt(t('saveProjectAsPrompt'), projectName);
+  if (newName !== null && newName.trim() !== '') {
+    projectName = newName.trim();
+    handleSaveProject();
+  }
+}
+
+function handleNewProject(): void {
+  const newName = window.prompt(t('newProjectPrompt'), t('defaultProjectName'));
+  if (newName === null) return;
+  projectName = newName.trim() || t('defaultProjectName');
+  projectDirty = false;
+  quantizationPreviewKey = null;
+  quantizationPreviews = [];
+  quantizationPreviewsLoading = false;
+  quantizationPreviewCache.clear();
+  project = {
+    fileName: null,
+    sourceKind: null,
+    width: null,
+    height: null,
+    sourceImage: null,
+    indexedImage: null,
+    tiles: [],
+    mode: 'tileset',
+    deduplicationEnabled: false,
+    flipDeduplicationEnabled: false,
+    collisionCells: createEmptyCollisionMap(),
+    activeCollisionType: COLLISION_TYPES.solid,
+    randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+    paletteSet: createDefaultNesPaletteSet(),
+    paletteAssignments: new Uint8Array(),
+    previewTool: 'palette',
+    pixelOverrides: new Uint8Array(),
+    activePaletteIndex: 0,
+    activeColorIndex: 1,
+    showPaletteNumbers: false,
+    zoomedPaletteRegion: null,
+    paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
+    animation: createDefaultAnimationSettings(),
+    quantizationSettings: loadQuantizationSettings(settingsStorage),
+    error: null,
+    loading: false,
+  };
+  render();
+}
+
+async function loadProjectFile(file: File): Promise<void> {
+  quantizationPreviewKey = null;
+  quantizationPreviews = [];
+  quantizationPreviewsLoading = false;
+  quantizationPreviewCache.clear();
+
+  try {
+    const text = await file.text();
+    const result = deserializeProject(text);
+    if (!result.success) {
+      if (result.error.code === 'unsupported-format-version') {
+        const ver = result.error.details?.formatVersion;
+        const versionStr =
+          typeof ver === 'number' || typeof ver === 'string'
+            ? String(ver)
+            : 'unknown';
+        setProjectError({
+          key: 'projectUnsupportedVersion',
+          variables: { version: versionStr },
+        });
+      } else {
+        setProjectError({
+          key: 'projectInvalidJson',
+        });
+      }
+      return;
+    }
+
+    const loaded = result.project;
+    projectName = loaded.name;
+    projectDirty = false;
+
+    const missing = findMissingAssets(loaded, () => false);
+    const missingError: DisplayError | null =
+      missing.length > 0
+        ? {
+            key: 'projectMissingAssetsWarning',
+            variables: {
+              details: missing
+                .map((m) => `${m.name} (${m.expectedPath})`)
+                .join(', '),
+            },
+          }
+        : null;
+
+    if (loaded.mode === 'animation') {
+      const animSettings = loaded.animation;
+      const animation: AnimationSettings = {
+        ...createDefaultAnimationSettings(),
+        name: animSettings?.name ?? 'soldier',
+        symbolPrefix: animSettings?.symbolPrefix ?? 'soldier',
+        defaultPaletteIndex: animSettings?.defaultPaletteIndex ?? 0,
+        quantizationMode: animSettings?.quantizationMode ?? 'median-cut',
+        ditheringMode: animSettings?.ditheringMode ?? 'none',
+        flipDeduplication: animSettings?.flipDeduplication ?? true,
+        spritePalette: animSettings?.spritePalette ?? 0,
+        spriteColorIndex: animSettings?.spriteColorIndex ?? 1,
+        patternTable: animSettings?.patternTable ?? 0,
+        destinationPatternTable: animSettings?.destinationPatternTable ?? 0,
+        destinationChrName:
+          animSettings?.destinationChr?.name ??
+          animSettings?.destinationChr?.path ??
+          null,
+        destinationChr: new Uint8Array(),
+        animations:
+          animSettings && animSettings.animations.length > 0
+            ? animSettings.animations.map((anim) => ({
+                id: anim.id,
+                name: anim.name,
+                source: null,
+                paletteIndex: anim.paletteIndex ?? null,
+                frameWidth: anim.frameWidth,
+                frameHeight: anim.frameHeight,
+                originX: anim.originX,
+                originY: anim.originY,
+                playback: anim.playback,
+                allowHorizontalFlip: anim.allowHorizontalFlip,
+                allowVerticalFlip: anim.allowVerticalFlip,
+                flipH: anim.flipH ?? false,
+                flipV: anim.flipV ?? false,
+                defaultDuration: anim.defaultDuration,
+                frameIndices: [...anim.frameIndices],
+                frameDurations: [...anim.frameDurations],
+                framePalettes: anim.framePalettes
+                  ? [...anim.framePalettes]
+                  : [],
+                collapsed: false,
+              }))
+            : createDefaultAnimationSettings().animations,
+      };
+
+      project = {
+        fileName: null,
+        sourceKind: null,
+        width: null,
+        height: null,
+        sourceImage: null,
+        indexedImage: null,
+        tiles: [],
+        mode: 'animation',
+        deduplicationEnabled: loaded.settings.deduplicationEnabled,
+        flipDeduplicationEnabled: loaded.settings.flipDeduplicationEnabled,
+        collisionCells: createEmptyCollisionMap(),
+        activeCollisionType: COLLISION_TYPES.solid,
+        randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+        paletteSet: loaded.palette.paletteSet,
+        paletteAssignments: new Uint8Array(),
+        previewTool: 'palette',
+        pixelOverrides: new Uint8Array(),
+        activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
+        activeColorIndex: loaded.palette.activeColorIndex ?? 1,
+        showPaletteNumbers: false,
+        zoomedPaletteRegion: null,
+        paletteColorTarget: {
+          paletteIndex: loaded.palette.activePaletteIndex ?? 0,
+          colorIndex: loaded.palette.activeColorIndex ?? 1,
+        },
+        animation,
+        quantizationSettings: loaded.settings.quantization,
+        error: missingError,
+        loading: false,
+      };
+      render();
+      return;
+    }
+
+    if (loaded.mode === 'playfield') {
+      const pf = loaded.playfield;
+      const collisionCells = pf?.collisionCells
+        ? new Uint8Array(pf.collisionCells)
+        : createEmptyCollisionMap();
+      const paletteAssignments = pf?.paletteAssignments
+        ? new Uint8Array(pf.paletteAssignments)
+        : new Uint8Array();
+      const pixelOverrides = pf?.pixelOverrides
+        ? new Uint8Array(pf.pixelOverrides)
+        : new Uint8Array();
+
+      project = {
+        fileName: pf?.asset?.name ?? pf?.asset?.path ?? null,
+        sourceKind: pf?.asset?.sourceKind ?? 'png',
+        width: null,
+        height: null,
+        sourceImage: null,
+        indexedImage: null,
+        tiles: [],
+        mode: 'playfield',
+        deduplicationEnabled: loaded.settings.deduplicationEnabled,
+        flipDeduplicationEnabled: loaded.settings.flipDeduplicationEnabled,
+        collisionCells,
+        activeCollisionType: pf?.activeCollisionType ?? COLLISION_TYPES.solid,
+        randomPlayfieldFeatures: pf?.randomPlayfieldFeatures
+          ? [...pf.randomPlayfieldFeatures]
+          : [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+        paletteSet: loaded.palette.paletteSet,
+        paletteAssignments,
+        previewTool: 'palette',
+        pixelOverrides,
+        activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
+        activeColorIndex: loaded.palette.activeColorIndex ?? 1,
+        showPaletteNumbers: false,
+        zoomedPaletteRegion: null,
+        paletteColorTarget: {
+          paletteIndex: loaded.palette.activePaletteIndex ?? 0,
+          colorIndex: loaded.palette.activeColorIndex ?? 1,
+        },
+        animation: createDefaultAnimationSettings(),
+        quantizationSettings: loaded.settings.quantization,
+        error: missingError,
+        loading: false,
+      };
+      render();
+      return;
+    }
+
+    // Tileset mode
+    const ts = loaded.tileset;
+    const paletteAssignments = ts?.paletteAssignments
+      ? new Uint8Array(ts.paletteAssignments)
+      : new Uint8Array();
+    const pixelOverrides = ts?.pixelOverrides
+      ? new Uint8Array(ts.pixelOverrides)
+      : new Uint8Array();
+
+    project = {
+      fileName: ts?.asset?.name ?? ts?.asset?.path ?? null,
+      sourceKind: ts?.asset?.sourceKind ?? 'png',
+      width: null,
+      height: null,
+      sourceImage: null,
+      indexedImage: null,
+      tiles: [],
+      mode: 'tileset',
+      deduplicationEnabled: loaded.settings.deduplicationEnabled,
+      flipDeduplicationEnabled: loaded.settings.flipDeduplicationEnabled,
+      collisionCells: createEmptyCollisionMap(),
+      activeCollisionType: COLLISION_TYPES.solid,
+      randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+      paletteSet: loaded.palette.paletteSet,
+      paletteAssignments,
+      previewTool: 'palette',
+      pixelOverrides,
+      activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
+      activeColorIndex: loaded.palette.activeColorIndex ?? 1,
+      showPaletteNumbers: false,
+      zoomedPaletteRegion: null,
+      paletteColorTarget: {
+        paletteIndex: loaded.palette.activePaletteIndex ?? 0,
+        colorIndex: loaded.palette.activeColorIndex ?? 1,
+      },
+      animation: createDefaultAnimationSettings(),
+      quantizationSettings: loaded.settings.quantization,
+      error: missingError,
+      loading: false,
+    };
+    render();
+  } catch {
+    setProjectError({ key: 'projectInvalidJson' });
+  }
+}
+
+function createProjectHeader(): HTMLElement {
+  return createHeader({
+    projectName,
+    isDirty: projectDirty,
+    onProjectNameChange: (name) => {
+      projectName = name;
+      projectDirty = true;
+      render();
+    },
+    onNewProject: handleNewProject,
+    onOpenProject: (file) => {
+      void loadProjectFile(file);
+    },
+    onSaveProject: handleSaveProject,
+    onSaveProjectAs: handleSaveProjectAs,
+  });
+}
 
 function paletteRegionSize(
   mode: ProjectView['mode'],
@@ -612,7 +1036,9 @@ function toggleAnimationQuantizationCollapse(): void {
     ...project,
     animation: {
       ...project.animation,
-      quantizationCollapsed: !(project.animation.quantizationCollapsed ?? false),
+      quantizationCollapsed: !(
+        project.animation.quantizationCollapsed ?? false
+      ),
     },
   };
   render();
@@ -622,8 +1048,7 @@ function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
 ): void {
-  const manualDimensions =
-    'frameWidth' in patch || 'frameHeight' in patch;
+  const manualDimensions = 'frameWidth' in patch || 'frameHeight' in patch;
   const resolvedPatch =
     manualDimensions && !('frameDetection' in patch)
       ? { ...patch, frameDetection: null }
@@ -1151,12 +1576,12 @@ function renderAnimationWorkspace(): void {
     quantizationMode: project.animation.quantizationMode,
     onQuantizationModeChange: setGlobalAnimationQuantizationMode,
   });
-  app.replaceChildren(createHeader(), nav, workspace);
+  app.replaceChildren(createProjectHeader(), nav, workspace);
 }
 
 function render(): void {
   document.documentElement.lang = getLocale();
-  document.title = t('appTitle');
+  document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
   if (project.mode === 'animation') {
     renderAnimationWorkspace();
     return;
@@ -1281,105 +1706,105 @@ function render(): void {
     }),
   );
   const paletteEditor = createPaletteEditor({
-      image: project.indexedImage,
-      paletteSet: project.paletteSet,
-      assignments: project.paletteAssignments,
-      regionSize,
-      activePaletteIndex: project.activePaletteIndex,
-      activeColorIndex: project.activeColorIndex,
-      showPaletteNumbers: project.showPaletteNumbers,
-      zoomedRegionIndex: project.zoomedPaletteRegion,
-      colorTarget: project.paletteColorTarget,
-      onActivePaletteChange: (activePaletteIndex) => {
-        project = { ...project, activePaletteIndex };
-        render();
-      },
-      onActiveColorChange: (activeColorIndex) => {
-        project = { ...project, activeColorIndex };
-        render();
-      },
-      onShowPaletteNumbersChange: (showPaletteNumbers) => {
-        project = { ...project, showPaletteNumbers };
-        render();
-      },
-      onZoomedRegionChange: (zoomedPaletteRegion) => {
-        project = { ...project, zoomedPaletteRegion };
-        render();
-      },
-      onColorTargetChange: (paletteColorTarget) => {
-        project = { ...project, paletteColorTarget };
-        render();
-      },
-      onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
-        project = {
-          ...project,
-          paletteSet: setNesPaletteColor(
-            project.paletteSet,
-            paletteIndex,
-            colorIndex,
-            colorCode,
-          ),
-        };
-        render();
-      },
-      pixelOverrides: project.pixelOverrides,
-      colorDistanceMode: project.quantizationSettings.colorDistanceMode,
-      onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
-        project = { ...project, pixelOverrides, paletteAssignments };
-        render();
-      },
-    });
+    image: project.indexedImage,
+    paletteSet: project.paletteSet,
+    assignments: project.paletteAssignments,
+    regionSize,
+    activePaletteIndex: project.activePaletteIndex,
+    activeColorIndex: project.activeColorIndex,
+    showPaletteNumbers: project.showPaletteNumbers,
+    zoomedRegionIndex: project.zoomedPaletteRegion,
+    colorTarget: project.paletteColorTarget,
+    onActivePaletteChange: (activePaletteIndex) => {
+      project = { ...project, activePaletteIndex };
+      render();
+    },
+    onActiveColorChange: (activeColorIndex) => {
+      project = { ...project, activeColorIndex };
+      render();
+    },
+    onShowPaletteNumbersChange: (showPaletteNumbers) => {
+      project = { ...project, showPaletteNumbers };
+      render();
+    },
+    onZoomedRegionChange: (zoomedPaletteRegion) => {
+      project = { ...project, zoomedPaletteRegion };
+      render();
+    },
+    onColorTargetChange: (paletteColorTarget) => {
+      project = { ...project, paletteColorTarget };
+      render();
+    },
+    onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
+      project = {
+        ...project,
+        paletteSet: setNesPaletteColor(
+          project.paletteSet,
+          paletteIndex,
+          colorIndex,
+          colorCode,
+        ),
+      };
+      render();
+    },
+    pixelOverrides: project.pixelOverrides,
+    colorDistanceMode: project.quantizationSettings.colorDistanceMode,
+    onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
+      project = { ...project, pixelOverrides, paletteAssignments };
+      render();
+    },
+  });
   paletteEditor.id = 'section-palettes';
   const quantizationPanel = createProjectQuantizationPanel();
   quantizationPanel.id = 'section-quantization';
   const tileGrid = createTileGrid(
-      visibleTiles,
-      project.indexedImage,
-      mappedTiles.length,
-      project.deduplicationEnabled,
-      (enabled) => {
-        project = {
-          ...project,
-          deduplicationEnabled: enabled,
-          flipDeduplicationEnabled: enabled
-            ? project.flipDeduplicationEnabled
-            : false,
-        };
-        render();
-      },
-      project.mode === 'tileset',
-      project.flipDeduplicationEnabled,
-      (enabled) => {
-        project = { ...project, flipDeduplicationEnabled: enabled };
-        render();
-      },
-      project.paletteSet,
-      project.paletteAssignments,
-      regionSize,
-    );
+    visibleTiles,
+    project.indexedImage,
+    mappedTiles.length,
+    project.deduplicationEnabled,
+    (enabled) => {
+      project = {
+        ...project,
+        deduplicationEnabled: enabled,
+        flipDeduplicationEnabled: enabled
+          ? project.flipDeduplicationEnabled
+          : false,
+      };
+      render();
+    },
+    project.mode === 'tileset',
+    project.flipDeduplicationEnabled,
+    (enabled) => {
+      project = { ...project, flipDeduplicationEnabled: enabled };
+      render();
+    },
+    project.paletteSet,
+    project.paletteAssignments,
+    regionSize,
+  );
   tileGrid.id = 'section-tiles';
   const exportPanel = createExportPanel({
-      chrName: outputName,
-      nametableName,
-      attributeTableName,
-      collisionMapName,
-      paletteName,
-      tileCount: visibleTiles.length,
-      originalTileCount: mappedTiles.length,
-      deduplicationEnabled: project.deduplicationEnabled,
-      flipDeduplicationEnabled: project.flipDeduplicationEnabled,
-      playfieldMode: project.mode === 'playfield',
-      chr,
-      nametable,
-      attributeTable,
-      collisionMap:
-        project.mode === 'playfield' && nametable !== null
-          ? encodeCollisionMap(project.collisionCells)
-          : null,
-      palette: encodeNesBackgroundPalettes(project.paletteSet),
-      collisionCellCount: countCollisionCells(project.collisionCells),
-      onDownload: downloadBytes,
-    });
+    chrName: outputName,
+    nametableName,
+    attributeTableName,
+    collisionMapName,
+    paletteName,
+    tileCount: visibleTiles.length,
+    originalTileCount: mappedTiles.length,
+    deduplicationEnabled: project.deduplicationEnabled,
+    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    playfieldMode: project.mode === 'playfield',
+    chr,
+    nametable,
+    attributeTable,
+    collisionMap:
+      project.mode === 'playfield' && nametable !== null
+        ? encodeCollisionMap(project.collisionCells)
+        : null,
+    palette: encodeNesBackgroundPalettes(project.paletteSet),
+    collisionCellCount: countCollisionCells(project.collisionCells),
+    onDownload: downloadBytes,
+  });
   exportPanel.id = 'section-export';
   workspace.append(
     projectImageInput,
@@ -1410,7 +1835,7 @@ function render(): void {
       });
     },
   });
-  app.replaceChildren(createHeader(), nav, workspace);
+  app.replaceChildren(createProjectHeader(), nav, workspace);
 }
 
 function setProjectError(error: DisplayError): void {
@@ -1443,6 +1868,18 @@ async function decodeImage(file: File): Promise<ImageData> {
 
 async function loadFile(file: File): Promise<void> {
   const lowerCaseName = file.name.toLowerCase();
+  const isProjectFile =
+    lowerCaseName.endsWith('.p2c') ||
+    lowerCaseName.endsWith('.p2c.json') ||
+    (lowerCaseName.endsWith('.json') &&
+      !lowerCaseName.endsWith('.metadata.json'));
+
+  if (isProjectFile) {
+    await loadProjectFile(file);
+    return;
+  }
+
+  markDirty();
   const isChrFile = lowerCaseName.endsWith('.chr');
   const isNesFile = lowerCaseName.endsWith('.nes');
   const isPngFile = lowerCaseName.endsWith('.png');

@@ -70,14 +70,19 @@ describe('frame grid detection', () => {
       candidates: [],
     };
 
-    expect(decideFrameDimensions(manual.width, manual.height, detection)).toEqual({
+    expect(
+      decideFrameDimensions(manual.width, manual.height, detection),
+    ).toEqual({
       width: 16,
       height: 8,
     });
   });
 
   it('preserves manual dimensions when no detection is available', () => {
-    expect(decideFrameDimensions(20, 20, null)).toEqual({ width: 20, height: 20 });
+    expect(decideFrameDimensions(20, 20, null)).toEqual({
+      width: 20,
+      height: 20,
+    });
   });
 
   it('preserves manual dimensions when confidence is not high', () => {
@@ -88,7 +93,10 @@ describe('frame grid detection', () => {
       candidates: [],
     };
 
-    expect(decideFrameDimensions(20, 20, detection)).toEqual({ width: 20, height: 20 });
+    expect(decideFrameDimensions(20, 20, detection)).toEqual({
+      width: 20,
+      height: 20,
+    });
   });
 
   it('re-detects when a new source image replaces the previous one', () => {

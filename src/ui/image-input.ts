@@ -131,7 +131,9 @@ export function createImageInput(
   input.type = 'file';
   input.id = 'asset-input';
   input.accept =
-    mode === 'tileset' ? 'image/png,.png,.chr,.nes' : 'image/png,.png';
+    mode === 'tileset'
+      ? 'image/png,.png,.chr,.nes,.p2c,.json'
+      : 'image/png,.png,.p2c,.json';
   input.className = 'visually-hidden';
 
   const label = document.createElement('label');

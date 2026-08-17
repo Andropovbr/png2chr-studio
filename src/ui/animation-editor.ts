@@ -327,9 +327,10 @@ function createAnimationQuantizationPanel(
   });
 }
 
-function createSpriteMasterPaletteDialog(
-  options: AnimationEditorOptions,
-): { dialog: HTMLDialogElement; openFor: (paletteIndex: number, colorIndex: number) => void } {
+function createSpriteMasterPaletteDialog(options: AnimationEditorOptions): {
+  dialog: HTMLDialogElement;
+  openFor: (paletteIndex: number, colorIndex: number) => void;
+} {
   const dialog = document.createElement('dialog');
   dialog.className = 'nes-master-dialog';
   const form = document.createElement('form');
@@ -348,8 +349,7 @@ function createSpriteMasterPaletteDialog(
   closeButton.textContent = t('nesMasterPaletteClose');
 
   const openFor = (paletteIndex: number, colorIndex: number): void => {
-    const targetCode =
-      options.paletteSet[paletteIndex]?.[colorIndex] ?? 0x0f;
+    const targetCode = options.paletteSet[paletteIndex]?.[colorIndex] ?? 0x0f;
     target.textContent = t('nesColorEditTarget', {
       palette: paletteIndex,
       color: colorIndex,
