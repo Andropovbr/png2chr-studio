@@ -3,7 +3,6 @@ import {
   generateCa65AnimationExport,
   serializeAnimationMetadata,
 } from '../core/animation-exporters';
-import { normalizeCIdentifier } from '../core/c-identifier';
 import { padChrRom } from '../core/chr-rom';
 import type {
   AnimationModelError,
@@ -507,50 +506,6 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   hint.className = 'muted';
   hint.textContent = t('animationEditorHint');
 
-  const fields = document.createElement('div');
-  fields.className = 'animation-fields';
-
-  const nameLabel = document.createElement('label');
-  nameLabel.className = 'animation-field';
-  const nameText = document.createElement('span');
-  nameText.textContent = t('animationAssetSetName');
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.value =
-    options.settings.name || options.settings.symbolPrefix || 'soldier';
-
-  const symbolPreview = document.createElement('div');
-  symbolPreview.className = 'animation-symbol-preview';
-  const symbolPreviewTitle = document.createElement('strong');
-  symbolPreviewTitle.textContent = t('animationSymbolPreviewTitle');
-  const symbolPreviewCode = document.createElement('code');
-  const updateSymbolPreview = (): void => {
-    const symbolBase = normalizeCIdentifier(nameInput.value);
-    symbolPreview.classList.toggle('is-invalid', symbolBase.length === 0);
-    symbolPreviewCode.textContent = symbolBase
-      ? [
-          `${symbolBase}_sprites`,
-          `${symbolBase}_frames`,
-          `${symbolBase}_animations`,
-          `${symbolBase}_animation_count`,
-        ].join('\n')
-      : t('animationSymbolPreviewInvalid');
-  };
-  nameInput.addEventListener('input', updateSymbolPreview);
-
-  nameInput.addEventListener('change', () => {
-    options.onSettingsChange({
-      ...options.settings,
-      name: nameInput.value,
-      symbolPrefix: nameInput.value,
-    });
-  });
-  nameLabel.append(nameText, nameInput);
-  symbolPreview.append(symbolPreviewTitle, symbolPreviewCode);
-  updateSymbolPreview();
-
-  fields.append(nameLabel, symbolPreview);
-
   const flipLabel = document.createElement('label');
   flipLabel.className = 'checkbox-control animation-flip-control';
   const flipCheckbox = document.createElement('input');
@@ -652,19 +607,10 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   }
   destination.append(destinationStatus);
 
-  content.append(
-    hint,
-    fields,
-    flipLabel,
-    patternTables,
-    transparencyHint,
-    destination,
-  );
+  content.append(hint, flipLabel, patternTables, transparencyHint, destination);
   return createCollapsiblePanel({
     panelClassName: 'animation-config-panel',
     title: t('animationEditorTitle'),
-    summary:
-      options.settings.name || options.settings.symbolPrefix || 'soldier',
     isCollapsed: options.settings.configCollapsed ?? false,
     onToggle: options.onToggleConfigCollapse,
     children: [content],
@@ -1273,6 +1219,23 @@ function createAnimationCard(
     const fields = document.createElement('div');
     fields.className = 'animation-card-fields';
 
+    // Entity input
+    const entityLabel = document.createElement('label');
+    entityLabel.className = 'animation-field';
+    const entityText = document.createElement('span');
+    entityText.textContent = t('animationEntityLabel');
+    const entityInput = document.createElement('input');
+    entityInput.type = 'text';
+    entityInput.value = anim.entity ?? 'entity';
+    entityInput.placeholder = 'entity';
+    entityInput.addEventListener('change', () => {
+      const trimmed = entityInput.value.trim();
+      options.onUpdateAnimation(anim.id, {
+        entity: trimmed !== '' ? trimmed : 'entity',
+      });
+    });
+    entityLabel.append(entityText, entityInput);
+
     // Name input
     const nameLabel = document.createElement('label');
     nameLabel.className = 'animation-field';
@@ -1285,6 +1248,8 @@ function createAnimationCard(
       options.onUpdateAnimation(anim.id, { name: nameInput.value });
     });
     nameLabel.append(nameText, nameInput);
+
+    fields.append(entityLabel, nameLabel);
 
     // Source PNG picker
     const sourceContainer = document.createElement('div');

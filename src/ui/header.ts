@@ -5,7 +5,7 @@ export interface HeaderOptions {
   isDirty?: boolean;
   onProjectNameChange?: (name: string) => void;
   onNewProject?: () => void;
-  onOpenProject?: (file: File) => void;
+  onOpenProject?: (file: File, companionFiles?: File[]) => void;
   onSaveProject?: () => void;
   onSaveProjectAs?: () => void;
 }
@@ -81,13 +81,26 @@ export function createHeader(options: HeaderOptions = {}): HTMLElement {
     if (options.onOpenProject) {
       const openInput = document.createElement('input');
       openInput.type = 'file';
+      openInput.multiple = true;
       openInput.id = 'project-file-input';
-      openInput.accept = '.p2c,.p2c.json,.json';
+      openInput.accept = '.p2c,.p2c.json,.json,.png,.chr,.nes';
       openInput.className = 'visually-hidden';
       openInput.addEventListener('change', () => {
-        const file = openInput.files?.[0];
-        if (file && options.onOpenProject) {
-          options.onOpenProject(file);
+        const files = Array.from(openInput.files ?? []);
+        if (files.length > 0 && options.onOpenProject) {
+          const projectFile =
+            files.find((f) => {
+              const name = f.name.toLowerCase();
+              return (
+                name.endsWith('.p2c') ||
+                name.endsWith('.p2c.json') ||
+                (name.endsWith('.json') && !name.endsWith('.metadata.json'))
+              );
+            }) ?? files[0];
+          if (projectFile) {
+            const companionFiles = files.filter((f) => f !== projectFile);
+            options.onOpenProject(projectFile, companionFiles);
+          }
           openInput.value = '';
         }
       });

@@ -23,7 +23,11 @@ import {
   createEmptyCollisionMap,
   encodeCollisionMap,
 } from './core/collision-encoder';
-import { decideFrameDimensions, detectFrameGrid } from './core/frame-detection';
+import {
+  decideFrameDimensions,
+  detectFrameGrid,
+  type FrameDetectionResult,
+} from './core/frame-detection';
 import { analyzeImage, imageHasTransparency } from './core/image-analysis';
 import { extractNromChr, InesRomError } from './core/ines-rom';
 import {
@@ -51,7 +55,7 @@ import {
   deduplicateTilesConsideringFlips,
 } from './core/tile-deduplication';
 import { extractTiles } from './core/tile-extraction';
-import { ImageAnalysisError, type IndexedImage } from './core/types';
+import { ImageAnalysisError, type IndexedImage, type Tile } from './core/types';
 import { quantizeImageToNes } from './core/image-quantization';
 import {
   deserializeProject,
@@ -133,6 +137,7 @@ function createDefaultAnimationSettings(): AnimationSettings {
       {
         id: initialId,
         name: 'idle',
+        entity: 'entity',
         source: null,
         paletteIndex: null,
         frameWidth: 16,
@@ -212,6 +217,26 @@ function markDirty(): void {
   projectDirty = true;
 }
 
+const assetFileCache = new Map<string, File>();
+
+function cacheAssetFile(file: File): void {
+  assetFileCache.set(file.name.toLowerCase(), file);
+  assetFileCache.set(file.name, file);
+}
+
+function findMatchingAssetFile(
+  assetRef: { path: string; name?: string } | null | undefined,
+): File | undefined {
+  if (!assetRef?.path) return undefined;
+  const fileName =
+    assetRef.name ?? assetRef.path.split('/').pop() ?? assetRef.path;
+  return (
+    assetFileCache.get(fileName.toLowerCase()) ??
+    assetFileCache.get(assetRef.path.toLowerCase()) ??
+    assetFileCache.get(fileName)
+  );
+}
+
 function buildCurrentStudioProject(): StudioProject {
   const tileset: ProjectTilesetConfig = {
     asset:
@@ -258,6 +283,7 @@ function buildCurrentStudioProject(): StudioProject {
     project.animation.animations.map((anim) => ({
       id: anim.id,
       name: anim.name,
+      entity: anim.entity ?? 'entity',
       asset:
         anim.source !== null
           ? {
@@ -383,7 +409,15 @@ function handleNewProject(): void {
   render();
 }
 
-async function loadProjectFile(file: File): Promise<void> {
+async function loadProjectFile(
+  file: File,
+  companionFiles: File[] = [],
+): Promise<void> {
+  cacheAssetFile(file);
+  for (const companion of companionFiles) {
+    cacheAssetFile(companion);
+  }
+
   quantizationPreviewKey = null;
   quantizationPreviews = [];
   quantizationPreviewsLoading = false;
@@ -415,7 +449,15 @@ async function loadProjectFile(file: File): Promise<void> {
     projectName = loaded.name;
     projectDirty = false;
 
-    const missing = findMissingAssets(loaded, () => false);
+    const hasAsset = (path: string): boolean => {
+      const fileName = path.split('/').pop() ?? path;
+      return (
+        assetFileCache.has(fileName.toLowerCase()) ||
+        assetFileCache.has(path.toLowerCase())
+      );
+    };
+
+    const missing = findMissingAssets(loaded, hasAsset);
     const missingError: DisplayError | null =
       missing.length > 0
         ? {
@@ -430,10 +472,95 @@ async function loadProjectFile(file: File): Promise<void> {
 
     if (loaded.mode === 'animation') {
       const animSettings = loaded.animation;
+      const reconstructedAnimations: AnimationItemSetting[] = [];
+
+      for (const anim of animSettings?.animations ?? []) {
+        let source: AnimationSourceData | null = null;
+        let detection: FrameDetectionResult | null = null;
+        const matchingFile = findMatchingAssetFile(anim.asset);
+
+        if (matchingFile) {
+          try {
+            const imageData = await decodeImage(matchingFile);
+            const quantMode = animSettings?.quantizationMode ?? 'median-cut';
+            const dithMode = animSettings?.ditheringMode ?? 'none';
+            const indexedImage = quantizePngSource(imageData, 'animation', {
+              quantizationMode: quantMode,
+              ditheringMode: dithMode,
+              colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
+            });
+            source = {
+              fileName: matchingFile.name,
+              sourceImage: imageData,
+              indexedImage,
+            };
+            detection = detectFrameGrid(imageData);
+          } catch {
+            source = null;
+          }
+        }
+
+        const totalFrames = source
+          ? Math.floor(source.sourceImage.width / anim.frameWidth) *
+            Math.floor(source.sourceImage.height / anim.frameHeight)
+          : 0;
+        const frameIndices =
+          anim.frameIndices.length > 0
+            ? [...anim.frameIndices]
+            : totalFrames > 0
+              ? Array.from({ length: totalFrames }, (_, i) => i)
+              : [];
+        const frameDurations =
+          anim.frameDurations.length > 0
+            ? [...anim.frameDurations]
+            : Array.from(
+                { length: frameIndices.length },
+                () => anim.defaultDuration,
+              );
+        const framePalettes = anim.framePalettes
+          ? [...anim.framePalettes]
+          : Array.from({ length: frameIndices.length }, () => null);
+
+        reconstructedAnimations.push({
+          id: anim.id,
+          name: anim.name,
+          entity: anim.entity ?? 'entity',
+          source,
+          paletteIndex: anim.paletteIndex ?? null,
+          frameWidth: anim.frameWidth,
+          frameHeight: anim.frameHeight,
+          originX: anim.originX,
+          originY: anim.originY,
+          playback: anim.playback,
+          allowHorizontalFlip: anim.allowHorizontalFlip,
+          allowVerticalFlip: anim.allowVerticalFlip,
+          flipH: anim.flipH ?? false,
+          flipV: anim.flipV ?? false,
+          defaultDuration: anim.defaultDuration,
+          frameIndices,
+          frameDurations,
+          framePalettes,
+          collapsed: false,
+          frameDetection: detection,
+        });
+      }
+
+      let destinationChr = new Uint8Array();
+      if (animSettings?.destinationChr) {
+        const chrFile = findMatchingAssetFile(animSettings.destinationChr);
+        if (chrFile) {
+          try {
+            destinationChr = new Uint8Array(await chrFile.arrayBuffer());
+          } catch {
+            destinationChr = new Uint8Array();
+          }
+        }
+      }
+
       const animation: AnimationSettings = {
         ...createDefaultAnimationSettings(),
-        name: animSettings?.name ?? 'soldier',
-        symbolPrefix: animSettings?.symbolPrefix ?? 'soldier',
+        name: animSettings?.name ?? 'entity',
+        symbolPrefix: animSettings?.symbolPrefix ?? 'entity',
         defaultPaletteIndex: animSettings?.defaultPaletteIndex ?? 0,
         quantizationMode: animSettings?.quantizationMode ?? 'median-cut',
         ditheringMode: animSettings?.ditheringMode ?? 'none',
@@ -446,31 +573,10 @@ async function loadProjectFile(file: File): Promise<void> {
           animSettings?.destinationChr?.name ??
           animSettings?.destinationChr?.path ??
           null,
-        destinationChr: new Uint8Array(),
+        destinationChr,
         animations:
-          animSettings && animSettings.animations.length > 0
-            ? animSettings.animations.map((anim) => ({
-                id: anim.id,
-                name: anim.name,
-                source: null,
-                paletteIndex: anim.paletteIndex ?? null,
-                frameWidth: anim.frameWidth,
-                frameHeight: anim.frameHeight,
-                originX: anim.originX,
-                originY: anim.originY,
-                playback: anim.playback,
-                allowHorizontalFlip: anim.allowHorizontalFlip,
-                allowVerticalFlip: anim.allowVerticalFlip,
-                flipH: anim.flipH ?? false,
-                flipV: anim.flipV ?? false,
-                defaultDuration: anim.defaultDuration,
-                frameIndices: [...anim.frameIndices],
-                frameDurations: [...anim.frameDurations],
-                framePalettes: anim.framePalettes
-                  ? [...anim.framePalettes]
-                  : [],
-                collapsed: false,
-              }))
+          reconstructedAnimations.length > 0
+            ? reconstructedAnimations
             : createDefaultAnimationSettings().animations,
       };
 
@@ -509,78 +615,122 @@ async function loadProjectFile(file: File): Promise<void> {
       return;
     }
 
-    if (loaded.mode === 'playfield') {
-      const pf = loaded.playfield;
-      const collisionCells = pf?.collisionCells
-        ? new Uint8Array(pf.collisionCells)
-        : createEmptyCollisionMap();
-      const paletteAssignments = pf?.paletteAssignments
-        ? new Uint8Array(pf.paletteAssignments)
-        : new Uint8Array();
-      const pixelOverrides = pf?.pixelOverrides
-        ? new Uint8Array(pf.pixelOverrides)
-        : new Uint8Array();
+    // Tileset and Playfield modes
+    const isPlayfield = loaded.mode === 'playfield';
+    const assetRef = isPlayfield
+      ? loaded.playfield?.asset
+      : loaded.tileset?.asset;
+    const matchingFile = findMatchingAssetFile(assetRef);
 
-      project = {
-        fileName: pf?.asset?.name ?? pf?.asset?.path ?? null,
-        sourceKind: pf?.asset?.sourceKind ?? 'png',
-        width: null,
-        height: null,
-        sourceImage: null,
-        indexedImage: null,
-        tiles: [],
-        mode: 'playfield',
-        deduplicationEnabled: loaded.settings.deduplicationEnabled,
-        flipDeduplicationEnabled: loaded.settings.flipDeduplicationEnabled,
-        collisionCells,
-        activeCollisionType: pf?.activeCollisionType ?? COLLISION_TYPES.solid,
-        randomPlayfieldFeatures: pf?.randomPlayfieldFeatures
-          ? [...pf.randomPlayfieldFeatures]
-          : [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
-        paletteSet: loaded.palette.paletteSet,
-        paletteAssignments,
-        previewTool: 'palette',
-        pixelOverrides,
-        activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
-        activeColorIndex: loaded.palette.activeColorIndex ?? 1,
-        showPaletteNumbers: false,
-        zoomedPaletteRegion: null,
-        paletteColorTarget: {
-          paletteIndex: loaded.palette.activePaletteIndex ?? 0,
-          colorIndex: loaded.palette.activeColorIndex ?? 1,
-        },
-        animation: createDefaultAnimationSettings(),
-        quantizationSettings: loaded.settings.quantization,
-        error: missingError,
-        loading: false,
-      };
-      render();
-      return;
+    let sourceImage: ImageData | null = null;
+    let indexedImage: IndexedImage | null = null;
+    let tiles: readonly Tile[] = [];
+    let width: number | null = null;
+    let height: number | null = null;
+
+    const collisionCells =
+      isPlayfield && loaded.playfield?.collisionCells
+        ? new Uint8Array(loaded.playfield.collisionCells)
+        : createEmptyCollisionMap();
+    let paletteAssignments = (
+      isPlayfield
+        ? loaded.playfield?.paletteAssignments
+        : loaded.tileset?.paletteAssignments
+    )
+      ? new Uint8Array(
+          (isPlayfield
+            ? loaded.playfield?.paletteAssignments
+            : loaded.tileset?.paletteAssignments) ?? [],
+        )
+      : new Uint8Array();
+    let pixelOverrides = (
+      isPlayfield
+        ? loaded.playfield?.pixelOverrides
+        : loaded.tileset?.pixelOverrides
+    )
+      ? new Uint8Array(
+          (isPlayfield
+            ? loaded.playfield?.pixelOverrides
+            : loaded.tileset?.pixelOverrides) ?? [],
+        )
+      : new Uint8Array();
+
+    if (matchingFile) {
+      const lowerName = matchingFile.name.toLowerCase();
+      const isChr = lowerName.endsWith('.chr');
+      const isNes = lowerName.endsWith('.nes');
+      try {
+        if (isChr || isNes) {
+          const rawBuffer = new Uint8Array(await matchingFile.arrayBuffer());
+          const chrBytes = isNes ? extractNromChr(rawBuffer).chr : rawBuffer;
+          const decodedTiles = decodeChr(chrBytes);
+          const previewColors = loaded.palette.paletteSet[0].map(
+            (c) => NES_MASTER_PALETTE[c] ?? { red: 0, green: 0, blue: 0 },
+          );
+          indexedImage = chrTilesToIndexedImage(decodedTiles, previewColors);
+          sourceImage = null;
+          width = indexedImage.width;
+          height = indexedImage.height;
+          if (paletteAssignments.length === 0) {
+            paletteAssignments = new Uint8Array(
+              assignmentsForImage(indexedImage, 'tileset'),
+            );
+          }
+          if (pixelOverrides.length === 0) {
+            pixelOverrides = new Uint8Array(indexedImage.pixels);
+          }
+          tiles = decodedTiles;
+        } else {
+          sourceImage = await decodeImage(matchingFile);
+          width = sourceImage.width;
+          height = sourceImage.height;
+          indexedImage = quantizePngSource(
+            sourceImage,
+            loaded.mode,
+            loaded.settings.quantization,
+          );
+          if (paletteAssignments.length === 0) {
+            paletteAssignments = new Uint8Array(
+              assignmentsForImage(indexedImage, loaded.mode),
+            );
+          }
+          if (pixelOverrides.length === 0) {
+            pixelOverrides = new Uint8Array(indexedImage.pixels.length);
+          }
+          const regionSize = paletteRegionSize(loaded.mode, indexedImage);
+          const mapped = mapImageToNesPalettes(
+            indexedImage,
+            loaded.palette.paletteSet,
+            paletteAssignments,
+            regionSize,
+            pixelOverrides,
+            false,
+            loaded.settings.quantization.colorDistanceMode,
+          );
+          tiles = extractTiles(mapped);
+        }
+      } catch {
+        // file decode failed
+      }
     }
 
-    // Tileset mode
-    const ts = loaded.tileset;
-    const paletteAssignments = ts?.paletteAssignments
-      ? new Uint8Array(ts.paletteAssignments)
-      : new Uint8Array();
-    const pixelOverrides = ts?.pixelOverrides
-      ? new Uint8Array(ts.pixelOverrides)
-      : new Uint8Array();
-
     project = {
-      fileName: ts?.asset?.name ?? ts?.asset?.path ?? null,
-      sourceKind: ts?.asset?.sourceKind ?? 'png',
-      width: null,
-      height: null,
-      sourceImage: null,
-      indexedImage: null,
-      tiles: [],
-      mode: 'tileset',
+      fileName: assetRef?.name ?? assetRef?.path ?? null,
+      sourceKind: assetRef?.sourceKind ?? 'png',
+      width,
+      height,
+      sourceImage,
+      indexedImage,
+      tiles,
+      mode: loaded.mode,
       deduplicationEnabled: loaded.settings.deduplicationEnabled,
       flipDeduplicationEnabled: loaded.settings.flipDeduplicationEnabled,
-      collisionCells: createEmptyCollisionMap(),
-      activeCollisionType: COLLISION_TYPES.solid,
-      randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+      collisionCells,
+      activeCollisionType:
+        loaded.playfield?.activeCollisionType ?? COLLISION_TYPES.solid,
+      randomPlayfieldFeatures: loaded.playfield?.randomPlayfieldFeatures
+        ? [...loaded.playfield.randomPlayfieldFeatures]
+        : [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
       paletteSet: loaded.palette.paletteSet,
       paletteAssignments,
       previewTool: 'palette',
@@ -614,8 +764,8 @@ function createProjectHeader(): HTMLElement {
       render();
     },
     onNewProject: handleNewProject,
-    onOpenProject: (file) => {
-      void loadProjectFile(file);
+    onOpenProject: (file, companionFiles) => {
+      void loadProjectFile(file, companionFiles);
     },
     onSaveProject: handleSaveProject,
     onSaveProjectAs: handleSaveProjectAs,
@@ -926,6 +1076,7 @@ function addAnimation(): void {
   const newAnim: AnimationItemSetting = {
     id: newId,
     name: `anim_${String(count)}`,
+    entity: lastAnim?.entity ?? 'entity',
     source: null,
     paletteIndex: null,
     frameWidth: lastAnim?.frameWidth ?? 16,
@@ -964,6 +1115,7 @@ function duplicateAnimation(animId: string): void {
     ...original,
     id: newId,
     name: `${original.name}_copy`,
+    entity: original.entity ?? 'entity',
     frameIndices: [...original.frameIndices],
     frameDurations: [...original.frameDurations],
     framePalettes: [...(original.framePalettes ?? [])],
@@ -1104,6 +1256,8 @@ async function loadAnimationSourceFile(
   animId: string,
   file: File,
 ): Promise<void> {
+  cacheAssetFile(file);
+  markDirty();
   try {
     const imageData = await decodeImage(file);
     const quantMode = project.animation.quantizationMode;
@@ -1135,6 +1289,23 @@ async function loadAnimationSourceFile(
         0,
         validIndices.length,
       );
+
+      const frameIndices =
+        validIndices.length > 0
+          ? validIndices
+          : Array.from({ length: totalFrames }, (_, i) => i);
+      const frameDurations =
+        validDurations.length > 0
+          ? validDurations
+          : Array.from(
+              { length: frameIndices.length },
+              () => anim.defaultDuration,
+            );
+      const framePalettes =
+        validPalettes.length > 0
+          ? validPalettes
+          : Array.from({ length: frameIndices.length }, () => null);
+
       return {
         ...anim,
         source,
@@ -1143,9 +1314,9 @@ async function loadAnimationSourceFile(
         frameWidth: width,
         frameHeight: height,
         frameDetection: detection,
-        frameIndices: validIndices,
-        frameDurations: validDurations,
-        framePalettes: validPalettes,
+        frameIndices,
+        frameDurations,
+        framePalettes,
       };
     });
     project = {
@@ -1380,6 +1551,8 @@ function removeFrameFromAnimation(animId: string, frameIndex: number): void {
 }
 
 async function loadAnimationDestination(file: File): Promise<void> {
+  cacheAssetFile(file);
+  markDirty();
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (bytes.length === 0 || bytes.length % 16 !== 0 || bytes.length > 8192) {
@@ -1437,9 +1610,11 @@ function renderAnimationWorkspace(): void {
     }
 
     if (definitions.length > 0) {
+      const primaryEntity =
+        project.animation.animations[0]?.entity ?? project.animation.name;
       model = buildAnimationProjectModel({
-        name: project.animation.name,
-        symbolPrefix: project.animation.symbolPrefix,
+        name: primaryEntity,
+        symbolPrefix: primaryEntity,
         animations: definitions,
         defaultPaletteIndex: project.animation.defaultPaletteIndex,
         quantizationMode: project.animation.quantizationMode,
@@ -1575,6 +1750,9 @@ function renderAnimationWorkspace(): void {
     fileName: project.fileName,
     quantizationMode: project.animation.quantizationMode,
     onQuantizationModeChange: setGlobalAnimationQuantizationMode,
+    onModeChange: (m) => {
+      changeMode(m);
+    },
   });
   app.replaceChildren(createProjectHeader(), nav, workspace);
 }
@@ -1834,6 +2012,9 @@ function render(): void {
         quantizationMode,
       });
     },
+    onModeChange: (m) => {
+      changeMode(m);
+    },
   });
   app.replaceChildren(createProjectHeader(), nav, workspace);
 }
@@ -1867,6 +2048,7 @@ async function decodeImage(file: File): Promise<ImageData> {
 }
 
 async function loadFile(file: File): Promise<void> {
+  cacheAssetFile(file);
   const lowerCaseName = file.name.toLowerCase();
   const isProjectFile =
     lowerCaseName.endsWith('.p2c') ||

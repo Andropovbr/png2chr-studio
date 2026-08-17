@@ -5,11 +5,12 @@ import {
 import { t, type TranslationKey } from '../i18n';
 import type { ProjectMode } from './types';
 
-interface StickyNavOptions {
+export interface StickyNavOptions {
   readonly mode: ProjectMode;
   readonly fileName: string | null;
   readonly quantizationMode: QuantizationMode;
   readonly onQuantizationModeChange: (mode: QuantizationMode) => void;
+  readonly onModeChange?: (mode: ProjectMode) => void;
 }
 
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
@@ -22,6 +23,31 @@ export function createStickyNav(options: StickyNavOptions): HTMLElement {
   const nav = document.createElement('nav');
   nav.className = 'sticky-nav';
   nav.setAttribute('aria-label', t('navigationLabel'));
+
+  const modeSwitcher = document.createElement('div');
+  modeSwitcher.className = 'quantization-segmented sticky-nav-mode-switcher';
+  modeSwitcher.setAttribute('role', 'group');
+  modeSwitcher.setAttribute('aria-label', t('imageModeLabel'));
+
+  const modes: readonly [ProjectMode, TranslationKey][] = [
+    ['tileset', 'tilesetMode'],
+    ['playfield', 'playfieldMode'],
+    ['animation', 'animationMode'],
+  ];
+
+  modes.forEach(([modeKey, labelKey]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `segmented-button${options.mode === modeKey ? ' is-active' : ''}`;
+    btn.textContent = t(labelKey);
+    btn.setAttribute('aria-pressed', String(options.mode === modeKey));
+    btn.addEventListener('click', () => {
+      if (options.mode !== modeKey && options.onModeChange) {
+        options.onModeChange(modeKey);
+      }
+    });
+    modeSwitcher.append(btn);
+  });
 
   const sections = document.createElement('div');
   sections.className = 'sticky-nav-sections';
@@ -83,6 +109,6 @@ export function createStickyNav(options: StickyNavOptions): HTMLElement {
   });
   quick.append(segmented);
 
-  nav.append(sections, quick);
+  nav.append(modeSwitcher, sections, quick);
   return nav;
 }

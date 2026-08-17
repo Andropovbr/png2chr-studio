@@ -39,6 +39,7 @@ const en = {
   animationSymbolPrefixLabel: 'C symbol prefix',
   animationAssetSetName: 'Asset / set name',
   animationNameLabel: 'Asset name',
+  animationEntityLabel: 'Entity',
   animationItemNameLabel: 'Animation name',
   animationSymbolPreviewTitle: 'Generated C symbols',
   animationSymbolPreviewInvalid:
@@ -492,6 +493,7 @@ const ptBr = {
   animationSymbolPrefixLabel: 'Prefixo dos símbolos C',
   animationAssetSetName: 'Nome/prefixo do conjunto',
   animationNameLabel: 'Nome do asset',
+  animationEntityLabel: 'Entidade',
   animationItemNameLabel: 'Nome da animação',
   animationSymbolPreviewTitle: 'Símbolos C gerados',
   animationSymbolPreviewInvalid:

@@ -29,6 +29,7 @@ export interface ProjectAssetReference {
 export interface ProjectAnimationItemConfig {
   readonly id: string;
   readonly name: string;
+  readonly entity?: string;
   readonly asset: ProjectAssetReference | null;
   readonly paletteIndex?: number | null;
   readonly frameWidth: number;
@@ -275,6 +276,7 @@ export function createDefaultProject(
         {
           id: 'anim-default',
           name: 'idle',
+          entity: 'entity',
           asset: null,
           paletteIndex: null,
           frameWidth: 16,
@@ -479,6 +481,13 @@ export function deserializeProject(
                 ? rawItem.id
                 : `anim-${Math.random().toString(36).slice(2, 9)}`,
             name: typeof rawItem.name === 'string' ? rawItem.name : 'anim',
+            entity:
+              typeof rawItem.entity === 'string' && rawItem.entity.trim() !== ''
+                ? rawItem.entity.trim()
+                : typeof rawAnim.symbolPrefix === 'string' &&
+                    rawAnim.symbolPrefix.trim() !== ''
+                  ? rawAnim.symbolPrefix.trim()
+                  : 'entity',
             asset: parseAssetReference(rawItem.asset),
             paletteIndex:
               typeof rawItem.paletteIndex === 'number'

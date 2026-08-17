@@ -111,6 +111,7 @@ describe('StudioProject core infrastructure', () => {
           {
             id: 'walk-id',
             name: 'walk',
+            entity: 'hero',
             asset: {
               path: 'sprites/hero_walk.png',
               name: 'hero_walk.png',

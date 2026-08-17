@@ -32,6 +32,7 @@ export interface AnimationSourceData {
 export interface AnimationItemSetting {
   readonly id: string;
   readonly name: string;
+  readonly entity?: string;
   readonly source: AnimationSourceData | null;
   readonly paletteIndex?: number | null;
   readonly frameWidth: number;
