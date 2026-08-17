@@ -32,6 +32,8 @@ export interface ProjectAnimationItemConfig {
   readonly entity?: string;
   readonly asset: ProjectAssetReference | null;
   readonly paletteIndex?: number | null;
+  readonly quantizationMode?: QuantizationMode;
+  readonly ditheringMode?: DitheringMode;
   readonly frameWidth: number;
   readonly frameHeight: number;
   readonly originX: number;
@@ -279,6 +281,8 @@ export function createDefaultProject(
           entity: 'entity',
           asset: null,
           paletteIndex: null,
+          quantizationMode: 'median-cut',
+          ditheringMode: 'none',
           frameWidth: 16,
           frameHeight: 16,
           originX: 0,
@@ -493,6 +497,24 @@ export function deserializeProject(
               typeof rawItem.paletteIndex === 'number'
                 ? rawItem.paletteIndex
                 : null,
+            ...(rawItem.quantizationMode === 'nearest' ||
+            rawItem.quantizationMode === 'median-cut' ||
+            rawItem.quantizationMode === 'k-means'
+              ? { quantizationMode: rawItem.quantizationMode }
+              : typeof rawAnim.quantizationMode === 'string' &&
+                  (rawAnim.quantizationMode === 'nearest' ||
+                    rawAnim.quantizationMode === 'median-cut' ||
+                    rawAnim.quantizationMode === 'k-means')
+                ? { quantizationMode: rawAnim.quantizationMode }
+                : {}),
+            ...(rawItem.ditheringMode === 'none' ||
+            rawItem.ditheringMode === 'floyd-steinberg'
+              ? { ditheringMode: rawItem.ditheringMode }
+              : typeof rawAnim.ditheringMode === 'string' &&
+                  (rawAnim.ditheringMode === 'none' ||
+                    rawAnim.ditheringMode === 'floyd-steinberg')
+                ? { ditheringMode: rawAnim.ditheringMode }
+                : {}),
             frameWidth:
               typeof rawItem.frameWidth === 'number' && rawItem.frameWidth > 0
                 ? rawItem.frameWidth

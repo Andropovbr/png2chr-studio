@@ -71,7 +71,6 @@ import {
   QUANTIZATION_MODES,
   loadQuantizationSettings,
   saveQuantizationSettings,
-  type QuantizationMode,
   type QuantizationSettings,
 } from './core/quantization-settings';
 import { getLocale, subscribeToLocale, t } from './i18n';
@@ -293,6 +292,8 @@ function buildCurrentStudioProject(): StudioProject {
             }
           : null,
       paletteIndex: anim.paletteIndex ?? null,
+      quantizationMode: anim.quantizationMode ?? 'median-cut',
+      ditheringMode: anim.ditheringMode ?? 'none',
       frameWidth: anim.frameWidth,
       frameHeight: anim.frameHeight,
       originX: anim.originX,
@@ -478,12 +479,16 @@ async function loadProjectFile(
         let source: AnimationSourceData | null = null;
         let detection: FrameDetectionResult | null = null;
         const matchingFile = findMatchingAssetFile(anim.asset);
+        const quantMode =
+          anim.quantizationMode ??
+          animSettings?.quantizationMode ??
+          'median-cut';
+        const dithMode =
+          anim.ditheringMode ?? animSettings?.ditheringMode ?? 'none';
 
         if (matchingFile) {
           try {
             const imageData = await decodeImage(matchingFile);
-            const quantMode = animSettings?.quantizationMode ?? 'median-cut';
-            const dithMode = animSettings?.ditheringMode ?? 'none';
             const indexedImage = quantizePngSource(imageData, 'animation', {
               quantizationMode: quantMode,
               ditheringMode: dithMode,
@@ -527,6 +532,8 @@ async function loadProjectFile(
           entity: anim.entity ?? 'entity',
           source,
           paletteIndex: anim.paletteIndex ?? null,
+          quantizationMode: quantMode,
+          ditheringMode: dithMode,
           frameWidth: anim.frameWidth,
           frameHeight: anim.frameHeight,
           originX: anim.originX,
@@ -1079,6 +1086,8 @@ function addAnimation(): void {
     entity: lastAnim?.entity ?? 'entity',
     source: null,
     paletteIndex: null,
+    quantizationMode: lastAnim?.quantizationMode ?? 'median-cut',
+    ditheringMode: lastAnim?.ditheringMode ?? 'none',
     frameWidth: lastAnim?.frameWidth ?? 16,
     frameHeight: lastAnim?.frameHeight ?? 16,
     originX: lastAnim?.originX ?? 0,
@@ -1116,6 +1125,8 @@ function duplicateAnimation(animId: string): void {
     id: newId,
     name: `${original.name}_copy`,
     entity: original.entity ?? 'entity',
+    quantizationMode: original.quantizationMode ?? 'median-cut',
+    ditheringMode: original.ditheringMode ?? 'none',
     frameIndices: [...original.frameIndices],
     frameDurations: [...original.frameDurations],
     framePalettes: [...(original.framePalettes ?? [])],
@@ -1183,23 +1194,11 @@ function toggleAnimationPaletteCollapse(): void {
   render();
 }
 
-function toggleAnimationQuantizationCollapse(): void {
-  project = {
-    ...project,
-    animation: {
-      ...project.animation,
-      quantizationCollapsed: !(
-        project.animation.quantizationCollapsed ?? false
-      ),
-    },
-  };
-  render();
-}
-
 function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
 ): void {
+  markDirty();
   const manualDimensions = 'frameWidth' in patch || 'frameHeight' in patch;
   const resolvedPatch =
     manualDimensions && !('frameDetection' in patch)
@@ -1209,43 +1208,35 @@ function updateAnimation(
     ...project,
     animation: {
       ...project.animation,
-      animations: project.animation.animations.map((a) =>
-        a.id === animId ? { ...a, ...resolvedPatch } : a,
-      ),
-    },
-    error: null,
-  };
-  render();
-}
-
-function setGlobalAnimationQuantizationMode(mode: QuantizationMode): void {
-  const animations = project.animation.animations.map((anim) => {
-    if (anim.source === null) {
-      return {
-        ...anim,
-        quantizationMode: mode,
-      };
-    }
-    const reindexed = quantizePngSource(anim.source.sourceImage, 'animation', {
-      quantizationMode: mode,
-      ditheringMode: project.animation.ditheringMode,
-      colorDistanceMode: project.quantizationSettings.colorDistanceMode,
-    });
-    return {
-      ...anim,
-      quantizationMode: mode,
-      source: {
-        ...anim.source,
-        indexedImage: reindexed,
-      },
-    };
-  });
-  project = {
-    ...project,
-    animation: {
-      ...project.animation,
-      quantizationMode: mode,
-      animations,
+      animations: project.animation.animations.map((a) => {
+        if (a.id !== animId) return a;
+        const updated = { ...a, ...resolvedPatch };
+        if (
+          (patch.quantizationMode !== undefined ||
+            patch.ditheringMode !== undefined) &&
+          updated.source !== null
+        ) {
+          const quantMode = updated.quantizationMode ?? 'median-cut';
+          const dithMode = updated.ditheringMode ?? 'none';
+          const reindexed = quantizePngSource(
+            updated.source.sourceImage,
+            'animation',
+            {
+              quantizationMode: quantMode,
+              ditheringMode: dithMode,
+              colorDistanceMode: project.quantizationSettings.colorDistanceMode,
+            },
+          );
+          return {
+            ...updated,
+            source: {
+              ...updated.source,
+              indexedImage: reindexed,
+            },
+          };
+        }
+        return updated;
+      }),
     },
     error: null,
   };
@@ -1259,9 +1250,12 @@ async function loadAnimationSourceFile(
   cacheAssetFile(file);
   markDirty();
   try {
+    const targetAnim = project.animation.animations.find(
+      (a) => a.id === animId,
+    );
+    const quantMode = targetAnim?.quantizationMode ?? 'median-cut';
+    const dithMode = targetAnim?.ditheringMode ?? 'none';
     const imageData = await decodeImage(file);
-    const quantMode = project.animation.quantizationMode;
-    const dithMode = project.animation.ditheringMode;
     const indexedImage = quantizePngSource(imageData, 'animation', {
       quantizationMode: quantMode,
       ditheringMode: dithMode,
@@ -1586,12 +1580,17 @@ function renderAnimationWorkspace(): void {
     const definitions: AnimationDefinitionInput[] = [];
     for (const anim of project.animation.animations) {
       if (anim.source !== null && anim.frameIndices.length > 0) {
+        const entityName =
+          anim.entity?.trim() !== '' && anim.entity
+            ? anim.entity.trim()
+            : 'entity';
+        const compositeName = `${entityName}_${anim.name}`;
         definitions.push({
-          name: anim.name,
+          name: compositeName,
           sourceImageName: anim.source.fileName,
           image: anim.source.indexedImage,
           paletteIndex: anim.paletteIndex ?? null,
-          quantizationMode: project.animation.quantizationMode,
+          quantizationMode: anim.quantizationMode ?? 'median-cut',
           frameWidth: anim.frameWidth,
           frameHeight: anim.frameHeight,
           originX: anim.originX,
@@ -1640,7 +1639,6 @@ function renderAnimationWorkspace(): void {
       project = { ...project, animation, error: null };
       render();
     },
-    onGlobalQuantizationModeChange: setGlobalAnimationQuantizationMode,
     onDefaultPaletteIndexChange: (defaultPaletteIndex: number) => {
       project = {
         ...project,
@@ -1668,7 +1666,6 @@ function renderAnimationWorkspace(): void {
     },
     onToggleConfigCollapse: toggleAnimationConfigCollapse,
     onTogglePaletteCollapse: toggleAnimationPaletteCollapse,
-    onToggleQuantizationCollapse: toggleAnimationQuantizationCollapse,
     onUpdateAnimation: updateAnimation,
     onAnimationSourceFile: (animId: string, file: File) => {
       void loadAnimationSourceFile(animId, file);
@@ -1748,8 +1745,6 @@ function renderAnimationWorkspace(): void {
   const nav = createStickyNav({
     mode: 'animation',
     fileName: project.fileName,
-    quantizationMode: project.animation.quantizationMode,
-    onQuantizationModeChange: setGlobalAnimationQuantizationMode,
     onModeChange: (m) => {
       changeMode(m);
     },

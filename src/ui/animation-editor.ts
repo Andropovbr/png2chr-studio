@@ -42,7 +42,6 @@ export interface AnimationEditorOptions {
   readonly paletteSet: NesPaletteSet;
   readonly colorDistanceMode?: ColorDistanceMode;
   readonly onSettingsChange: (settings: AnimationSettings) => void;
-  readonly onGlobalQuantizationModeChange: (mode: QuantizationMode) => void;
   readonly onDefaultPaletteIndexChange: (index: number) => void;
   readonly onAddAnimation: () => void;
   readonly onDuplicateAnimation: (animationId: string) => void;
@@ -51,7 +50,6 @@ export interface AnimationEditorOptions {
   readonly onToggleMappingCollapse: () => void;
   readonly onToggleConfigCollapse: () => void;
   readonly onTogglePaletteCollapse: () => void;
-  readonly onToggleQuantizationCollapse: () => void;
   readonly onUpdateAnimation: (
     animationId: string,
     patch: Partial<AnimationItemSetting>,
@@ -198,132 +196,6 @@ function paletteCssColor(colorCode: number): string {
     blue: 0,
   };
   return `rgb(${String(color.red)} ${String(color.green)} ${String(color.blue)})`;
-}
-
-function createAnimationQuantizationPanel(
-  options: AnimationEditorOptions,
-): HTMLElement {
-  const animationsWithSource = options.settings.animations.filter(
-    (a) => a.source !== null,
-  );
-
-  if (animationsWithSource.length === 0) {
-    const section = document.createElement('section');
-    section.className = 'panel animation-quantization-panel';
-    const heading = document.createElement('h2');
-    heading.textContent = t('animationColorReductionTitle');
-    const emptyMsg = document.createElement('p');
-    emptyMsg.className = 'muted empty-message';
-    emptyMsg.textContent = t('animationReductionNoSources');
-    section.append(heading, emptyMsg);
-    return section;
-  }
-
-  const content = document.createElement('div');
-  content.className = 'animation-quantization-content';
-
-  // Reference image selector
-  const refContainer = document.createElement('div');
-  refContainer.className = 'animation-reduction-ref-container';
-  const refLabel = document.createElement('label');
-  refLabel.className = 'animation-field';
-  const refLabelText = document.createElement('span');
-  refLabelText.textContent = t('animationReductionReferenceLabel');
-  const refSelect = document.createElement('select');
-
-  const defaultRefId = animationsWithSource[0]?.id ?? '';
-  let activeRefId = defaultRefId;
-
-  animationsWithSource.forEach((anim) => {
-    const opt = document.createElement('option');
-    opt.value = anim.id;
-    opt.textContent = `${anim.name} — ${anim.source?.fileName ?? ''}`;
-    refSelect.append(opt);
-  });
-  refSelect.value = activeRefId;
-
-  refLabel.append(refLabelText, refSelect);
-  refContainer.append(refLabel);
-  content.append(refContainer);
-
-  const cardsContainer = document.createElement('div');
-  cardsContainer.className = 'animation-reduction-cards';
-
-  const renderCards = (refAnimId: string): void => {
-    cardsContainer.replaceChildren();
-    const targetAnim =
-      animationsWithSource.find((a) => a.id === refAnimId) ??
-      animationsWithSource[0];
-    if (!targetAnim?.source) return;
-    const targetSource = targetAnim.source;
-
-    const activePaletteIndex =
-      targetAnim.paletteIndex ?? options.settings.defaultPaletteIndex;
-
-    QUANTIZATION_MODES.forEach((mode) => {
-      const active = options.settings.quantizationMode === mode;
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'quantization-preview-card animation-reduction-card';
-      card.classList.toggle('is-active', active);
-      card.setAttribute('aria-pressed', String(active));
-
-      const cardTitle = document.createElement('strong');
-      cardTitle.textContent = t(QUANTIZATION_LABELS[mode]);
-
-      const reduced = quantizeImageToNes(
-        targetSource.sourceImage,
-        NES_MASTER_PALETTE,
-        imageHasTransparency(targetSource.sourceImage) ? 3 : 4,
-        {
-          quantizationMode: mode,
-          ditheringMode: options.settings.ditheringMode,
-          colorDistanceMode: options.colorDistanceMode ?? 'perceptual',
-        },
-      );
-      const reducedIndexed = analyzeImage(reduced.image);
-      const nesRaw = renderAnimationToRawImageData(
-        reducedIndexed,
-        options.paletteSet,
-        activePaletteIndex,
-      );
-      const canvas = cropCanvas(nesRaw, 0, 0, nesRaw.width, nesRaw.height);
-      canvas.className = 'animation-reduction-preview-canvas';
-
-      card.append(cardTitle, canvas);
-      card.addEventListener('click', () => {
-        options.onGlobalQuantizationModeChange(mode);
-      });
-      cardsContainer.append(card);
-    });
-  };
-
-  refSelect.addEventListener('change', () => {
-    activeRefId = refSelect.value;
-    renderCards(activeRefId);
-  });
-
-  renderCards(activeRefId);
-  content.append(cardsContainer);
-
-  const selectedLabel = t(
-    QUANTIZATION_LABELS[options.settings.quantizationMode],
-  );
-  const status = document.createElement('p');
-  status.className = 'animation-reduction-selected-label muted';
-  status.textContent = t('animationColorReductionSelected', {
-    mode: selectedLabel,
-  });
-  content.append(status);
-
-  return createCollapsiblePanel({
-    panelClassName: 'animation-quantization-panel',
-    title: t('animationColorReductionTitle'),
-    summary: selectedLabel,
-    isCollapsed: options.settings.quantizationCollapsed ?? false,
-    onToggle: options.onToggleQuantizationCollapse,
-    children: [content],
-  });
 }
 
 function createSpriteMasterPaletteDialog(options: AnimationEditorOptions): {
@@ -1163,7 +1035,7 @@ function createAnimationCard(
   const summary = document.createElement('div');
   summary.className = 'animation-card-summary';
   const title = document.createElement('strong');
-  title.textContent = anim.name;
+  title.textContent = `${anim.entity ?? 'entity'}_${anim.name}`;
   const details = document.createElement('span');
   details.className = 'animation-card-details';
   const playbackLabel =
@@ -1249,8 +1121,6 @@ function createAnimationCard(
     });
     nameLabel.append(nameText, nameInput);
 
-    fields.append(entityLabel, nameLabel);
-
     // Source PNG picker
     const sourceContainer = document.createElement('div');
     sourceContainer.className = 'animation-field animation-source-field';
@@ -1284,6 +1154,72 @@ function createAnimationCard(
 
     sourceControls.append(sourceInput, sourceBtn, sourceBadge);
     sourceContainer.append(sourceText, sourceControls);
+
+    // Per-animation quantization selector & preview
+    const quantElements: HTMLElement[] = [];
+    if (anim.source !== null) {
+      const animSource = anim.source;
+      const quantContainer = document.createElement('div');
+      quantContainer.className =
+        'animation-field animation-quantization-item-field';
+
+      const quantHeader = document.createElement('div');
+      quantHeader.className = 'animation-quantization-item-header';
+      const quantTitle = document.createElement('span');
+      quantTitle.textContent = t('animationColorReductionTitle');
+      quantHeader.append(quantTitle);
+
+      const quantCards = document.createElement('div');
+      quantCards.className = 'animation-reduction-cards';
+
+      const currentQuantMode = anim.quantizationMode ?? 'median-cut';
+      const currentDithMode = anim.ditheringMode ?? 'none';
+      const activePaletteIndex =
+        anim.paletteIndex ?? options.settings.defaultPaletteIndex;
+
+      QUANTIZATION_MODES.forEach((mode) => {
+        const active = currentQuantMode === mode;
+        const cardBtn = document.createElement('button');
+        cardBtn.type = 'button';
+        cardBtn.className =
+          'quantization-preview-card animation-reduction-card';
+        cardBtn.classList.toggle('is-active', active);
+        cardBtn.setAttribute('aria-pressed', String(active));
+
+        const cardTitle = document.createElement('strong');
+        cardTitle.textContent = t(QUANTIZATION_LABELS[mode]);
+
+        const reduced = quantizeImageToNes(
+          animSource.sourceImage,
+          NES_MASTER_PALETTE,
+          imageHasTransparency(animSource.sourceImage) ? 3 : 4,
+          {
+            quantizationMode: mode,
+            ditheringMode: currentDithMode,
+            colorDistanceMode: options.colorDistanceMode ?? 'perceptual',
+          },
+        );
+        const reducedIndexed = analyzeImage(reduced.image);
+        const nesRaw = renderAnimationToRawImageData(
+          reducedIndexed,
+          options.paletteSet,
+          activePaletteIndex,
+        );
+        const canvas = cropCanvas(nesRaw, 0, 0, nesRaw.width, nesRaw.height);
+        canvas.className = 'animation-reduction-preview-canvas';
+
+        cardBtn.append(cardTitle, canvas);
+        cardBtn.addEventListener('click', () => {
+          if (mode !== currentQuantMode) {
+            options.onUpdateAnimation(anim.id, { quantizationMode: mode });
+          }
+        });
+        quantCards.append(cardBtn);
+      });
+
+      quantContainer.append(quantHeader, quantCards);
+      quantElements.push(quantContainer);
+    }
 
     // Animation Palette Selector
     const paletteField = document.createElement('label');
@@ -1478,8 +1414,10 @@ function createAnimationCard(
     mirrorFieldset.append(mirrorLegend, flipHLabel, flipVLabel);
 
     fields.append(
+      entityLabel,
       nameLabel,
       sourceContainer,
+      ...quantElements,
       paletteField,
       widthField,
       heightField,
@@ -1835,8 +1773,6 @@ export function createAnimationEditor(
 ): readonly HTMLElement[] {
   const configPanel = createConfiguration(options);
   configPanel.id = 'section-asset';
-  const quantizationPanel = createAnimationQuantizationPanel(options);
-  quantizationPanel.id = 'section-quantization';
   const palettePanel = createSpritePaletteEditor(options);
   palettePanel.id = 'section-palettes';
   const listPanel = createAnimationListPanel(options);
@@ -1845,12 +1781,5 @@ export function createAnimationEditor(
   mappingPanel.id = 'section-mapping';
   const exportsPanel = createExports(options);
   exportsPanel.id = 'section-export';
-  return [
-    configPanel,
-    quantizationPanel,
-    palettePanel,
-    listPanel,
-    mappingPanel,
-    exportsPanel,
-  ];
+  return [configPanel, palettePanel, listPanel, mappingPanel, exportsPanel];
 }

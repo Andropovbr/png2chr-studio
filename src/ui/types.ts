@@ -35,6 +35,8 @@ export interface AnimationItemSetting {
   readonly entity?: string;
   readonly source: AnimationSourceData | null;
   readonly paletteIndex?: number | null;
+  readonly quantizationMode?: QuantizationMode;
+  readonly ditheringMode?: DitheringMode;
   readonly frameWidth: number;
   readonly frameHeight: number;
   readonly originX: number;

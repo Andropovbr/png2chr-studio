@@ -118,6 +118,8 @@ describe('StudioProject core infrastructure', () => {
               sourceKind: 'png',
             },
             paletteIndex: 1,
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
             frameWidth: 16,
             frameHeight: 32,
             originX: 8,

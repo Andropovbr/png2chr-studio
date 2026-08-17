@@ -8,8 +8,8 @@ import type { ProjectMode } from './types';
 export interface StickyNavOptions {
   readonly mode: ProjectMode;
   readonly fileName: string | null;
-  readonly quantizationMode: QuantizationMode;
-  readonly onQuantizationModeChange: (mode: QuantizationMode) => void;
+  readonly quantizationMode?: QuantizationMode;
+  readonly onQuantizationModeChange?: (mode: QuantizationMode) => void;
   readonly onModeChange?: (mode: ProjectMode) => void;
 }
 
@@ -55,7 +55,6 @@ export function createStickyNav(options: StickyNavOptions): HTMLElement {
   const links: readonly (readonly [string, string])[] =
     options.mode === 'animation'
       ? [
-          ['#section-quantization', t('navigationImage')],
           ['#section-asset', t('navigationAsset')],
           ['#section-palettes', t('navigationPalettes')],
           ['#section-animations', t('navigationAnimations')],
@@ -88,26 +87,31 @@ export function createStickyNav(options: StickyNavOptions): HTMLElement {
     quick.append(file);
   }
 
-  const segmented = document.createElement('div');
-  segmented.className = 'quantization-segmented';
-  segmented.setAttribute('role', 'group');
-  segmented.setAttribute('aria-label', t('quantizationModeLabel'));
-  QUANTIZATION_MODES.forEach((mode) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'segmented-button';
-    button.classList.toggle('is-active', options.quantizationMode === mode);
-    button.setAttribute(
-      'aria-pressed',
-      String(options.quantizationMode === mode),
-    );
-    button.textContent = t(QUANTIZATION_LABELS[mode]);
-    button.addEventListener('click', () => {
-      options.onQuantizationModeChange(mode);
+  if (
+    options.mode !== 'animation' &&
+    options.quantizationMode &&
+    options.onQuantizationModeChange
+  ) {
+    const onQuantChange = options.onQuantizationModeChange;
+    const currentMode = options.quantizationMode;
+    const segmented = document.createElement('div');
+    segmented.className = 'quantization-segmented';
+    segmented.setAttribute('role', 'group');
+    segmented.setAttribute('aria-label', t('quantizationModeLabel'));
+    QUANTIZATION_MODES.forEach((mode) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'segmented-button';
+      button.classList.toggle('is-active', currentMode === mode);
+      button.setAttribute('aria-pressed', String(currentMode === mode));
+      button.textContent = t(QUANTIZATION_LABELS[mode]);
+      button.addEventListener('click', () => {
+        onQuantChange(mode);
+      });
+      segmented.append(button);
     });
-    segmented.append(button);
-  });
-  quick.append(segmented);
+    quick.append(segmented);
+  }
 
   nav.append(modeSwitcher, sections, quick);
   return nav;
