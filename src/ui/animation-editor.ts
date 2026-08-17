@@ -29,6 +29,12 @@ import type { TranslationKey } from '../i18n';
 import type { AnimationItemSetting, AnimationSettings } from './types';
 import { createCollapsiblePanel } from './collapsible';
 
+import type {
+  ProjectScenePreviewConfig,
+  ScenePreviewInstance,
+} from '../core/scene-preview';
+import { createScenePreviewPanel } from './scene-preview-panel';
+
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
   nearest: 'quantizationNearest',
   'median-cut': 'quantizationMedianCut',
@@ -41,6 +47,7 @@ export interface AnimationEditorOptions {
   readonly modelError: AnimationModelError | null;
   readonly paletteSet: NesPaletteSet;
   readonly colorDistanceMode?: ColorDistanceMode;
+  readonly scenePreview?: ProjectScenePreviewConfig;
   readonly onSettingsChange: (settings: AnimationSettings) => void;
   readonly onDefaultPaletteIndexChange: (index: number) => void;
   readonly onAddAnimation: () => void;
@@ -50,6 +57,12 @@ export interface AnimationEditorOptions {
   readonly onToggleMappingCollapse: () => void;
   readonly onToggleConfigCollapse: () => void;
   readonly onTogglePaletteCollapse: () => void;
+  readonly onAddSceneInstance: (instance: ScenePreviewInstance) => void;
+  readonly onRemoveSceneInstance: (instanceId: string) => void;
+  readonly onUpdateSceneInstance: (
+    instanceId: string,
+    patch: Partial<ScenePreviewInstance>,
+  ) => void;
   readonly onUpdateAnimation: (
     animationId: string,
     patch: Partial<AnimationItemSetting>,
@@ -158,7 +171,7 @@ function errorTranslation(error: AnimationModelError | null): TranslationKey {
   }
 }
 
-function cropCanvas(
+export function cropCanvas(
   image: RawImageData | ImageData,
   x: number,
   y: number,
@@ -1777,9 +1790,26 @@ export function createAnimationEditor(
   palettePanel.id = 'section-palettes';
   const listPanel = createAnimationListPanel(options);
   listPanel.id = 'section-animations';
+  const scenePreviewPanel = createScenePreviewPanel({
+    instances: options.scenePreview?.instances ?? [],
+    animations: options.settings.animations,
+    paletteSet: options.paletteSet,
+    defaultPaletteIndex: options.settings.defaultPaletteIndex,
+    onAddInstance: options.onAddSceneInstance,
+    onRemoveInstance: options.onRemoveSceneInstance,
+    onUpdateInstance: options.onUpdateSceneInstance,
+  });
+  scenePreviewPanel.id = 'section-scene-preview';
   const mappingPanel = createMapping(options);
   mappingPanel.id = 'section-mapping';
   const exportsPanel = createExports(options);
   exportsPanel.id = 'section-export';
-  return [configPanel, palettePanel, listPanel, mappingPanel, exportsPanel];
+  return [
+    configPanel,
+    palettePanel,
+    listPanel,
+    scenePreviewPanel,
+    mappingPanel,
+    exportsPanel,
+  ];
 }

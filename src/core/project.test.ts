@@ -320,5 +320,58 @@ describe('StudioProject core infrastructure', () => {
         expect(result.error.code).toBe('invalid-project-schema');
       }
     });
+
+    it('round-trips scenePreview instances properly', () => {
+      const project: StudioProject = {
+        ...createDefaultProject(),
+        scenePreview: {
+          instances: [
+            {
+              id: 'inst-1',
+              entityId: 'Soldier',
+              animationName: 'walk_down',
+              x: 120,
+              y: 100,
+              visible: true,
+              name: 'Soldier #1',
+            },
+            {
+              id: 'inst-2',
+              entityId: 'Bat',
+              animationName: 'fly',
+              x: 180,
+              y: 80,
+              visible: false,
+              name: 'Bat #1',
+            },
+          ],
+        },
+      };
+
+      const serialized = serializeProject(project);
+      const deserialized = deserializeProject(serialized);
+      expect(deserialized.success).toBe(true);
+      if (deserialized.success) {
+        expect(deserialized.project.scenePreview?.instances).toHaveLength(2);
+        expect(deserialized.project.scenePreview?.instances[0]).toEqual({
+          id: 'inst-1',
+          entityId: 'Soldier',
+          animationName: 'walk_down',
+          x: 120,
+          y: 100,
+          visible: true,
+          name: 'Soldier #1',
+        });
+        expect(deserialized.project.scenePreview?.instances[1]).toEqual({
+          id: 'inst-2',
+          entityId: 'Bat',
+          animationName: 'fly',
+          x: 180,
+          y: 80,
+          visible: false,
+          name: 'Bat #1',
+        });
+      }
+    });
   });
 });

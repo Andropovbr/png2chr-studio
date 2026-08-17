@@ -13,6 +13,13 @@ import {
 } from './random-playfield';
 import type { AnimationPlayback } from './animation-model';
 import type { ProjectMode } from '../ui/types';
+import {
+  type ProjectScenePreviewConfig,
+  type ScenePreviewInstance,
+  generateInstanceId,
+} from './scene-preview';
+
+export type { ProjectScenePreviewConfig, ScenePreviewInstance };
 
 export const CURRENT_PROJECT_FORMAT_VERSION = 1;
 export const SUPPORTED_PROJECT_FORMAT_VERSIONS = [1] as const;
@@ -98,6 +105,7 @@ export interface StudioProject {
   readonly tileset?: ProjectTilesetConfig;
   readonly playfield?: ProjectPlayfieldConfig;
   readonly animation?: ProjectAnimationSettingsConfig;
+  readonly scenePreview?: ProjectScenePreviewConfig;
 }
 
 export interface MissingAssetInfo {
@@ -299,6 +307,9 @@ export function createDefaultProject(
         },
       ],
     },
+    scenePreview: {
+      instances: [],
+    },
   };
 }
 
@@ -318,12 +329,15 @@ export function deserializeProject(
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText);
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
       error: {
         code: 'invalid-json',
-        message: 'The project file does not contain valid JSON syntax.',
+        message: 'Project file is not valid JSON.',
+        details: {
+          originalError: error instanceof Error ? error.message : String(error),
+        },
       },
     };
   }
@@ -333,20 +347,19 @@ export function deserializeProject(
       success: false,
       error: {
         code: 'invalid-project-schema',
-        message: 'The project file root must be a JSON object.',
+        message: 'Project root must be a JSON object.',
       },
     };
   }
 
   const raw = parsed as Record<string, unknown>;
 
-  if (raw.formatVersion === undefined || raw.formatVersion === null) {
+  if (!('formatVersion' in raw)) {
     return {
       success: false,
       error: {
         code: 'missing-format-version',
-        message:
-          'The project file is missing the required "formatVersion" field.',
+        message: 'Project file does not contain a formatVersion field.',
       },
     };
   }
@@ -357,17 +370,15 @@ export function deserializeProject(
       raw.formatVersion as (typeof SUPPORTED_PROJECT_FORMAT_VERSIONS)[number],
     )
   ) {
-    const versionLabel =
-      typeof raw.formatVersion === 'number' ||
-      typeof raw.formatVersion === 'string'
-        ? String(raw.formatVersion)
-        : 'invalid';
     return {
       success: false,
       error: {
         code: 'unsupported-format-version',
-        message: `Project format version ${versionLabel} is not supported.`,
-        details: { formatVersion: raw.formatVersion },
+        message: `Unsupported project formatVersion: ${String(raw.formatVersion)}. Supported versions: ${SUPPORTED_PROJECT_FORMAT_VERSIONS.join(', ')}.`,
+        details: {
+          formatVersion: raw.formatVersion,
+          supportedVersions: SUPPORTED_PROJECT_FORMAT_VERSIONS,
+        },
       },
     };
   }
@@ -378,17 +389,27 @@ export function deserializeProject(
       : 'Untitled Project';
 
   const mode: ProjectMode =
-    raw.mode === 'playfield' || raw.mode === 'animation' ? raw.mode : 'tileset';
+    raw.mode === 'tileset' ||
+    raw.mode === 'playfield' ||
+    raw.mode === 'animation'
+      ? raw.mode
+      : 'tileset';
 
   const rawSettings =
     typeof raw.settings === 'object' && raw.settings !== null
       ? (raw.settings as Record<string, unknown>)
       : {};
 
-  const deduplicationEnabled = Boolean(rawSettings.deduplicationEnabled);
-  const flipDeduplicationEnabled = Boolean(
-    rawSettings.flipDeduplicationEnabled,
-  );
+  const deduplicationEnabled =
+    typeof rawSettings.deduplicationEnabled === 'boolean'
+      ? rawSettings.deduplicationEnabled
+      : true;
+
+  const flipDeduplicationEnabled =
+    typeof rawSettings.flipDeduplicationEnabled === 'boolean'
+      ? rawSettings.flipDeduplicationEnabled
+      : true;
+
   const quantization = normalizeQuantizationSettings(rawSettings.quantization);
 
   const rawPalette =
@@ -396,187 +417,146 @@ export function deserializeProject(
       ? (raw.palette as Record<string, unknown>)
       : {};
 
-  let paletteSet: NesPaletteSet = createDefaultNesPaletteSet();
-  if (
-    Array.isArray(rawPalette.paletteSet) &&
-    rawPalette.paletteSet.length === 4
-  ) {
-    const validRows = rawPalette.paletteSet.every(
-      (row) => Array.isArray(row) && row.length === 4,
-    );
-    if (validRows) {
-      const rows = rawPalette.paletteSet as unknown[][];
-      const parsedSet = rows.map((row) =>
-        row.map((val) => (typeof val === 'number' ? val & 0x3f : 0x0f)),
-      );
-      paletteSet = parsedSet as unknown as NesPaletteSet;
-    }
-  }
-
+  const paletteSet = parsePaletteSet(rawPalette.paletteSet);
   const activePaletteIndex =
     typeof rawPalette.activePaletteIndex === 'number'
-      ? Math.max(0, Math.min(3, rawPalette.activePaletteIndex))
-      : 0;
+      ? Math.max(0, Math.min(3, Math.floor(rawPalette.activePaletteIndex)))
+      : undefined;
   const activeColorIndex =
     typeof rawPalette.activeColorIndex === 'number'
-      ? Math.max(0, Math.min(3, rawPalette.activeColorIndex))
-      : 1;
+      ? Math.max(0, Math.min(3, Math.floor(rawPalette.activeColorIndex)))
+      : undefined;
 
-  // Validate Tileset section
   let tileset: ProjectTilesetConfig | undefined;
   if (typeof raw.tileset === 'object' && raw.tileset !== null) {
     const rawTileset = raw.tileset as Record<string, unknown>;
-    const asset = parseAssetReference(rawTileset.asset);
-    const paletteAssignments = parseNumberArray(rawTileset.paletteAssignments);
-    const pixelOverrides = parseNumberArray(rawTileset.pixelOverrides);
     tileset = {
-      asset,
-      ...(paletteAssignments !== undefined ? { paletteAssignments } : {}),
-      ...(pixelOverrides !== undefined ? { pixelOverrides } : {}),
+      asset: parseAssetReference(rawTileset.asset),
+      paletteAssignments: parseNumberArray(rawTileset.paletteAssignments),
+      pixelOverrides: parseNumberArray(rawTileset.pixelOverrides),
     };
   }
 
-  // Validate Playfield section
   let playfield: ProjectPlayfieldConfig | undefined;
   if (typeof raw.playfield === 'object' && raw.playfield !== null) {
     const rawPlayfield = raw.playfield as Record<string, unknown>;
-    const asset = parseAssetReference(rawPlayfield.asset);
-    const collisionCells = parseNumberArray(rawPlayfield.collisionCells);
-    const activeCollisionType =
-      typeof rawPlayfield.activeCollisionType === 'number'
-        ? (rawPlayfield.activeCollisionType as CollisionType)
-        : undefined;
-    const randomPlayfieldFeatures = Array.isArray(
-      rawPlayfield.randomPlayfieldFeatures,
-    )
-      ? (rawPlayfield.randomPlayfieldFeatures as RandomPlayfieldFeature[])
-      : undefined;
-    const paletteAssignments = parseNumberArray(
-      rawPlayfield.paletteAssignments,
-    );
-    const pixelOverrides = parseNumberArray(rawPlayfield.pixelOverrides);
     playfield = {
-      asset,
-      ...(collisionCells !== undefined ? { collisionCells } : {}),
-      ...(activeCollisionType !== undefined ? { activeCollisionType } : {}),
-      ...(randomPlayfieldFeatures !== undefined
-        ? { randomPlayfieldFeatures }
-        : {}),
-      ...(paletteAssignments !== undefined ? { paletteAssignments } : {}),
-      ...(pixelOverrides !== undefined ? { pixelOverrides } : {}),
+      asset: parseAssetReference(rawPlayfield.asset),
+      collisionCells: parseNumberArray(rawPlayfield.collisionCells),
+      activeCollisionType:
+        typeof rawPlayfield.activeCollisionType === 'number'
+          ? (rawPlayfield.activeCollisionType as CollisionType)
+          : undefined,
+      randomPlayfieldFeatures: Array.isArray(
+        rawPlayfield.randomPlayfieldFeatures,
+      )
+        ? (rawPlayfield.randomPlayfieldFeatures as RandomPlayfieldFeature[])
+        : undefined,
+      paletteAssignments: parseNumberArray(rawPlayfield.paletteAssignments),
+      pixelOverrides: parseNumberArray(rawPlayfield.pixelOverrides),
     };
   }
 
-  // Validate Animation section
   let animation: ProjectAnimationSettingsConfig | undefined;
   if (typeof raw.animation === 'object' && raw.animation !== null) {
     const rawAnim = raw.animation as Record<string, unknown>;
+    const rawItems = Array.isArray(rawAnim.animations)
+      ? rawAnim.animations
+      : [];
     const items: ProjectAnimationItemConfig[] = [];
-    if (Array.isArray(rawAnim.animations)) {
-      for (const item of rawAnim.animations) {
-        if (typeof item === 'object' && item !== null) {
-          const rawItem = item as Record<string, unknown>;
-          const framePalettes = Array.isArray(rawItem.framePalettes)
-            ? rawItem.framePalettes.map((p) =>
-                typeof p === 'number' ? p : null,
-              )
-            : undefined;
-          items.push({
-            id:
-              typeof rawItem.id === 'string'
-                ? rawItem.id
-                : `anim-${Math.random().toString(36).slice(2, 9)}`,
-            name: typeof rawItem.name === 'string' ? rawItem.name : 'anim',
-            entity:
-              typeof rawItem.entity === 'string' && rawItem.entity.trim() !== ''
-                ? rawItem.entity.trim()
-                : typeof rawAnim.symbolPrefix === 'string' &&
-                    rawAnim.symbolPrefix.trim() !== ''
-                  ? rawAnim.symbolPrefix.trim()
-                  : 'entity',
-            asset: parseAssetReference(rawItem.asset),
-            paletteIndex:
-              typeof rawItem.paletteIndex === 'number'
-                ? rawItem.paletteIndex
-                : null,
-            ...(rawItem.quantizationMode === 'nearest' ||
-            rawItem.quantizationMode === 'median-cut' ||
-            rawItem.quantizationMode === 'k-means'
-              ? { quantizationMode: rawItem.quantizationMode }
-              : typeof rawAnim.quantizationMode === 'string' &&
-                  (rawAnim.quantizationMode === 'nearest' ||
-                    rawAnim.quantizationMode === 'median-cut' ||
-                    rawAnim.quantizationMode === 'k-means')
-                ? { quantizationMode: rawAnim.quantizationMode }
-                : {}),
-            ...(rawItem.ditheringMode === 'none' ||
-            rawItem.ditheringMode === 'floyd-steinberg'
-              ? { ditheringMode: rawItem.ditheringMode }
-              : typeof rawAnim.ditheringMode === 'string' &&
-                  (rawAnim.ditheringMode === 'none' ||
-                    rawAnim.ditheringMode === 'floyd-steinberg')
-                ? { ditheringMode: rawAnim.ditheringMode }
-                : {}),
-            frameWidth:
-              typeof rawItem.frameWidth === 'number' && rawItem.frameWidth > 0
-                ? rawItem.frameWidth
-                : 16,
-            frameHeight:
-              typeof rawItem.frameHeight === 'number' && rawItem.frameHeight > 0
-                ? rawItem.frameHeight
-                : 16,
-            originX: typeof rawItem.originX === 'number' ? rawItem.originX : 0,
-            originY: typeof rawItem.originY === 'number' ? rawItem.originY : 0,
-            playback: rawItem.playback === 'once' ? 'once' : 'loop',
-            allowHorizontalFlip: Boolean(rawItem.allowHorizontalFlip),
-            allowVerticalFlip: Boolean(rawItem.allowVerticalFlip),
-            ...(rawItem.flipH !== undefined
-              ? { flipH: Boolean(rawItem.flipH) }
-              : {}),
-            ...(rawItem.flipV !== undefined
-              ? { flipV: Boolean(rawItem.flipV) }
-              : {}),
-            defaultDuration:
-              typeof rawItem.defaultDuration === 'number' &&
-              rawItem.defaultDuration > 0
-                ? rawItem.defaultDuration
-                : 12,
-            frameIndices: parseNumberArray(rawItem.frameIndices) ?? [],
-            frameDurations: parseNumberArray(rawItem.frameDurations) ?? [],
-            ...(framePalettes !== undefined ? { framePalettes } : {}),
-          });
-        }
-      }
+    for (const item of rawItems) {
+      if (typeof item !== 'object' || item === null) continue;
+      const rawItem = item as Record<string, unknown>;
+      items.push({
+        id:
+          typeof rawItem.id === 'string' && rawItem.id.trim() !== ''
+            ? rawItem.id.trim()
+            : 'anim-1',
+        name:
+          typeof rawItem.name === 'string' && rawItem.name.trim() !== ''
+            ? rawItem.name.trim()
+            : 'anim',
+        entity:
+          typeof rawItem.entity === 'string' && rawItem.entity.trim() !== ''
+            ? rawItem.entity.trim()
+            : 'entity',
+        asset: parseAssetReference(rawItem.asset),
+        paletteIndex:
+          typeof rawItem.paletteIndex === 'number'
+            ? rawItem.paletteIndex
+            : null,
+        quantizationMode:
+          rawItem.quantizationMode === 'nearest' ||
+          rawItem.quantizationMode === 'median-cut' ||
+          rawItem.quantizationMode === 'k-means'
+            ? rawItem.quantizationMode
+            : undefined,
+        ditheringMode:
+          rawItem.ditheringMode === 'none' ||
+          rawItem.ditheringMode === 'floyd-steinberg'
+            ? rawItem.ditheringMode
+            : undefined,
+        frameWidth:
+          typeof rawItem.frameWidth === 'number' && rawItem.frameWidth > 0
+            ? rawItem.frameWidth
+            : 16,
+        frameHeight:
+          typeof rawItem.frameHeight === 'number' && rawItem.frameHeight > 0
+            ? rawItem.frameHeight
+            : 16,
+        originX: typeof rawItem.originX === 'number' ? rawItem.originX : 0,
+        originY: typeof rawItem.originY === 'number' ? rawItem.originY : 0,
+        playback: rawItem.playback === 'once' ? 'once' : 'loop',
+        allowHorizontalFlip: Boolean(rawItem.allowHorizontalFlip),
+        allowVerticalFlip: Boolean(rawItem.allowVerticalFlip),
+        flipH: typeof rawItem.flipH === 'boolean' ? rawItem.flipH : undefined,
+        flipV: typeof rawItem.flipV === 'boolean' ? rawItem.flipV : undefined,
+        defaultDuration:
+          typeof rawItem.defaultDuration === 'number' &&
+          rawItem.defaultDuration > 0
+            ? rawItem.defaultDuration
+            : 12,
+        frameIndices: parseNumberArray(rawItem.frameIndices) ?? [],
+        frameDurations: parseNumberArray(rawItem.frameDurations) ?? [],
+        framePalettes: Array.isArray(rawItem.framePalettes)
+          ? rawItem.framePalettes.map((p) => (typeof p === 'number' ? p : null))
+          : undefined,
+      });
     }
 
     animation = {
-      name: typeof rawAnim.name === 'string' ? rawAnim.name : 'soldier',
+      name:
+        typeof rawAnim.name === 'string' && rawAnim.name.trim() !== ''
+          ? rawAnim.name.trim()
+          : 'entity',
       symbolPrefix:
-        typeof rawAnim.symbolPrefix === 'string'
-          ? rawAnim.symbolPrefix
-          : 'soldier',
+        typeof rawAnim.symbolPrefix === 'string' &&
+        rawAnim.symbolPrefix.trim() !== ''
+          ? rawAnim.symbolPrefix.trim()
+          : 'entity',
       defaultPaletteIndex:
         typeof rawAnim.defaultPaletteIndex === 'number'
-          ? rawAnim.defaultPaletteIndex
+          ? Math.max(0, Math.min(3, Math.floor(rawAnim.defaultPaletteIndex)))
           : 0,
       quantizationMode:
         rawAnim.quantizationMode === 'nearest' ||
+        rawAnim.quantizationMode === 'median-cut' ||
         rawAnim.quantizationMode === 'k-means'
           ? rawAnim.quantizationMode
           : 'median-cut',
       ditheringMode:
-        rawAnim.ditheringMode === 'floyd-steinberg' ||
-        rawAnim.ditheringMode === 'atkinson' ||
-        rawAnim.ditheringMode === 'bayer-4x4' ||
-        rawAnim.ditheringMode === 'bayer-8x8'
+        rawAnim.ditheringMode === 'none' ||
+        rawAnim.ditheringMode === 'floyd-steinberg'
           ? rawAnim.ditheringMode
           : 'none',
       flipDeduplication:
-        rawAnim.flipDeduplication !== undefined
-          ? Boolean(rawAnim.flipDeduplication)
+        typeof rawAnim.flipDeduplication === 'boolean'
+          ? rawAnim.flipDeduplication
           : true,
       spritePalette:
-        typeof rawAnim.spritePalette === 'number' ? rawAnim.spritePalette : 0,
+        typeof rawAnim.spritePalette === 'number'
+          ? Math.max(0, Math.min(3, Math.floor(rawAnim.spritePalette)))
+          : 0,
       spriteColorIndex:
         typeof rawAnim.spriteColorIndex === 'number'
           ? rawAnim.spriteColorIndex
@@ -587,6 +567,8 @@ export function deserializeProject(
       animations: items,
     };
   }
+
+  const scenePreview = parseScenePreview(raw.scenePreview);
 
   const project: StudioProject = {
     formatVersion: 1,
@@ -605,12 +587,29 @@ export function deserializeProject(
     tileset,
     playfield,
     animation,
+    scenePreview,
   };
 
   return {
     success: true,
     project,
   };
+}
+
+function parsePaletteSet(value: unknown): NesPaletteSet {
+  if (Array.isArray(value) && value.length === 4) {
+    const validRows = value.every(
+      (row) => Array.isArray(row) && row.length === 4,
+    );
+    if (validRows) {
+      const rows = value as unknown[][];
+      const parsedSet = rows.map((row) =>
+        row.map((val) => (typeof val === 'number' ? val & 0x3f : 0x0f)),
+      );
+      return parsedSet as unknown as NesPaletteSet;
+    }
+  }
+  return createDefaultNesPaletteSet();
 }
 
 function parseAssetReference(value: unknown): ProjectAssetReference | null {
@@ -636,6 +635,59 @@ function parseAssetReference(value: unknown): ProjectAssetReference | null {
 function parseNumberArray(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.filter((v): v is number => typeof v === 'number');
+}
+
+function parseScenePreview(
+  value: unknown,
+): ProjectScenePreviewConfig | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw.instances)) return { instances: [] };
+  const instances: ScenePreviewInstance[] = [];
+  for (const item of raw.instances) {
+    if (typeof item !== 'object' || item === null) continue;
+    const rawInst = item as Record<string, unknown>;
+    if (
+      typeof rawInst.entityId !== 'string' ||
+      rawInst.entityId.trim() === ''
+    ) {
+      continue;
+    }
+    const id =
+      typeof rawInst.id === 'string' && rawInst.id.trim() !== ''
+        ? rawInst.id.trim()
+        : generateInstanceId();
+    const entityId = rawInst.entityId.trim();
+    const animationName =
+      typeof rawInst.animationName === 'string' &&
+      rawInst.animationName.trim() !== ''
+        ? rawInst.animationName.trim()
+        : 'idle';
+    const x =
+      typeof rawInst.x === 'number' && Number.isFinite(rawInst.x)
+        ? rawInst.x
+        : 0;
+    const y =
+      typeof rawInst.y === 'number' && Number.isFinite(rawInst.y)
+        ? rawInst.y
+        : 0;
+    const visible =
+      typeof rawInst.visible === 'boolean' ? rawInst.visible : true;
+    const name =
+      typeof rawInst.name === 'string' && rawInst.name.trim() !== ''
+        ? rawInst.name.trim()
+        : undefined;
+    instances.push({
+      id,
+      entityId,
+      animationName,
+      x,
+      y,
+      visible,
+      ...(name ? { name } : {}),
+    });
+  }
+  return { instances };
 }
 
 /**

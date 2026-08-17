@@ -193,10 +193,33 @@ const en = {
   navigationAsset: 'Asset',
   navigationPalettes: 'Palettes',
   navigationAnimations: 'Animations',
+  navigationScenePreview: 'Scene Preview',
   navigationMapping: 'Mapping',
   navigationTiles: 'Tiles',
   navigationExport: 'Export',
   navigationImageValue: 'Image: {name}',
+  scenePreviewTitle: 'Scene Preview',
+  scenePreviewHint:
+    'Test and preview multiple entity instances interacting simultaneously on a NES screen.',
+  scenePreviewAddEntity: '+ Add Entity',
+  scenePreviewNoEntities:
+    'No entities available. Create animations with entity names first.',
+  scenePreviewEmptyScene:
+    'No entities in the scene. Click "+ Add Entity" to place an instance.',
+  scenePreviewPlay: 'Play',
+  scenePreviewPause: 'Pause',
+  scenePreviewReset: 'Reset',
+  scenePreviewEntityLabel: 'Entity',
+  scenePreviewAnimationLabel: 'Animation',
+  scenePreviewPosX: 'X',
+  scenePreviewPosY: 'Y',
+  scenePreviewVisible: 'Visible',
+  scenePreviewRemove: 'Remove',
+  scenePreviewInstanceLabel: 'Instance',
+  scenePreviewStats:
+    '{entities} entities · {instances} instances (NES 256×240)',
+  scenePreviewInvalidEntityWarning:
+    'Entity "{name}" was not found in project animations.',
   animationErrorDuplicateName:
     'Animation names must be unique within the asset.',
   animationErrorDuplicateIdentifier:
@@ -648,10 +671,33 @@ const ptBr = {
   navigationAsset: 'Asset',
   navigationPalettes: 'Paletas',
   navigationAnimations: 'Animações',
+  navigationScenePreview: 'Preview de Cena',
   navigationMapping: 'Mapeamento',
   navigationTiles: 'Tiles',
   navigationExport: 'Exportar',
   navigationImageValue: 'Imagem: {name}',
+  scenePreviewTitle: 'Preview de Cena',
+  scenePreviewHint:
+    'Teste e visualize várias instâncias de entidades interagindo simultaneamente na tela do NES.',
+  scenePreviewAddEntity: '+ Adicionar Entidade',
+  scenePreviewNoEntities:
+    'Nenhuma entidade disponível. Cadastre animações com nomes de entidade primeiro.',
+  scenePreviewEmptyScene:
+    'Nenhuma entidade na cena. Clique em "+ Adicionar Entidade" para posicionar uma instância.',
+  scenePreviewPlay: 'Reproduzir',
+  scenePreviewPause: 'Pausar',
+  scenePreviewReset: 'Reiniciar',
+  scenePreviewEntityLabel: 'Entidade',
+  scenePreviewAnimationLabel: 'Animação',
+  scenePreviewPosX: 'X',
+  scenePreviewPosY: 'Y',
+  scenePreviewVisible: 'Visível',
+  scenePreviewRemove: 'Remover',
+  scenePreviewInstanceLabel: 'Instância',
+  scenePreviewStats:
+    '{entities} entidades · {instances} instâncias (NES 256×240)',
+  scenePreviewInvalidEntityWarning:
+    'A entidade "{name}" não foi encontrada nas animações do projeto.',
   animationErrorDuplicateName:
     'Os nomes das animações devem ser exclusivos no asset.',
   animationErrorDuplicateIdentifier:

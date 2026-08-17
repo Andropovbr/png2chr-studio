@@ -5,6 +5,7 @@ import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { FrameDetectionResult } from '../core/frame-detection';
+import type { ProjectScenePreviewConfig } from '../core/scene-preview';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
 import type {
@@ -106,6 +107,7 @@ export interface ProjectView {
     readonly colorIndex: number;
   };
   readonly animation: AnimationSettings;
+  readonly scenePreview?: ProjectScenePreviewConfig;
   readonly quantizationSettings: QuantizationSettings;
   readonly quantizationCollapsed?: boolean;
   readonly error: DisplayError | null;

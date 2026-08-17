@@ -65,6 +65,7 @@ import {
   type ProjectAnimationSettingsConfig,
   type ProjectPlayfieldConfig,
   type ProjectTilesetConfig,
+  type ScenePreviewInstance,
   type StudioProject,
 } from './core/project';
 import {
@@ -204,6 +205,7 @@ let project: ProjectView = {
   zoomedPaletteRegion: null,
   paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
   animation: createDefaultAnimationSettings(),
+  scenePreview: { instances: [] },
   quantizationSettings: loadQuantizationSettings(settingsStorage),
   error: null,
   loading: false,
@@ -419,6 +421,7 @@ function buildCurrentStudioProject(): StudioProject {
     tileset,
     playfield,
     animation,
+    scenePreview: project.scenePreview ?? { instances: [] },
   };
 }
 
@@ -708,6 +711,7 @@ async function loadProjectFile(
           colorIndex: loaded.palette.activeColorIndex ?? 1,
         },
         animation,
+        scenePreview: loaded.scenePreview ?? { instances: [] },
         quantizationSettings: loaded.settings.quantization,
         error: missingError,
         loading: false,
@@ -902,6 +906,7 @@ async function loadProjectFile(
         colorIndex: loaded.palette.activeColorIndex ?? 1,
       },
       animation: createDefaultAnimationSettings(),
+      scenePreview: loaded.scenePreview ?? { instances: [] },
       quantizationSettings: loaded.settings.quantization,
       error: missingError,
       loading: false,
@@ -1394,6 +1399,47 @@ function updateAnimation(
   render();
 }
 
+function addSceneInstance(instance: ScenePreviewInstance): void {
+  markDirty();
+  const currentInstances = project.scenePreview?.instances ?? [];
+  project = {
+    ...project,
+    scenePreview: {
+      instances: [...currentInstances, instance],
+    },
+  };
+  render();
+}
+
+function removeSceneInstance(instanceId: string): void {
+  markDirty();
+  const currentInstances = project.scenePreview?.instances ?? [];
+  project = {
+    ...project,
+    scenePreview: {
+      instances: currentInstances.filter((inst) => inst.id !== instanceId),
+    },
+  };
+  render();
+}
+
+function updateSceneInstance(
+  instanceId: string,
+  patch: Partial<ScenePreviewInstance>,
+): void {
+  markDirty();
+  const currentInstances = project.scenePreview?.instances ?? [];
+  project = {
+    ...project,
+    scenePreview: {
+      instances: currentInstances.map((inst) =>
+        inst.id === instanceId ? { ...inst, ...patch } : inst,
+      ),
+    },
+  };
+  render();
+}
+
 async function loadAnimationSourceFile(
   animId: string,
   file: File,
@@ -1786,6 +1832,7 @@ function renderAnimationWorkspace(): void {
     modelError,
     paletteSet: project.paletteSet,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
+    scenePreview: project.scenePreview,
     onSettingsChange: (animation: AnimationSettings) => {
       project = { ...project, animation, error: null };
       render();
@@ -1817,6 +1864,9 @@ function renderAnimationWorkspace(): void {
     },
     onToggleConfigCollapse: toggleAnimationConfigCollapse,
     onTogglePaletteCollapse: toggleAnimationPaletteCollapse,
+    onAddSceneInstance: addSceneInstance,
+    onRemoveSceneInstance: removeSceneInstance,
+    onUpdateSceneInstance: updateSceneInstance,
     onUpdateAnimation: updateAnimation,
     onAnimationSourceFile: (animId: string, file: File) => {
       void loadAnimationSourceFile(animId, file);

@@ -58,6 +58,7 @@ export function createStickyNav(options: StickyNavOptions): HTMLElement {
           ['#section-asset', t('navigationAsset')],
           ['#section-palettes', t('navigationPalettes')],
           ['#section-animations', t('navigationAnimations')],
+          ['#section-scene-preview', t('navigationScenePreview')],
           ['#section-mapping', t('navigationMapping')],
           ['#section-export', t('navigationExport')],
         ]
