@@ -452,6 +452,22 @@ const en = {
     'Select a generated preview to make that quantizer active. Dithering and distance apply to every comparison.',
   quantizationOriginal: 'Original',
   quantizationPreviewLoading: 'Generating previews in the background…',
+  nesValidationTitle: 'NES Validation',
+  nesValidationHint:
+    'Automatic verification against NES hardware limits and PPU capabilities.',
+  validationStatusValid: 'All NES hardware limits respected',
+  validationErrorSingular: 'error',
+  validationErrorPlural: 'errors',
+  validationWarningSingular: 'warning',
+  validationWarningPlural: 'warnings',
+  validationAllGood:
+    'No validation issues detected. The current scene and CHR configuration are fully compatible with NES hardware.',
+  validationMetricPalettes: 'Sprite Palettes',
+  validationMetricChr: 'Sprite CHR Tiles',
+  validationMetricOam: 'OAM Sprites',
+  validationMetricScanlinePeak: 'Peak Scanline Sprites',
+  validationExportBlocked:
+    'Export blocked due to NES hardware incompatibilities:',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -921,6 +937,22 @@ const ptBr = {
     'Selecione uma prévia gerada para ativar o quantizador. Dithering e distância valem para todas as comparações.',
   quantizationOriginal: 'Original',
   quantizationPreviewLoading: 'Gerando prévias em segundo plano…',
+  nesValidationTitle: 'Validação NES',
+  nesValidationHint:
+    'Verificação automática contra limites de hardware do NES e capacidades da PPU.',
+  validationStatusValid: 'Todos os limites de hardware do NES foram respeitados',
+  validationErrorSingular: 'erro',
+  validationErrorPlural: 'erros',
+  validationWarningSingular: 'aviso',
+  validationWarningPlural: 'avisos',
+  validationAllGood:
+    'Nenhum problema de validação detectado. A cena e configuração de CHR atuais são totalmente compatíveis com o hardware do NES.',
+  validationMetricPalettes: 'Paletas de Sprite',
+  validationMetricChr: 'Tiles CHR de Sprite',
+  validationMetricOam: 'Sprites OAM',
+  validationMetricScanlinePeak: 'Pico de Sprites por Scanline',
+  validationExportBlocked:
+    'Exportação bloqueada devido a incompatibilidades com o hardware do NES:',
 } as const satisfies TranslationTable;
 
 export const translations = {

@@ -84,6 +84,7 @@ export interface AnimationSettings {
   readonly configCollapsed?: boolean;
   readonly paletteCollapsed?: boolean;
   readonly quantizationCollapsed?: boolean;
+  readonly validationCollapsed?: boolean;
 }
 
 export interface ProjectView {

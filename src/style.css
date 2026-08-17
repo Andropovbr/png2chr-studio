@@ -2712,3 +2712,169 @@ input:focus-visible + label {
   border-radius: 0.3rem;
 }
 
+/* NES Validation Panel */
+.nes-validation-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.nes-validation-metric-card {
+  background: #141d2b;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nes-validation-metric-card.status-error {
+  border-color: #ef4444;
+  background: rgb(239 68 68 / 10%);
+}
+
+.nes-validation-metric-card.status-warning {
+  border-color: #f59e0b;
+  background: rgb(245 158 11 / 10%);
+}
+
+.nes-validation-metric-card.status-ok {
+  border-color: rgb(87 211 164 / 30%);
+}
+
+.nes-metric-title {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nes-metric-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.nes-metric-subtitle {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.nes-validation-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.nes-validation-summary {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.nes-validation-issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.nes-validation-empty-state {
+  background: rgb(87 211 164 / 8%);
+  border: 1px solid rgb(87 211 164 / 25%);
+  border-radius: 0.4rem;
+  padding: 0.85rem 1rem;
+  color: #a7f3d0;
+  font-size: 0.9rem;
+}
+
+.nes-validation-issue-card {
+  background: #151e2c;
+  border-radius: 0.45rem;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.nes-validation-issue-card.severity-error {
+  border: 1px solid rgb(239 68 68 / 40%);
+  border-left: 4px solid #ef4444;
+}
+
+.nes-validation-issue-card.severity-warning {
+  border: 1px solid rgb(245 158 11 / 40%);
+  border-left: 4px solid #f59e0b;
+}
+
+.nes-validation-issue-card.severity-info {
+  border: 1px solid rgb(59 130 246 / 40%);
+  border-left: 4px solid #3b82f6;
+}
+
+.nes-issue-top-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.nes-issue-code {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.nes-issue-message {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.badge-error {
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-weight: 700;
+}
+
+.badge-warning {
+  background: #f59e0b;
+  color: #1f2937;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-weight: 700;
+}
+
+.badge-info {
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-weight: 700;
+}
+
+.badge-neutral {
+  background: #374151;
+  color: #e5e7eb;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+.badge-success {
+  background: rgb(87 211 164 / 20%);
+  color: #57d3a4;
+  border: 1px solid rgb(87 211 164 / 40%);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.3rem;
+  font-weight: 600;
+}
+
+

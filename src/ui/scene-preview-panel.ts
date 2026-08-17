@@ -21,6 +21,7 @@ import {
 } from '../core/palette-manager';
 import type { NesPaletteSet } from '../core/nes-palette';
 import { t } from '../i18n';
+import type { ValidationResult } from '../core/nes-validator';
 import type { AnimationItemSetting } from './types';
 import { cropCanvas } from './animation-editor';
 
@@ -31,6 +32,7 @@ export interface ScenePreviewPanelOptions {
   readonly palettes?: readonly PaletteDefinition[];
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly defaultPaletteIndex: number;
+  readonly validationResult?: ValidationResult;
   readonly onAddInstance: (instance: ScenePreviewInstance) => void;
   readonly onRemoveInstance: (instanceId: string) => void;
   readonly onUpdateInstance: (
@@ -77,14 +79,21 @@ export function createScenePreviewPanel(
 
   const statsBadge = document.createElement('span');
   statsBadge.className = 'status-badge scene-preview-stats-badge';
-  const slotWarningText =
-    paletteAnalysis.unassignedPaletteIds.length > 0
-      ? ` (⚠️ ${t('scenePreviewSlotWarning', { count: paletteAnalysis.unassignedPaletteIds.length })})`
-      : '';
-  statsBadge.textContent = `${t('scenePreviewStats', {
-    entities: availableEntities.length,
-    instances: options.instances.length,
-  })} · ${t('scenePreviewPalettesUsed', { count: paletteAnalysis.requiredCount })}${slotWarningText}`;
+
+  if (options.validationResult) {
+    const { metrics, errorCount, warningCount } = options.validationResult;
+    const statusIcon = errorCount > 0 ? '❌' : warningCount > 0 ? '⚠️' : '✓';
+    statsBadge.textContent = `${statusIcon} Pal ${String(metrics.spritePalettesUsed)}/4 · OAM ${String(metrics.oamSpritesUsed)}/64 · CHR ${String(metrics.spriteChrTilesUsed)}/256 · Scanline ${String(metrics.peakSpritesPerScanline)}/8`;
+  } else {
+    const slotWarningText =
+      paletteAnalysis.unassignedPaletteIds.length > 0
+        ? ` (⚠️ ${t('scenePreviewSlotWarning', { count: paletteAnalysis.unassignedPaletteIds.length })})`
+        : '';
+    statsBadge.textContent = `${t('scenePreviewStats', {
+      entities: availableEntities.length,
+      instances: options.instances.length,
+    })} · ${t('scenePreviewPalettesUsed', { count: paletteAnalysis.requiredCount })}${slotWarningText}`;
+  }
 
   // Action controls
   const toolbar = document.createElement('div');

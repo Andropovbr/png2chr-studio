@@ -53,6 +53,7 @@ import {
   resolveActivePaletteSet,
   type PaletteDefinition,
 } from './core/palette-manager';
+import { validateNesProject } from './core/nes-validator';
 import {
   encodePlayfield,
   PlayfieldEncodingError,
@@ -1953,6 +1954,18 @@ function renderAnimationWorkspace(): void {
     else throw error;
   }
 
+  const validationResult = validateNesProject({
+    animations: project.animation.animations,
+    animationModel: model,
+    scenePreview: project.scenePreview,
+    palettes: project.palettes,
+    activeSpritePaletteSlots: project.activeSpritePaletteSlots,
+    paletteSet: project.paletteSet,
+    patternTable: project.animation.patternTable,
+    destinationPatternTable: project.animation.destinationPatternTable,
+    baseChr: project.animation.destinationChr,
+  });
+
   const editorOptions: AnimationEditorOptions = {
     settings: project.animation,
     model,
@@ -1962,6 +1975,18 @@ function renderAnimationWorkspace(): void {
     activeSpritePaletteSlots: project.activeSpritePaletteSlots,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     scenePreview: project.scenePreview,
+    validationResult,
+    validationCollapsed: project.animation.validationCollapsed,
+    onToggleValidationCollapse: () => {
+      project = {
+        ...project,
+        animation: {
+          ...project.animation,
+          validationCollapsed: !(project.animation.validationCollapsed ?? false),
+        },
+      };
+      render();
+    },
     onSettingsChange: (animation: AnimationSettings) => {
       project = { ...project, animation, error: null };
       render();
@@ -2165,8 +2190,38 @@ function renderAnimationWorkspace(): void {
       };
       render();
     },
-    onDownloadBytes: downloadBytes,
-    onDownloadText: downloadText,
+    onDownloadBytes: (bytes: Uint8Array, fileName: string) => {
+      const chrErrors = (validationResult?.issues ?? []).filter(
+        (i) =>
+          i.severity === 'error' &&
+          (i.scope === 'CHR' || i.scope === 'ANIMATION'),
+      );
+      if (chrErrors.length > 0) {
+        const proceed = window.confirm(
+          `${t('validationExportBlocked')}\n\n` +
+            chrErrors.map((e) => `• ${e.message}`).join('\n') +
+            `\n\nContinue?`,
+        );
+        if (!proceed) return;
+      }
+      downloadBytes(bytes, fileName);
+    },
+    onDownloadText: (text: string, fileName: string) => {
+      const chrErrors = (validationResult?.issues ?? []).filter(
+        (i) =>
+          i.severity === 'error' &&
+          (i.scope === 'CHR' || i.scope === 'ANIMATION'),
+      );
+      if (chrErrors.length > 0) {
+        const proceed = window.confirm(
+          `${t('validationExportBlocked')}\n\n` +
+            chrErrors.map((e) => `• ${e.message}`).join('\n') +
+            `\n\nContinue?`,
+        );
+        if (!proceed) return;
+      }
+      downloadText(text, fileName);
+    },
   };
 
   workspace.append(...createAnimationEditor(editorOptions));

@@ -49,6 +49,8 @@ import {
 } from '../core/pixel-overrides';
 import { createTilePixelEditor } from './tile-pixel-editor';
 import { createPaletteManagerPanel } from './palette-manager-panel';
+import { createNesValidationPanel } from './nes-validation-panel';
+import type { ValidationResult } from '../core/nes-validator';
 
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
   nearest: 'quantizationNearest',
@@ -65,6 +67,9 @@ export interface AnimationEditorOptions {
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly colorDistanceMode?: ColorDistanceMode;
   readonly scenePreview?: ProjectScenePreviewConfig;
+  readonly validationResult?: ValidationResult;
+  readonly validationCollapsed?: boolean;
+  readonly onToggleValidationCollapse?: () => void;
   readonly onSettingsChange: (settings: AnimationSettings) => void;
   readonly onDefaultPaletteIndexChange: (index: number) => void;
   readonly onAddAnimation: () => void;
@@ -2151,21 +2156,52 @@ export function createAnimationEditor(
     palettes: options.palettes,
     activeSpritePaletteSlots: options.activeSpritePaletteSlots,
     defaultPaletteIndex: options.settings.defaultPaletteIndex,
+    validationResult: options.validationResult,
     onAddInstance: options.onAddSceneInstance,
     onRemoveInstance: options.onRemoveSceneInstance,
     onUpdateInstance: options.onUpdateSceneInstance,
   });
   scenePreviewPanel.id = 'section-scene-preview';
+
+  let validationPanel: HTMLElement | null = null;
+  if (options.validationResult) {
+    const valPanelContent = createNesValidationPanel({
+      result: options.validationResult,
+    });
+    const summaryBadge = document.createElement('span');
+    if (options.validationResult.valid) {
+      summaryBadge.className = 'badge badge-success';
+      summaryBadge.textContent = '✓ OK';
+    } else {
+      summaryBadge.className = 'badge badge-error';
+      summaryBadge.textContent = `${String(options.validationResult.errorCount)} ${options.validationResult.errorCount === 1 ? 'error' : 'errors'}`;
+    }
+    validationPanel = createCollapsiblePanel({
+      title: t('nesValidationTitle'),
+      summary: summaryBadge,
+      isCollapsed: options.validationCollapsed ?? false,
+      onToggle: options.onToggleValidationCollapse ?? (() => {}),
+      children: [valPanelContent],
+    });
+    validationPanel.id = 'section-validation';
+  }
+
   const mappingPanel = createMapping(options);
   mappingPanel.id = 'section-mapping';
   const exportsPanel = createExports(options);
   exportsPanel.id = 'section-export';
-  return [
+
+  const panels: HTMLElement[] = [
     configPanel,
     palettePanel,
     listPanel,
     scenePreviewPanel,
-    mappingPanel,
-    exportsPanel,
   ];
+
+  if (validationPanel) {
+    panels.push(validationPanel);
+  }
+
+  panels.push(mappingPanel, exportsPanel);
+  return panels;
 }
