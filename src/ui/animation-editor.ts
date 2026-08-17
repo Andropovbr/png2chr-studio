@@ -34,6 +34,12 @@ import type {
   ScenePreviewInstance,
 } from '../core/scene-preview';
 import { createScenePreviewPanel } from './scene-preview-panel';
+import {
+  applyPixelOverridesToImage,
+  calculateTileCoordinates,
+  hasTileOverride,
+} from '../core/pixel-overrides';
+import { createTilePixelEditor } from './tile-pixel-editor';
 
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
   nearest: 'quantizationNearest',
@@ -62,6 +68,19 @@ export interface AnimationEditorOptions {
   readonly onUpdateSceneInstance: (
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
+  ) => void;
+  readonly onSetTilePixel: (
+    animationId: string,
+    tileX: number,
+    tileY: number,
+    pixelX: number,
+    pixelY: number,
+    colorIndex: number,
+  ) => void;
+  readonly onResetTileOverride: (
+    animationId: string,
+    tileX: number,
+    tileY: number,
   ) => void;
   readonly onUpdateAnimation: (
     animationId: string,
@@ -509,11 +528,16 @@ function createSingleAnimationPreview(
   const stage = document.createElement('div');
   stage.className = 'animation-preview-stage';
 
+  const effectivePalette =
+    anim.paletteIndex ?? options.settings.defaultPaletteIndex;
   const nesImage = anim.source
     ? renderAnimationToRawImageData(
-        anim.source.indexedImage,
+        applyPixelOverridesToImage(
+          anim.source.indexedImage,
+          anim.pixelOverrides,
+        ),
         options.paletteSet,
-        options.settings.spritePalette,
+        effectivePalette,
       )
     : null;
 
@@ -806,7 +830,10 @@ function createAnimationCardFrameGrid(
 
   const nesImage = anim.source
     ? renderAnimationToRawImageData(
-        anim.source.indexedImage,
+        applyPixelOverridesToImage(
+          anim.source.indexedImage,
+          anim.pixelOverrides,
+        ),
         options.paletteSet,
         effectiveAnimPalette,
       )
@@ -1019,6 +1046,182 @@ function createFrameOrderList(
     list.append(item);
   });
   container.append(list);
+  return container;
+}
+
+function createAnimationTilePixelSection(
+  options: AnimationEditorOptions,
+  anim: AnimationItemSetting,
+): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'animation-tile-pixel-section';
+
+  if (!anim.source || anim.frameIndices.length === 0) {
+    return container;
+  }
+
+  const animSource = anim.source;
+  const effectivePalette =
+    anim.paletteIndex ?? options.settings.defaultPaletteIndex;
+  const effectiveIndexed = applyPixelOverridesToImage(
+    animSource.indexedImage,
+    anim.pixelOverrides,
+  );
+  const nesImage = renderAnimationToRawImageData(
+    effectiveIndexed,
+    options.paletteSet,
+    effectivePalette,
+  );
+
+  const frameCols = Math.floor(nesImage.width / anim.frameWidth);
+  const tilesPerFrameCol = Math.floor(anim.frameWidth / 8);
+  const tilesPerFrameRow = Math.floor(anim.frameHeight / 8);
+
+  let selectedFrameOrder = 0;
+  let selectedTileCol = 0;
+  let selectedTileRow = 0;
+
+  const sectionHeader = document.createElement('div');
+  sectionHeader.className = 'animation-tile-pixel-section-header';
+  const heading = document.createElement('h4');
+  heading.textContent = t('tilePixelEditorTitle');
+  const hint = document.createElement('p');
+  hint.className = 'panel-hint';
+  hint.textContent = t('tilePixelEditorHint');
+  sectionHeader.append(heading, hint);
+
+  // Frame selector row
+  const frameSelectorRow = document.createElement('div');
+  frameSelectorRow.className = 'animation-tile-pixel-frame-selector';
+  const frameSelectLabel = document.createElement('span');
+  frameSelectLabel.className = 'animation-tile-pixel-label';
+  frameSelectLabel.textContent = `${t('animationSelectedFramesTitle')}:`;
+  frameSelectorRow.append(frameSelectLabel);
+
+  const frameButtons = document.createElement('div');
+  frameButtons.className = 'animation-tile-pixel-frame-buttons';
+
+  // Tiles thumbnail grid container
+  const tilesContainer = document.createElement('div');
+  tilesContainer.className = 'animation-tile-pixel-tiles-wrapper';
+
+  // Editor container
+  const editorMount = document.createElement('div');
+  editorMount.className = 'animation-tile-pixel-editor-mount';
+
+  const renderEditor = (): void => {
+    const frameIndex = anim.frameIndices[selectedFrameOrder] ?? 0;
+    const sourceX = (frameIndex % frameCols) * anim.frameWidth;
+    const sourceY = Math.floor(frameIndex / frameCols) * anim.frameHeight;
+    const frameEffectivePalette =
+      anim.framePalettes?.[selectedFrameOrder] ?? effectivePalette;
+
+    // Render tile buttons for the selected frame
+    tilesContainer.replaceChildren();
+    const tilesLabel = document.createElement('span');
+    tilesLabel.className = 'animation-tile-pixel-label';
+    tilesLabel.textContent = `${t('tilesTitle')} (Frame #${String(frameIndex)}):`;
+    tilesContainer.append(tilesLabel);
+
+    const tilesGrid = document.createElement('div');
+    tilesGrid.className = 'animation-tile-pixel-tiles-grid';
+    tilesGrid.style.gridTemplateColumns = `repeat(${String(tilesPerFrameCol)}, auto)`;
+
+    for (let r = 0; r < tilesPerFrameRow; r += 1) {
+      for (let c = 0; c < tilesPerFrameCol; c += 1) {
+        const { tileX, tileY } = calculateTileCoordinates(
+          sourceX,
+          sourceY,
+          c,
+          r,
+        );
+        const hasOverride = hasTileOverride(
+          anim.pixelOverrides,
+          tileX,
+          tileY,
+        );
+        const isSelectedTile =
+          c === selectedTileCol && r === selectedTileRow;
+
+        const tileBtn = document.createElement('button');
+        tileBtn.type = 'button';
+        tileBtn.className = `animation-tile-pixel-tile-btn${isSelectedTile ? ' is-selected' : ''}${hasOverride ? ' is-modified' : ''}`;
+        tileBtn.title = `Tile (${String(c)}, ${String(r)})`;
+
+        const cropped = cropCanvas(
+          nesImage,
+          sourceX + c * 8,
+          sourceY + r * 8,
+          8,
+          8,
+        );
+        cropped.className = 'animation-tile-pixel-tile-canvas';
+
+        const tileLabel = document.createElement('span');
+        tileLabel.className = 'animation-tile-pixel-tile-label';
+        tileLabel.textContent = `[${String(c)},${String(r)}]${hasOverride ? ' *' : ''}`;
+
+        tileBtn.append(cropped, tileLabel);
+        tileBtn.addEventListener('click', () => {
+          selectedTileCol = c;
+          selectedTileRow = r;
+          renderEditor();
+        });
+        tilesGrid.append(tileBtn);
+      }
+    }
+    tilesContainer.append(tilesGrid);
+
+    // Mount TilePixelEditor
+    editorMount.replaceChildren();
+    const editor = createTilePixelEditor({
+      animationId: anim.id,
+      animationName: anim.name,
+      entityName: anim.entity,
+      frameIndex,
+      tileCol: selectedTileCol,
+      tileRow: selectedTileRow,
+      frameWidth: anim.frameWidth,
+      frameHeight: anim.frameHeight,
+      indexedImage: animSource.indexedImage,
+      paletteSet: options.paletteSet,
+      effectivePaletteIndex: frameEffectivePalette,
+      overrides: anim.pixelOverrides,
+      onSetPixel: options.onSetTilePixel,
+      onResetTile: options.onResetTileOverride,
+    });
+    editorMount.append(editor);
+  };
+
+  anim.frameIndices.forEach((fIndex, order) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `button secondary-button animation-tile-pixel-frame-btn${order === selectedFrameOrder ? ' is-selected' : ''}`;
+    btn.textContent = `#${String(order + 1)} (F${String(fIndex)})`;
+    btn.addEventListener('click', () => {
+      selectedFrameOrder = order;
+      selectedTileCol = 0;
+      selectedTileRow = 0;
+      frameButtons
+        .querySelectorAll('.animation-tile-pixel-frame-btn')
+        .forEach((b) => {
+          b.classList.remove('is-selected');
+        });
+      btn.classList.add('is-selected');
+      renderEditor();
+    });
+    frameButtons.append(btn);
+  });
+  frameSelectorRow.append(frameButtons);
+
+  container.append(
+    sectionHeader,
+    frameSelectorRow,
+    tilesContainer,
+    editorMount,
+  );
+  renderEditor();
+
   return container;
 }
 
@@ -1448,6 +1651,7 @@ function createAnimationCard(
       fields,
       createAnimationCardFrameGrid(options, anim),
       createFrameOrderList(options, anim),
+      createAnimationTilePixelSection(options, anim),
     );
 
     const previewColumn = document.createElement('div');

@@ -220,6 +220,16 @@ const en = {
     '{entities} entities · {instances} instances (NES 256×240)',
   scenePreviewInvalidEntityWarning:
     'Entity "{name}" was not found in project animations.',
+  tilePixelEditorTitle: 'Tile Pixel Editor',
+  tilePixelEditorHint:
+    'Fine-tune 8×8 tile pixels between NES color indices 0, 1, 2, and 3.',
+  tilePixelActiveIndex: 'Active Index:',
+  tilePixelModified: 'Modified',
+  tilePixelReset: 'Reset Tile',
+  tilePixelResetHint:
+    'Restore automatic generated pixels for this 8×8 tile',
+  tilePixelSelectPrompt:
+    'Select a frame and tile below to edit its pixels.',
   animationErrorDuplicateName:
     'Animation names must be unique within the asset.',
   animationErrorDuplicateIdentifier:
@@ -698,6 +708,16 @@ const ptBr = {
     '{entities} entidades · {instances} instâncias (NES 256×240)',
   scenePreviewInvalidEntityWarning:
     'A entidade "{name}" não foi encontrada nas animações do projeto.',
+  tilePixelEditorTitle: 'Editor de Pixels do Tile',
+  tilePixelEditorHint:
+    'Ajuste fino dos pixels do tile 8×8 entre os índices de cor NES 0, 1, 2 e 3.',
+  tilePixelActiveIndex: 'Índice Ativo:',
+  tilePixelModified: 'Modificado',
+  tilePixelReset: 'Restaurar Tile',
+  tilePixelResetHint:
+    'Restaurar os pixels gerados automaticamente para este tile 8×8',
+  tilePixelSelectPrompt:
+    'Selecione um frame e um tile abaixo para editar seus pixels.',
   animationErrorDuplicateName:
     'Os nomes das animações devem ser exclusivos no asset.',
   animationErrorDuplicateIdentifier:

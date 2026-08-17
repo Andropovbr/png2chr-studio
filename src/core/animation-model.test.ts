@@ -1572,4 +1572,83 @@ describe('animation project model', () => {
     expect(parsed.patternTable).toBe(1);
     expect(parsed.destinationPatternTable).toBe(1);
   });
+
+  it('includes pixel overrides in the generated CHR data and updates deduplication', () => {
+    // 2 tiles in a sheet: tile 0 and tile 1 both initially all 1s
+    const tileA = tileWith([[0, 0]]);
+    const tileB = tileWith([[0, 0]]);
+    const sheet = sheetFromTiles([tileA, tileB]);
+
+    // Without overrides, tileA and tileB deduplicate to 1 physical CHR tile
+    const modelWithoutOverrides = buildAnimationProjectModel({
+      name: 'hero',
+      image: sheet,
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          frameIndices: [0, 1],
+          frameDuration: 8,
+        },
+      ],
+    });
+    expect(modelWithoutOverrides.chr.finalTileCount).toBe(1);
+
+    // With override on tile 1 (changing pixel (0,0) to color index 3):
+    // They are no longer identical and produce 2 separate CHR tiles
+    const modelWithOverrides = buildAnimationProjectModel({
+      name: 'hero',
+      image: sheet,
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          frameIndices: [0, 1],
+          frameDuration: 8,
+          pixelOverrides: {
+            '1_0': { 0: 3 }, // tileX=1, tileY=0, pixel 0 = color index 3
+          },
+        },
+      ],
+    });
+    expect(modelWithOverrides.chr.finalTileCount).toBe(2);
+
+    // The CHR bytes for the second tile reflect the index 3 (both low bit and high bit set for pixel 0)
+    const secondTileChr = modelWithOverrides.finalChr.slice(16, 32);
+    // Row 0 low plane bit 7 is set (0x80) and high plane bit 7 is set (0x80)
+    expect((secondTileChr[0] ?? 0) & 0x80).toBe(0x80);
+    expect((secondTileChr[8] ?? 0) & 0x80).toBe(0x80);
+  });
+
+  it('allows overrides to make two different tiles identical so they deduplicate', () => {
+    const tileA = tileWith([[0, 0]]); // pixel (0,0) is 1
+    const tileB = {
+      id: 0,
+      column: 1,
+      row: 0,
+      pixels: new Uint8Array(64),
+    }; // all 0s
+    const sheet = sheetFromTiles([tileA, tileB]);
+
+    const modelWithOverride = buildAnimationProjectModel({
+      name: 'hero',
+      image: sheet,
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          frameIndices: [0, 1],
+          frameDuration: 8,
+          pixelOverrides: {
+            '1_0': { 0: 1 }, // make tile 1 match tile 0 exactly
+          },
+        },
+      ],
+    });
+    // Deduplicates to 1 tile
+    expect(modelWithOverride.chr.finalTileCount).toBe(1);
+  });
 });

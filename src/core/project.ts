@@ -35,6 +35,8 @@ export interface ProjectAssetReference {
   readonly dataUrl?: string;
 }
 
+import type { TilePixelOverrides } from './pixel-overrides';
+
 export interface ProjectAnimationItemConfig {
   readonly id: string;
   readonly name: string;
@@ -43,6 +45,7 @@ export interface ProjectAnimationItemConfig {
   readonly paletteIndex?: number | null;
   readonly quantizationMode?: QuantizationMode;
   readonly ditheringMode?: DitheringMode;
+  readonly pixelOverrides?: TilePixelOverrides;
   readonly frameWidth: number;
   readonly frameHeight: number;
   readonly originX: number;
@@ -516,6 +519,7 @@ export function deserializeProject(
           rawItem.defaultDuration > 0
             ? rawItem.defaultDuration
             : 12,
+        pixelOverrides: parseTilePixelOverrides(rawItem.pixelOverrides),
         frameIndices: parseNumberArray(rawItem.frameIndices) ?? [],
         frameDurations: parseNumberArray(rawItem.frameDurations) ?? [],
         framePalettes: Array.isArray(rawItem.framePalettes)
@@ -635,6 +639,32 @@ function parseAssetReference(value: unknown): ProjectAssetReference | null {
 function parseNumberArray(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.filter((v): v is number => typeof v === 'number');
+}
+
+function parseTilePixelOverrides(
+  value: unknown,
+): TilePixelOverrides | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  const result: Record<string, Record<number, number>> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (typeof val !== 'object' || val === null || Array.isArray(val)) continue;
+    const tileMap = val as Record<string, unknown>;
+    const sanitizedTileMap: Record<number, number> = {};
+    for (const [offsetStr, colorIdx] of Object.entries(tileMap)) {
+      const offset = parseInt(offsetStr, 10);
+      if (!Number.isFinite(offset) || offset < 0 || offset >= 64) continue;
+      if (typeof colorIdx === 'number' && colorIdx >= 0 && colorIdx <= 3) {
+        sanitizedTileMap[offset] = Math.floor(colorIdx);
+      }
+    }
+    if (Object.keys(sanitizedTileMap).length > 0) {
+      result[key] = sanitizedTileMap;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function parseScenePreview(

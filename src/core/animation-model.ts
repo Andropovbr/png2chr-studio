@@ -28,6 +28,11 @@ export const DEFAULT_ANIMATION_PATTERN_TABLE: SpritePatternTable = 0;
 const TILE_SIZE = 8;
 const BYTES_PER_TILE = 16;
 
+import {
+  applyPixelOverridesToImage,
+  type TilePixelOverrides,
+} from './pixel-overrides';
+
 export type AnimationPlayback = 'loop' | 'once';
 export type AnimationCategory = 'idle' | 'movement';
 export type AnimationDirection = 'left' | 'right';
@@ -39,6 +44,7 @@ export interface AnimationDefinitionInput {
   readonly image?: IndexedImage;
   readonly paletteIndex?: number | null;
   readonly quantizationMode?: QuantizationMode;
+  readonly pixelOverrides?: TilePixelOverrides;
   readonly frameWidth?: number;
   readonly frameHeight?: number;
   readonly originX?: number;
@@ -522,10 +528,14 @@ export function buildAnimationProjectModel(
     const allowVerticalFlip =
       animation.allowVerticalFlip ?? animation.flipV === true;
     const playback = animation.playback ?? 'loop';
-    const animImage = animation.image ?? options.image;
-    if (animImage === undefined) {
+    const rawImage = animation.image ?? options.image;
+    if (rawImage === undefined) {
       throw new AnimationModelError('invalid-frame-grid');
     }
+    const animImage = applyPixelOverridesToImage(
+      rawImage,
+      animation.pixelOverrides,
+    );
     const animFrameWidth = animation.frameWidth ?? options.frameWidth ?? 16;
     const animFrameHeight = animation.frameHeight ?? options.frameHeight ?? 16;
     const animOriginX = animation.originX ?? options.originX ?? 0;

@@ -30,6 +30,8 @@ export interface AnimationSourceData {
   readonly indexedImage: IndexedImage;
 }
 
+import type { TilePixelOverrides } from '../core/pixel-overrides';
+
 export interface AnimationItemSetting {
   readonly id: string;
   readonly name: string;
@@ -38,6 +40,7 @@ export interface AnimationItemSetting {
   readonly paletteIndex?: number | null;
   readonly quantizationMode?: QuantizationMode;
   readonly ditheringMode?: DitheringMode;
+  readonly pixelOverrides?: TilePixelOverrides;
   readonly frameWidth: number;
   readonly frameHeight: number;
   readonly originX: number;

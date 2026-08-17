@@ -12,6 +12,7 @@ import {
   type ScenePreviewInstance,
 } from '../core/scene-preview';
 import { renderAnimationToRawImageData } from '../core/animation-palette';
+import { applyPixelOverridesToImage } from '../core/pixel-overrides';
 import type { NesPaletteSet } from '../core/nes-palette';
 import { t } from '../i18n';
 import type { AnimationItemSetting } from './types';
@@ -379,7 +380,10 @@ export function createScenePreviewPanel(
         options.defaultPaletteIndex;
 
       const nesImage = renderAnimationToRawImageData(
-        anim.source.indexedImage,
+        applyPixelOverridesToImage(
+          anim.source.indexedImage,
+          anim.pixelOverrides,
+        ),
         options.paletteSet,
         effectivePalette,
       );

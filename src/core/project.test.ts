@@ -373,5 +373,58 @@ describe('StudioProject core infrastructure', () => {
         });
       }
     });
+
+    it('round-trips animation item pixelOverrides properly', () => {
+      const project: StudioProject = {
+        ...createDefaultProject('animation'),
+        name: 'Pixel Overrides Test',
+        animation: {
+          name: 'Hero',
+          symbolPrefix: 'hero',
+          defaultPaletteIndex: 0,
+          quantizationMode: 'median-cut',
+          ditheringMode: 'none',
+          flipDeduplication: true,
+          spritePalette: 0,
+          spriteColorIndex: 1,
+          patternTable: 0,
+          destinationPatternTable: 0,
+          destinationChr: null,
+          animations: [
+            {
+              id: 'anim_1',
+              name: 'walk',
+              entity: 'Hero',
+              asset: null,
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: true,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0, 1],
+              frameDurations: [8, 8],
+              pixelOverrides: {
+                '0_0': { 0: 3, 1: 2, 63: 1 },
+                '1_0': { 10: 2 },
+              },
+            },
+          ],
+        },
+      };
+
+      const serialized = serializeProject(project);
+      const deserialized = deserializeProject(serialized);
+      expect(deserialized.success).toBe(true);
+      if (deserialized.success) {
+        const item = deserialized.project.animation?.animations[0];
+        expect(item?.pixelOverrides).toEqual({
+          '0_0': { 0: 3, 1: 2, 63: 1 },
+          '1_0': { 10: 2 },
+        });
+      }
+    });
   });
 });

@@ -31,6 +31,10 @@ import {
 import { analyzeImage, imageHasTransparency } from './core/image-analysis';
 import { extractNromChr, InesRomError } from './core/ines-rom';
 import {
+  setTilePixelOverride,
+  resetTileOverride,
+} from './core/pixel-overrides';
+import {
   createDefaultNesPaletteSet,
   createPaletteAssignments,
   createPixelOverrides,
@@ -371,6 +375,9 @@ function buildCurrentStudioProject(): StudioProject {
       ...(anim.flipH !== undefined ? { flipH: anim.flipH } : {}),
       ...(anim.flipV !== undefined ? { flipV: anim.flipV } : {}),
       defaultDuration: anim.defaultDuration,
+      ...(anim.pixelOverrides && Object.keys(anim.pixelOverrides).length > 0
+        ? { pixelOverrides: anim.pixelOverrides }
+        : {}),
       frameIndices: [...anim.frameIndices],
       frameDurations: [...anim.frameDurations],
       ...(anim.framePalettes !== undefined
@@ -636,6 +643,7 @@ async function loadProjectFile(
           frameIndices,
           frameDurations,
           framePalettes,
+          pixelOverrides: anim.pixelOverrides,
           collapsed: false,
           frameDetection: detection,
         });
@@ -1440,6 +1448,64 @@ function updateSceneInstance(
   render();
 }
 
+function setTilePixel(
+  animationId: string,
+  tileX: number,
+  tileY: number,
+  pixelX: number,
+  pixelY: number,
+  colorIndex: number,
+): void {
+  markDirty();
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations: project.animation.animations.map((a) => {
+        if (a.id !== animationId) return a;
+        const nextOverrides = setTilePixelOverride(
+          a.pixelOverrides,
+          tileX,
+          tileY,
+          pixelX,
+          pixelY,
+          colorIndex,
+        );
+        return {
+          ...a,
+          pixelOverrides: nextOverrides,
+        };
+      }),
+    },
+    error: null,
+  };
+  render();
+}
+
+function resetTile(
+  animationId: string,
+  tileX: number,
+  tileY: number,
+): void {
+  markDirty();
+  project = {
+    ...project,
+    animation: {
+      ...project.animation,
+      animations: project.animation.animations.map((a) => {
+        if (a.id !== animationId) return a;
+        const nextOverrides = resetTileOverride(a.pixelOverrides, tileX, tileY);
+        return {
+          ...a,
+          pixelOverrides: nextOverrides,
+        };
+      }),
+    },
+    error: null,
+  };
+  render();
+}
+
 async function loadAnimationSourceFile(
   animId: string,
   file: File,
@@ -1801,6 +1867,7 @@ function renderAnimationWorkspace(): void {
           frameDuration: anim.defaultDuration,
           frameDurations: anim.frameDurations,
           framePalettes: anim.framePalettes,
+          pixelOverrides: anim.pixelOverrides,
         });
       }
     }
@@ -1867,6 +1934,8 @@ function renderAnimationWorkspace(): void {
     onAddSceneInstance: addSceneInstance,
     onRemoveSceneInstance: removeSceneInstance,
     onUpdateSceneInstance: updateSceneInstance,
+    onSetTilePixel: setTilePixel,
+    onResetTileOverride: resetTile,
     onUpdateAnimation: updateAnimation,
     onAnimationSourceFile: (animId: string, file: File) => {
       void loadAnimationSourceFile(animId, file);
