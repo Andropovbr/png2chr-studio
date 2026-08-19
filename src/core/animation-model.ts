@@ -155,6 +155,8 @@ export interface AnimationChrStatistics {
   readonly reusedImportedTiles: number;
   readonly newTileCount: number;
   readonly appendedTileStart: number;
+  /** Occupied tiles in each physical 4 KiB pattern table, ordered PT0/PT1. */
+  readonly patternTableFinalTileCounts: readonly [number, number];
   /** Occupied tiles in the pattern table selected for sprite OAM bytes. */
   readonly patternTableFinalTileCount: number;
   /** Occupied tiles across both physical 4 KiB pattern tables. */
@@ -742,11 +744,20 @@ export function buildAnimationProjectModel(
     return [primaryAnimation, mirroredAnimation];
   });
 
-  const finalTileCount = slots.filter((slot) => slot.tile !== null).length;
+  const countOccupiedTiles = (table: SpritePatternTable): number => {
+    const [start, end] = patternTablePhysicalRange(table);
+    return slots
+      .slice(start, end + 1)
+      .filter((slot) => slot.tile !== null).length;
+  };
+  const patternTableFinalTileCounts: [number, number] = [
+    countOccupiedTiles(0),
+    countOccupiedTiles(1),
+  ];
+  const finalTileCount =
+    patternTableFinalTileCounts[0] + patternTableFinalTileCounts[1];
   const finalChr = encodePatternTableSlots(slots);
-  const patternTableFinalTileCount = slots
-    .slice(patternTableStart, patternTableEnd + 1)
-    .filter((slot) => slot.tile !== null).length;
+  const patternTableFinalTileCount = patternTableFinalTileCounts[patternTable];
   const remainingTiles =
     NES_PATTERN_TABLE_TILE_COUNT - patternTableFinalTileCount;
   const output = options.chrOutputName ?? `${symbolBase}.chr`;
@@ -792,6 +803,7 @@ export function buildAnimationProjectModel(
       reusedImportedTiles,
       newTileCount,
       appendedTileStart,
+      patternTableFinalTileCounts,
       patternTableFinalTileCount,
       finalTileCount,
       finalSizeBytes: NES_CHR_ROM_SIZE,

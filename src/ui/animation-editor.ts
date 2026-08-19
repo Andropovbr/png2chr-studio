@@ -2080,11 +2080,16 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
       }),
     ),
     stat(
-      t('animationSpritePatternTableUsage', {
-        table: model.chr.patternTable,
-      }),
+      t('animationSpritePatternTableUsage', { table: 0 }),
       t('animationOccupancyRatio', {
-        occupied: model.chr.patternTableFinalTileCount,
+        occupied: model.chr.patternTableFinalTileCounts[0],
+        capacity: model.chr.patternTableCapacityTiles,
+      }),
+    ),
+    stat(
+      t('animationSpritePatternTableUsage', { table: 1 }),
+      t('animationOccupancyRatio', {
+        occupied: model.chr.patternTableFinalTileCounts[1],
         capacity: model.chr.patternTableCapacityTiles,
       }),
     ),

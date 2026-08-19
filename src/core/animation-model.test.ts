@@ -53,6 +53,25 @@ function sheetFromTiles(tiles: readonly Tile[]): IndexedImage {
   return image(tiles.length * 8, 8, pixels);
 }
 
+function chrWithOccupiedPhysicalTiles(
+  physicalTileIndexes: readonly number[],
+): Uint8Array {
+  const chr = new Uint8Array(8192);
+  physicalTileIndexes.forEach((index) => {
+    chr[index * 16] = 1;
+  });
+  return chr;
+}
+
+function uniqueImportedTiles(count: number): Tile[] {
+  return Array.from({ length: count }, (_, index) =>
+    tileWith([
+      [(index % 7) + 1, Math.floor(index / 7) + 1],
+      [0, 0],
+    ]),
+  );
+}
+
 function build(
   sheet: IndexedImage,
   frameIndices = [0, 1],
@@ -537,7 +556,7 @@ describe('animation project model', () => {
     expect(model.finalChr.slice(0, destination.length)).toEqual(destination);
   });
 
-  it('reports total CHR and selected pattern-table usage independently', () => {
+  it('reports total CHR as the sum of both pattern tables', () => {
     const destination = encodeChr(
       Array.from({ length: 256 }, () => tileWith([[0, 0]])),
     );
@@ -567,11 +586,16 @@ describe('animation project model', () => {
 
     expect(model.chr).toMatchObject({
       finalTileCount: 269,
+      patternTableFinalTileCounts: [256, 13],
       patternTableFinalTileCount: 13,
       remainingTiles: 243,
       physicalCapacityTiles: 512,
       patternTableCapacityTiles: 256,
     });
+    expect(model.chr.finalTileCount).toBe(
+      model.chr.patternTableFinalTileCounts[0] +
+        model.chr.patternTableFinalTileCounts[1],
+    );
   });
 
   it('allocates into the first zero-filled slot without moving base indexes', () => {
@@ -645,6 +669,66 @@ describe('animation project model', () => {
       physicalTileIndex: 256,
       reuse: 'new',
     });
+  });
+
+  it('reports PT0-only physical CHR occupancy', () => {
+    const importedTiles = uniqueImportedTiles(6);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles(importedTiles),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: importedTiles.map((_, index) => index),
+          frameDuration: 8,
+        },
+      ],
+      baseChr: chrWithOccupiedPhysicalTiles(
+        Array.from({ length: 14 }, (_, index) => index),
+      ),
+      patternTable: 0,
+    });
+
+    expect(model.chr.finalTileCount).toBe(20);
+    expect(model.chr.patternTableFinalTileCounts).toEqual([20, 0]);
+    expect(model.chr.finalTileCount).toBe(
+      model.chr.patternTableFinalTileCounts[0] +
+        model.chr.patternTableFinalTileCounts[1],
+    );
+  });
+
+  it('reports PT1-only physical CHR occupancy', () => {
+    const importedTiles = uniqueImportedTiles(6);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles(importedTiles),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        {
+          name: 'idle',
+          category: 'idle',
+          frameIndices: importedTiles.map((_, index) => index),
+          frameDuration: 8,
+        },
+      ],
+      baseChr: chrWithOccupiedPhysicalTiles(
+        Array.from({ length: 14 }, (_, index) => 256 + index),
+      ),
+      patternTable: 1,
+    });
+
+    expect(model.chr.finalTileCount).toBe(20);
+    expect(model.chr.patternTableFinalTileCounts).toEqual([0, 20]);
+    expect(model.chr.finalTileCount).toBe(
+      model.chr.patternTableFinalTileCounts[0] +
+        model.chr.patternTableFinalTileCounts[1],
+    );
   });
 
   it('allocates the final local tile index at physical tile 511', () => {
