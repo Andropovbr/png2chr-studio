@@ -152,6 +152,73 @@ describe('StudioProject core infrastructure', () => {
     }
   });
 
+  it('preserves removal of a saved base CHR across save and reload', () => {
+    const initial = createDefaultProject('Base CHR removal', 'animation');
+    const animation = initial.animation;
+    if (!animation) throw new Error('Missing animation settings');
+
+    const selectedBaseChr: StudioProject = {
+      ...initial,
+      animation: {
+        ...animation,
+        destinationChr: {
+          path: 'examples/base-chr-persistence/game.chr',
+          name: 'game.chr',
+          sourceKind: 'chr',
+          dataUrl: 'data:application/octet-stream;base64,AA==',
+        },
+      },
+    };
+
+    const firstSave = deserializeProject(serializeProject(selectedBaseChr));
+    expect(firstSave.success).toBe(true);
+    if (!firstSave.success) return;
+    expect(firstSave.project.animation?.destinationChr?.name).toBe('game.chr');
+
+    const baseChrRemoved: StudioProject = {
+      ...firstSave.project,
+      animation: {
+        ...(firstSave.project.animation ?? animation),
+        destinationChr: null,
+      },
+    };
+
+    const removalSave = serializeProject(baseChrRemoved);
+    expect(
+      (
+        JSON.parse(removalSave) as {
+          animation?: { destinationChr?: unknown };
+        }
+      ).animation?.destinationChr,
+    ).toBeNull();
+
+    const reloaded = deserializeProject(removalSave);
+    expect(reloaded.success).toBe(true);
+    if (!reloaded.success) return;
+    expect(reloaded.project.animation?.destinationChr).toBeNull();
+
+    const replacementBaseChr: StudioProject = {
+      ...reloaded.project,
+      animation: {
+        ...(reloaded.project.animation ?? animation),
+        destinationChr: {
+          path: 'examples/base-chr-persistence/replacement.chr',
+          name: 'replacement.chr',
+          sourceKind: 'chr',
+        },
+      },
+    };
+    const replacementReloaded = deserializeProject(
+      serializeProject(replacementBaseChr),
+    );
+    expect(replacementReloaded.success).toBe(true);
+    if (replacementReloaded.success) {
+      expect(replacementReloaded.project.animation?.destinationChr?.name).toBe(
+        'replacement.chr',
+      );
+    }
+  });
+
   describe('Path handling & relative path resolution', () => {
     it('normalizes path separators to forward slashes and strips leading redundant ./', () => {
       expect(normalizePath('assets\\sprites\\hero.png')).toBe(
