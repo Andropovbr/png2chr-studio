@@ -68,6 +68,7 @@ import {
 import { extractTiles } from './core/tile-extraction';
 import { ImageAnalysisError, type IndexedImage, type Tile } from './core/types';
 import { quantizeImageToNes } from './core/image-quantization';
+import { readAndDecodePng, type PngLoadFailure } from './core/png-load';
 import {
   deserializeProject,
   findMissingAssets,
@@ -229,6 +230,12 @@ let project: ProjectView = {
 
 let projectName = t('defaultProjectName');
 let projectDirty = false;
+
+class PngLoadError extends Error {
+  constructor(readonly failure: PngLoadFailure) {
+    super(failure);
+  }
+}
 
 function markDirty(): void {
   projectDirty = true;
@@ -574,6 +581,7 @@ async function loadProjectFile(
     if (loaded.mode === 'animation') {
       const animSettings = loaded.animation;
       const reconstructedAnimations: AnimationItemSetting[] = [];
+      let restoredPngError: DisplayError | null = null;
 
       for (const anim of animSettings?.animations ?? []) {
         let source: AnimationSourceData | null = null;
@@ -600,7 +608,15 @@ async function loadProjectFile(
               indexedImage,
             };
             detection = detectFrameGrid(imageData);
-          } catch {
+          } catch (error: unknown) {
+            console.error('Project animation PNG load failed', {
+              fileName: matchingFile.name,
+              error,
+            });
+            restoredPngError ??=
+              error instanceof PngLoadError
+                ? displayPngLoadError(error.failure)
+                : { key: 'imageProcessingFailed' };
             source = null;
           }
         } else if (anim.asset?.dataUrl) {
@@ -617,7 +633,9 @@ async function loadProjectFile(
               indexedImage,
             };
             detection = detectFrameGrid(imageData);
-          } catch {
+          } catch (error: unknown) {
+            console.error('Embedded project animation PNG load failed', error);
+            restoredPngError ??= { key: 'imageDecodeFailed' };
             source = null;
           }
         }
@@ -756,7 +774,7 @@ async function loadProjectFile(
         animation,
         scenePreview: loaded.scenePreview ?? { instances: [] },
         quantizationSettings: loaded.settings.quantization,
-        error: missingError,
+        error: restoredPngError ?? missingError,
         loading: false,
       };
       render();
@@ -775,6 +793,7 @@ async function loadProjectFile(
     let tiles: readonly Tile[] = [];
     let width: number | null = null;
     let height: number | null = null;
+    let restoredPngError: DisplayError | null = null;
 
     const collisionCells =
       isPlayfield && loaded.playfield?.collisionCells
@@ -857,8 +876,17 @@ async function loadProjectFile(
           );
           tiles = extractTiles(mapped);
         }
-      } catch {
-        // file decode failed
+      } catch (error: unknown) {
+        if (!isChr && !isNes) {
+          console.error('Project PNG load failed', {
+            fileName: matchingFile.name,
+            error,
+          });
+          restoredPngError =
+            error instanceof PngLoadError
+              ? displayPngLoadError(error.failure)
+              : { key: 'imageProcessingFailed' };
+        }
       }
     } else if (assetRef?.dataUrl) {
       const lowerName = (assetRef.name ?? assetRef.path).toLowerCase();
@@ -914,8 +942,11 @@ async function loadProjectFile(
           );
           tiles = extractTiles(mapped);
         }
-      } catch {
-        // file decode failed
+      } catch (error: unknown) {
+        if (!isChr && !isNes) {
+          console.error('Embedded project PNG load failed', error);
+          restoredPngError = { key: 'imageDecodeFailed' };
+        }
       }
     }
 
@@ -960,7 +991,7 @@ async function loadProjectFile(
       animation: createDefaultAnimationSettings(),
       scenePreview: loaded.scenePreview ?? { instances: [] },
       quantizationSettings: loaded.settings.quantization,
-      error: missingError,
+      error: restoredPngError ?? missingError,
       loading: false,
     };
     render();
@@ -1557,13 +1588,27 @@ async function loadAnimationSourceFile(
 ): Promise<void> {
   cacheAssetFile(file);
   markDirty();
+  const pngLoad = await readAndDecodePng(file, decodePngBlob);
+  if (!pngLoad.success) {
+    console.error('Animation PNG load failed', {
+      fileName: file.name,
+      failure: pngLoad.failure,
+    });
+    project = {
+      ...project,
+      error: displayPngLoadError(pngLoad.failure),
+    };
+    render();
+    return;
+  }
+
   try {
     const targetAnim = project.animation.animations.find(
       (a) => a.id === animId,
     );
     const quantMode = targetAnim?.quantizationMode ?? 'median-cut';
     const dithMode = targetAnim?.ditheringMode ?? 'none';
-    const imageData = await decodeImage(file);
+    const imageData = pngLoad.image;
     const indexedImage = quantizePngSource(imageData, 'animation', {
       quantizationMode: quantMode,
       ditheringMode: dithMode,
@@ -1629,10 +1674,17 @@ async function loadAnimationSourceFile(
       },
       error: null,
     };
-  } catch {
+  } catch (error: unknown) {
+    console.error('Animation PNG processing failed', {
+      fileName: file.name,
+      error,
+    });
     project = {
       ...project,
-      error: { key: 'invalidPixelData' },
+      error:
+        error instanceof ImageAnalysisError
+          ? displayErrorFromAnalysis(error)
+          : { key: 'imageProcessingFailed' },
     };
   }
   render();
@@ -2465,8 +2517,14 @@ function setProjectError(error: DisplayError): void {
   render();
 }
 
-async function decodeImage(file: File): Promise<ImageData> {
-  const bitmap = await createImageBitmap(file);
+function displayPngLoadError(failure: PngLoadFailure): DisplayError {
+  return {
+    key: failure === 'read-failed' ? 'imageReadFailed' : 'imageDecodeFailed',
+  };
+}
+
+async function decodePngBlob(blob: Blob): Promise<ImageData> {
+  const bitmap = await createImageBitmap(blob);
   try {
     const canvas = document.createElement('canvas');
     canvas.width = bitmap.width;
@@ -2480,6 +2538,12 @@ async function decodeImage(file: File): Promise<ImageData> {
   } finally {
     bitmap.close();
   }
+}
+
+async function decodeImage(file: File): Promise<ImageData> {
+  const result = await readAndDecodePng(file, decodePngBlob);
+  if (result.success) return result.image;
+  throw new PngLoadError(result.failure);
 }
 
 async function loadFile(file: File): Promise<void> {
@@ -2626,15 +2690,18 @@ async function loadFile(file: File): Promise<void> {
     return;
   }
 
-  let imageData: ImageData;
-  try {
-    imageData = await decodeImage(file);
-  } catch {
+  const pngLoad = await readAndDecodePng(file, decodePngBlob);
+  if (!pngLoad.success) {
+    console.error('PNG load failed', {
+      fileName: file.name,
+      failure: pngLoad.failure,
+    });
     if (activeRequest === requestId) {
-      setProjectError({ key: 'imageDecodeFailed' });
+      setProjectError(displayPngLoadError(pngLoad.failure));
     }
     return;
   }
+  const imageData = pngLoad.image;
 
   if (activeRequest !== requestId) {
     return;
@@ -2739,10 +2806,11 @@ async function loadFile(file: File): Promise<void> {
     };
     render();
   } catch (error: unknown) {
+    console.error('PNG processing failed', { fileName: file.name, error });
     setProjectError(
       error instanceof ImageAnalysisError
         ? displayErrorFromAnalysis(error)
-        : { key: 'invalidPixelData' },
+        : { key: 'imageProcessingFailed' },
     );
   }
 }
