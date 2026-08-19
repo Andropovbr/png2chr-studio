@@ -7,7 +7,7 @@ import {
   type NesPalette,
   type NesPaletteSet,
 } from './nes-palette';
-import type { IndexedImage, RawImageData } from './types';
+import type { IndexedImage, RawImageData, Tile } from './types';
 
 export interface AnimationPaletteMapping {
   readonly image: IndexedImage;
@@ -110,4 +110,23 @@ export function renderAnimationToRawImageData(
 ): RawImageData {
   const activePalette = paletteSet[paletteIndex] ?? [0x0f, 0x00, 0x10, 0x30];
   return renderIndexedImageWithPalette(image, activePalette);
+}
+
+export function renderAnimationTileToRawImageData(
+  tile: Tile,
+  paletteSet: NesPaletteSet,
+  paletteIndex: number,
+): RawImageData {
+  return renderAnimationToRawImageData(
+    {
+      width: 8,
+      height: 8,
+      pixels: tile.pixels,
+      colors: [null, null, null, null],
+      transparentIndex: 0,
+      colorCount: 4,
+    },
+    paletteSet,
+    paletteIndex,
+  );
 }
