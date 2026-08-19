@@ -1,4 +1,4 @@
-import { decodeChr } from './chr-decoder';
+import { decodeChrTile } from './chr-decoder';
 import { encodeTile } from './chr-encoder';
 import type { Tile } from './types';
 
@@ -14,6 +14,25 @@ export interface PatternTableSlot {
   readonly physicalTileIndex: number;
   readonly tile: Tile | null;
   readonly source: PatternTableTileSource | null;
+}
+
+export interface PatternTableOccupancy {
+  readonly patternTable: SpritePatternTable;
+  readonly capacityTiles: number;
+  readonly occupiedTiles: number;
+  readonly freeTiles: number;
+}
+
+export interface BaseChrOccupancy {
+  readonly fileSizeBytes: number;
+  readonly fileTileSlots: number;
+  readonly physicalCapacityTiles: number;
+  readonly occupiedTiles: number;
+  readonly freeTiles: number;
+  readonly patternTables: readonly [
+    PatternTableOccupancy,
+    PatternTableOccupancy,
+  ];
 }
 
 export function isSpritePatternTable(
@@ -67,16 +86,36 @@ export function patternTablePhysicalRange(
   return [start, start + NES_PATTERN_TABLE_TILE_COUNT - 1];
 }
 
-export function createPatternTableSlots(
-  baseChr: Uint8Array,
-  destinationPatternTable: SpritePatternTable = 0,
-): PatternTableSlot[] {
+function validateBaseChr(baseChr: Uint8Array): void {
   if (baseChr.length % 16 !== 0 || baseChr.length > NES_CHR_ROM_SIZE) {
     throw new RangeError(
       'CHR base must contain at most 8 KiB of complete tiles.',
     );
   }
-  const baseTiles = baseChr.length === 0 ? [] : decodeChr(baseChr);
+}
+
+function baseChrPhysicalStart(
+  fileTileSlots: number,
+  destinationPatternTable: SpritePatternTable,
+): number {
+  return fileTileSlots <= NES_PATTERN_TABLE_TILE_COUNT
+    ? physicalTileIndex(destinationPatternTable, 0)
+    : 0;
+}
+
+function rawChrTileOccupied(baseChr: Uint8Array, tileIndex: number): boolean {
+  const encodedStart = tileIndex * 16;
+  return baseChr
+    .subarray(encodedStart, encodedStart + 16)
+    .some((byte) => byte !== 0);
+}
+
+export function createPatternTableSlots(
+  baseChr: Uint8Array,
+  destinationPatternTable: SpritePatternTable = 0,
+): PatternTableSlot[] {
+  validateBaseChr(baseChr);
+  const fileTileSlots = baseChr.length / 16;
   const slots = Array.from(
     { length: NES_CHR_ROM_TILE_COUNT },
     (_, physicalIndex): PatternTableSlot => ({
@@ -85,24 +124,77 @@ export function createPatternTableSlots(
       source: null,
     }),
   );
-  const start =
-    baseTiles.length <= NES_PATTERN_TABLE_TILE_COUNT
-      ? physicalTileIndex(destinationPatternTable, 0)
-      : 0;
+  const start = baseChrPhysicalStart(fileTileSlots, destinationPatternTable);
 
-  baseTiles.forEach((tile, index) => {
+  for (let index = 0; index < fileTileSlots; index += 1) {
     const physicalIndex = start + index;
     const slot = slots[physicalIndex];
     if (slot === undefined) {
       throw new RangeError('CHR base does not fit in the physical CHR-ROM.');
     }
+    // Raw CHR files have no ownership metadata. Until managed projects can
+    // express reservations, a sixteen-byte zero tile is the fallback marker
+    // for a free slot. Its physical index remains untouched.
+    if (!rawChrTileOccupied(baseChr, index)) continue;
+    const encodedStart = index * 16;
+    const tile = decodeChrTile(
+      baseChr.subarray(encodedStart, encodedStart + 16),
+      index,
+      index % 16,
+      Math.floor(index / 16),
+    );
     slots[physicalIndex] = {
       physicalTileIndex: physicalIndex,
       tile: { ...tile, id: physicalIndex },
       source: 'destination',
     };
-  });
+  }
   return slots;
+}
+
+function summarizePatternTableOccupancy(
+  patternTable: SpritePatternTable,
+  occupiedTiles: number,
+): PatternTableOccupancy {
+  return {
+    patternTable,
+    capacityTiles: NES_PATTERN_TABLE_TILE_COUNT,
+    occupiedTiles,
+    freeTiles: NES_PATTERN_TABLE_TILE_COUNT - occupiedTiles,
+  };
+}
+
+export function analyzeBaseChrOccupancy(
+  baseChr: Uint8Array,
+  destinationPatternTable: SpritePatternTable = 0,
+): BaseChrOccupancy {
+  validateBaseChr(baseChr);
+  const fileTileSlots = baseChr.length / 16;
+  const start = baseChrPhysicalStart(fileTileSlots, destinationPatternTable);
+  const occupiedByPatternTable: [number, number] = [0, 0];
+  for (let index = 0; index < fileTileSlots; index += 1) {
+    if (!rawChrTileOccupied(baseChr, index)) continue;
+    const patternTable = patternTableForPhysicalTile(start + index);
+    occupiedByPatternTable[patternTable] += 1;
+  }
+  const patternTable0 = summarizePatternTableOccupancy(
+    0,
+    occupiedByPatternTable[0],
+  );
+  const patternTable1 = summarizePatternTableOccupancy(
+    1,
+    occupiedByPatternTable[1],
+  );
+  const occupiedTiles =
+    patternTable0.occupiedTiles + patternTable1.occupiedTiles;
+  return {
+    fileSizeBytes: baseChr.length,
+    fileTileSlots,
+    physicalCapacityTiles: NES_CHR_ROM_TILE_COUNT,
+    occupiedTiles,
+    freeTiles: NES_CHR_ROM_TILE_COUNT - occupiedTiles,
+    patternTables: [patternTable0, patternTable1],
+  };
 }
 
 export function encodePatternTableSlots(

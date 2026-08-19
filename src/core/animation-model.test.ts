@@ -574,6 +574,79 @@ describe('animation project model', () => {
     });
   });
 
+  it('allocates into the first zero-filled slot without moving base indexes', () => {
+    const occupiedTile = tileWith([[0, 0]]);
+    const encodedOccupiedTiles = encodeChr(
+      Array.from({ length: 14 }, () => occupiedTile),
+    );
+    const destination = new Uint8Array(8192);
+    destination.set(encodedOccupiedTiles);
+    const importedTile = tileWith([[1, 1]]);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([importedTile]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+      baseChr: destination,
+      patternTable: 0,
+    });
+
+    expect(model.chr.baseOccupancy).toMatchObject({
+      fileSizeBytes: 8192,
+      fileTileSlots: 512,
+      physicalCapacityTiles: 512,
+      occupiedTiles: 14,
+      freeTiles: 498,
+    });
+    expect(model.chr.patternTableBaseTileCount).toBe(14);
+    expect(model.chr.appendedTileStart).toBe(14);
+    expect(model.chr.finalTileCount).toBe(15);
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      tile: 14,
+      physicalTileIndex: 14,
+      reuse: 'new',
+    });
+    expect(model.finalChr.slice(0, encodedOccupiedTiles.length)).toEqual(
+      encodedOccupiedTiles,
+    );
+    expect(model.finalChr.slice(14 * 16, 15 * 16)).toEqual(
+      encodeChr([importedTile]),
+    );
+  });
+
+  it('keeps pattern table 1 available when only table 0 is occupied', () => {
+    const destination = new Uint8Array(8192);
+    destination.set(
+      encodeChr(Array.from({ length: 14 }, () => tileWith([[0, 0]]))),
+    );
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([tileWith([[1, 1]])]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+      baseChr: destination,
+      patternTable: 1,
+    });
+
+    expect(model.chr.baseOccupancy.patternTables).toMatchObject([
+      { patternTable: 0, occupiedTiles: 14 },
+      { patternTable: 1, occupiedTiles: 0 },
+    ]);
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      tile: 0,
+      physicalTileIndex: 256,
+      reuse: 'new',
+    });
+  });
+
   it('allocates the final local tile index at physical tile 511', () => {
     const destination = encodeChr(
       Array.from({ length: 255 }, () => tileWith([[0, 0]])),

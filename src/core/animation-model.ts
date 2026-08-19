@@ -4,6 +4,7 @@ import {
   normalizeCIdentifier,
 } from './c-identifier';
 import {
+  analyzeBaseChrOccupancy,
   createPatternTableSlots,
   encodePatternTableSlots,
   isSpritePatternTable,
@@ -12,6 +13,7 @@ import {
   NES_CHR_ROM_SIZE,
   NES_PATTERN_TABLE_TILE_COUNT,
   patternTablePhysicalRange,
+  type BaseChrOccupancy,
   type PatternTableSlot,
   type SpritePatternTable,
 } from './chr-pattern-table';
@@ -140,11 +142,14 @@ export interface AnimationModel {
 
 export interface AnimationChrStatistics {
   readonly physicalCapacityTiles: number;
+  readonly baseOccupancy: BaseChrOccupancy;
   readonly patternTable: SpritePatternTable;
   readonly destinationPatternTable: SpritePatternTable;
   readonly patternTableCapacityTiles: number;
   readonly capacityTiles: number;
+  /** Occupied raw base-CHR slots; retained for metadata compatibility. */
   readonly baseTileCount: number;
+  /** Occupied base-CHR slots in the selected sprite pattern table. */
   readonly patternTableBaseTileCount: number;
   readonly reusedDestinationTiles: number;
   readonly reusedImportedTiles: number;
@@ -387,14 +392,15 @@ export function buildAnimationProjectModel(
     throw new AnimationModelError('invalid-destination-chr');
   }
   const slots = createPatternTableSlots(baseChr, destinationPatternTable);
-  const baseTileCount = slots.filter(
-    (slot) => slot.source === 'destination',
-  ).length;
+  const baseOccupancy = analyzeBaseChrOccupancy(
+    baseChr,
+    destinationPatternTable,
+  );
+  const baseTileCount = baseOccupancy.occupiedTiles;
   const [patternTableStart, patternTableEnd] =
     patternTablePhysicalRange(patternTable);
-  const patternTableBaseTileCount = slots
-    .slice(patternTableStart, patternTableEnd + 1)
-    .filter((slot) => slot.source === 'destination').length;
+  const patternTableBaseTileCount =
+    baseOccupancy.patternTables[patternTable].occupiedTiles;
 
   const animationNames = new Set<string>();
   const animationIdentifiers = new Set<string>();
@@ -775,6 +781,7 @@ export function buildAnimationProjectModel(
     source: sourceProp,
     chr: {
       physicalCapacityTiles: NES_CHR_ROM_TILE_COUNT,
+      baseOccupancy,
       patternTable,
       destinationPatternTable,
       patternTableCapacityTiles: NES_PATTERN_TABLE_TILE_COUNT,

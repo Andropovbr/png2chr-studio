@@ -90,7 +90,7 @@ const en = {
   animationNoDestination:
     'No destination CHR selected; tile indexes start at $00.',
   animationDestinationDetails:
-    '{name}: {tiles} existing tiles ({bytes} bytes).',
+    '{name}: {occupied} occupied / {capacity} slots; {free} free ({bytes} bytes).',
   animationFrameGridTitle: 'Sprite-sheet frames',
   animationFrameGridHint:
     'Click a frame to add or remove it from this animation sequence.',
@@ -112,7 +112,8 @@ const en = {
   animationReuseImported: 'reused',
   animationReuseNew: 'new',
   animationStatsTitle: 'CHR allocation',
-  animationBaseTiles: 'Existing tiles',
+  animationBaseTiles: 'Base CHR occupancy',
+  animationOccupancyRatio: '{occupied} occupied / {capacity} slots',
   animationReusedDestination: 'Reused from destination',
   animationReusedImported: 'Reused from imported frames',
   animationNewTiles: 'New tiles',
@@ -596,7 +597,7 @@ const ptBr = {
   animationNoDestination:
     'Nenhum CHR de destino selecionado; os índices começam em $00.',
   animationDestinationDetails:
-    '{name}: {tiles} tiles existentes ({bytes} bytes).',
+    '{name}: {occupied} ocupados / {capacity} slots; {free} livres ({bytes} bytes).',
   animationFrameGridTitle: 'Frames do sprite sheet',
   animationFrameGridHint:
     'Clique em um frame para adicioná-lo ou removê-lo da sequência da animação.',
@@ -618,7 +619,8 @@ const ptBr = {
   animationReuseImported: 'reutilizado',
   animationReuseNew: 'novo',
   animationStatsTitle: 'Alocação do CHR',
-  animationBaseTiles: 'Tiles existentes',
+  animationBaseTiles: 'Ocupação do CHR-base',
+  animationOccupancyRatio: '{occupied} ocupados / {capacity} slots',
   animationReusedDestination: 'Reutilizados do destino',
   animationReusedImported: 'Reutilizados dos frames importados',
   animationNewTiles: 'Tiles novos',

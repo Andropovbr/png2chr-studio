@@ -4,6 +4,7 @@ import {
   serializeAnimationMetadata,
 } from '../core/animation-exporters';
 import { padChrRom } from '../core/chr-rom';
+import { analyzeBaseChrOccupancy } from '../core/chr-pattern-table';
 import type {
   AnimationModelError,
   AnimationModel,
@@ -545,12 +546,18 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   destinationButton.className = 'button secondary-button';
   destinationButton.textContent = t('animationChooseDestination');
   const destinationStatus = document.createElement('small');
+  const destinationOccupancy = analyzeBaseChrOccupancy(
+    options.settings.destinationChr,
+    options.settings.destinationPatternTable,
+  );
   destinationStatus.textContent =
     options.settings.destinationChrName === null
       ? t('animationNoDestination')
       : t('animationDestinationDetails', {
           name: options.settings.destinationChrName,
-          tiles: options.settings.destinationChr.length / 16,
+          occupied: destinationOccupancy.occupiedTiles,
+          capacity: destinationOccupancy.physicalCapacityTiles,
+          free: destinationOccupancy.freeTiles,
           bytes: options.settings.destinationChr.length,
         });
   destination.append(destinationLegend, destinationInput, destinationButton);
@@ -2048,7 +2055,13 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
   const stats = document.createElement('dl');
   stats.className = 'animation-stats';
   stats.append(
-    stat(t('animationBaseTiles'), String(model.chr.baseTileCount)),
+    stat(
+      t('animationBaseTiles'),
+      t('animationOccupancyRatio', {
+        occupied: model.chr.baseOccupancy.occupiedTiles,
+        capacity: model.chr.baseOccupancy.physicalCapacityTiles,
+      }),
+    ),
     stat(
       t('animationReusedDestination'),
       String(model.chr.reusedDestinationTiles),
@@ -2061,13 +2074,19 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
     ),
     stat(
       t('animationTotalChr'),
-      `${String(model.chr.finalTileCount)} / ${String(model.chr.physicalCapacityTiles)} tiles`,
+      t('animationOccupancyRatio', {
+        occupied: model.chr.finalTileCount,
+        capacity: model.chr.physicalCapacityTiles,
+      }),
     ),
     stat(
       t('animationSpritePatternTableUsage', {
         table: model.chr.patternTable,
       }),
-      `${String(model.chr.patternTableFinalTileCount)} / ${String(model.chr.patternTableCapacityTiles)} tiles`,
+      t('animationOccupancyRatio', {
+        occupied: model.chr.patternTableFinalTileCount,
+        capacity: model.chr.patternTableCapacityTiles,
+      }),
     ),
     stat(t('animationRemainingTiles'), String(model.chr.remainingTiles)),
     stat(t('animationFinalChrSize'), `${String(exportedChr.length)} bytes`),

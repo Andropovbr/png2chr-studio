@@ -15,4 +15,13 @@ describe('translations', () => {
     expect(detectLocale('en-US')).toBe('en');
     expect(detectLocale('es')).toBe('en');
   });
+
+  it('describes base CHR occupancy separately from physical capacity', () => {
+    expect(translations.en.animationDestinationDetails).toContain(
+      '{occupied} occupied / {capacity} slots',
+    );
+    expect(translations['pt-BR'].animationDestinationDetails).toContain(
+      '{occupied} ocupados / {capacity} slots',
+    );
+  });
 });
