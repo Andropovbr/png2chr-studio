@@ -156,6 +156,22 @@ export function serializeAnimationMetadata(
       capacity_tiles: model.chr.capacityTiles,
       base_tile_count: model.chr.baseTileCount,
       pattern_table_base_tile_count: model.chr.patternTableBaseTileCount,
+      base_occupancy: {
+        file_size_bytes: model.chr.baseOccupancy.fileSizeBytes,
+        file_tile_slots: model.chr.baseOccupancy.fileTileSlots,
+        physical_capacity_tiles:
+          model.chr.baseOccupancy.physicalCapacityTiles,
+        occupied_tiles: model.chr.baseOccupancy.occupiedTiles,
+        free_tiles: model.chr.baseOccupancy.freeTiles,
+        pattern_tables: model.chr.baseOccupancy.patternTables.map(
+          (occupancy) => ({
+            pattern_table: occupancy.patternTable,
+            capacity_tiles: occupancy.capacityTiles,
+            occupied_tiles: occupancy.occupiedTiles,
+            free_tiles: occupancy.freeTiles,
+          }),
+        ),
+      },
       reused_destination_tiles: model.chr.reusedDestinationTiles,
       reused_imported_tiles: model.chr.reusedImportedTiles,
       new_tile_count: model.chr.newTileCount,

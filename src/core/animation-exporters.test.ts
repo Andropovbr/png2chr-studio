@@ -80,6 +80,27 @@ describe('animation exporters', () => {
         pattern_table: 0,
         pattern_table_capacity_tiles: 256,
         base_tile_count: 0,
+        base_occupancy: {
+          file_size_bytes: 0,
+          file_tile_slots: 0,
+          physical_capacity_tiles: 512,
+          occupied_tiles: 0,
+          free_tiles: 512,
+          pattern_tables: [
+            {
+              pattern_table: 0,
+              capacity_tiles: 256,
+              occupied_tiles: 0,
+              free_tiles: 256,
+            },
+            {
+              pattern_table: 1,
+              capacity_tiles: 256,
+              occupied_tiles: 0,
+              free_tiles: 256,
+            },
+          ],
+        },
         final_tile_count: 1,
         final_size_bytes: 8192,
       },
