@@ -2155,6 +2155,7 @@ function renderAnimationWorkspace(): void {
     },
     onDestinationFile: (file: File) => void loadAnimationDestination(file),
     onDestinationClear: () => {
+      markDirty();
       project = {
         ...project,
         animation: {
