@@ -1909,6 +1909,7 @@ function renderAnimationWorkspace(): void {
             : 'entity';
         const compositeName = `${entityName}_${anim.name}`;
         definitions.push({
+          id: anim.id,
           name: compositeName,
           sourceImageName: anim.source.fileName,
           image: anim.source.indexedImage,

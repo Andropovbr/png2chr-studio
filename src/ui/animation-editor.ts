@@ -6,14 +6,17 @@ import {
 import { padChrRom } from '../core/chr-rom';
 import type {
   AnimationModelError,
+  AnimationModel,
   AnimationPlayback,
   AnimationProjectModel,
   MetaspriteTile,
 } from '../core/animation-model';
 import {
   renderAnimationToRawImageData,
+  renderAnimationTileToRawImageData,
   renderIndexedImageWithPalette,
 } from '../core/animation-palette';
+import { createAnimationFrameMapping } from '../core/animation-mapping';
 import type { ColorDistanceMode } from '../core/color-distance';
 import {
   encodeNesBackgroundPalettes,
@@ -1860,6 +1863,14 @@ function flipLabel(sprite: MetaspriteTile): string {
   return t('animationTileNormal');
 }
 
+export function resolveAnimationSetting(
+  settings: readonly AnimationItemSetting[],
+  animation: AnimationModel,
+): AnimationItemSetting | undefined {
+  if (animation.id === undefined) return undefined;
+  return settings.find((setting) => setting.id === animation.id);
+}
+
 function createMapping(options: AnimationEditorOptions): HTMLElement {
   const section = document.createElement('section');
   section.className = 'panel animation-mapping-panel';
@@ -1906,11 +1917,11 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
   }
   const model = options.model;
   model.animations.forEach((animation) => {
-    const animSetting = options.settings.animations.find(
-      (a) => a.name === animation.name,
+    const animSetting = resolveAnimationSetting(
+      options.settings.animations,
+      animation,
     );
-    if (!animSetting?.source) return;
-    const animSource = animSetting.source;
+    if (animSetting === undefined) return;
 
     const animationSection = document.createElement('section');
     animationSection.className = 'animation-mapping-group';
@@ -1935,62 +1946,55 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
         'animationDurationUnit',
       )} · ${t('nesPaletteName', { index: frame.effectivePalette })}`;
 
-      const frameImage = renderAnimationToRawImageData(
-        animSource.indexedImage,
-        options.paletteSet,
-        frame.effectivePalette,
-      );
-
       const grid = document.createElement('div');
       grid.className = 'animation-tile-map';
       grid.style.gridTemplateColumns = `repeat(${String(animation.widthTiles)}, minmax(5.5rem, 1fr))`;
-      for (let row = 0; row < animation.heightTiles; row += 1) {
-        for (let column = 0; column < animation.widthTiles; column += 1) {
-          const cell = document.createElement('div');
-          cell.className = 'animation-tile-cell';
+      const mapping = createAnimationFrameMapping(model, animation, frame);
+      mapping.forEach((mappingCell) => {
+        const cell = document.createElement('div');
+        cell.className = 'animation-tile-cell';
+        if (mappingCell.tile !== null) {
           cell.append(
             cropCanvas(
-              frameImage,
-              frame.sourceX + column * 8,
-              frame.sourceY + row * 8,
+              renderAnimationTileToRawImageData(
+                mappingCell.tile,
+                options.paletteSet,
+                frame.effectivePalette,
+              ),
+              0,
+              0,
               8,
               8,
             ),
           );
-          const sprite = frame.sprites.find(
-            (candidate) =>
-              candidate.sourceTileColumn === column &&
-              candidate.sourceTileRow === row,
-          );
-          const details = document.createElement('span');
-          if (sprite === undefined) {
-            cell.classList.add('is-omitted');
-            details.textContent = t('animationTileOmitted');
-          } else {
-            const reuseKey: TranslationKey =
-              sprite.reuse === 'destination'
-                ? 'animationReuseDestination'
-                : sprite.reuse === 'imported'
-                  ? 'animationReuseImported'
-                  : 'animationReuseNew';
-            details.textContent = `$${sprite.tile
-              .toString(16)
-              .padStart(2, '0')
-              .toUpperCase()} · ${flipLabel(sprite)} · ${t(reuseKey)} · A=$${sprite.attributes
-              .toString(16)
-              .padStart(2, '0')
-              .toUpperCase()}`;
-          }
-          if (sprite !== undefined) {
-            details.textContent = `T${String(model.patternTable)} · P$${sprite.physicalTileIndex
-              .toString(16)
-              .padStart(3, '0')
-              .toUpperCase()} · ${details.textContent}`;
-          }
-          cell.append(details);
-          grid.append(cell);
         }
-      }
+        const sprite = mappingCell.sprite;
+        const details = document.createElement('span');
+        if (sprite === null) {
+          cell.classList.add('is-omitted');
+          details.textContent = t('animationTileOmitted');
+        } else {
+          const reuseKey: TranslationKey =
+            sprite.reuse === 'destination'
+              ? 'animationReuseDestination'
+              : sprite.reuse === 'imported'
+                ? 'animationReuseImported'
+                : 'animationReuseNew';
+          const spriteOrder = mappingCell.spriteOrder ?? 0;
+          details.textContent = `#${String(spriteOrder + 1)} · X=${String(sprite.x)} Y=${String(sprite.y)} · T${String(model.patternTable)} · P$${sprite.physicalTileIndex
+            .toString(16)
+            .padStart(3, '0')
+            .toUpperCase()} · $${sprite.tile
+            .toString(16)
+            .padStart(2, '0')
+            .toUpperCase()} · ${flipLabel(sprite)} · ${t(reuseKey)} · A=$${sprite.attributes
+            .toString(16)
+            .padStart(2, '0')
+            .toUpperCase()}`;
+        }
+        cell.append(details);
+        grid.append(cell);
+      });
       article.append(frameTitle, grid);
       animationSection.append(article);
     });

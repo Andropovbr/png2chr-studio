@@ -39,6 +39,8 @@ export type AnimationDirection = 'left' | 'right';
 export type TileReuse = 'destination' | 'imported' | 'new';
 
 export interface AnimationDefinitionInput {
+  /** Stable identity of the editor animation that produced this definition. */
+  readonly id?: string;
   readonly name: string;
   readonly sourceImageName?: string;
   readonly image?: IndexedImage;
@@ -111,6 +113,8 @@ export interface AnimationFrameModel {
 }
 
 export interface AnimationModel {
+  /** Stable identity of the source definition; generated variants share it. */
+  readonly id?: string;
   readonly name: string;
   readonly sourceFile: string;
   readonly playback: AnimationPlayback;
@@ -661,6 +665,7 @@ export function buildAnimationProjectModel(
       },
     );
     return {
+      id: animation.id,
       name: animation.name,
       sourceFile,
       playback,

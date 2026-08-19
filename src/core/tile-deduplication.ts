@@ -9,24 +9,32 @@ export function tilePixelKey(tile: Tile): string {
   return tile.pixels.join(',');
 }
 
+export function transformTile(
+  tile: Tile,
+  horizontalFlip: boolean,
+  verticalFlip: boolean,
+): Tile {
+  if (tile.pixels.length !== 64) {
+    throw new RangeError('A tile must contain exactly 64 pixels.');
+  }
+
+  const pixels = new Uint8Array(64);
+  for (let row = 0; row < 8; row += 1) {
+    for (let column = 0; column < 8; column += 1) {
+      const sourceRow = verticalFlip ? 7 - row : row;
+      const sourceColumn = horizontalFlip ? 7 - column : column;
+      pixels[row * 8 + column] = tile.pixels[sourceRow * 8 + sourceColumn] ?? 0;
+    }
+  }
+  return { ...tile, pixels };
+}
+
 export function transformedTileKey(
   tile: Tile,
   horizontalFlip: boolean,
   verticalFlip: boolean,
 ): string {
-  if (tile.pixels.length !== 64) {
-    throw new RangeError('A tile must contain exactly 64 pixels.');
-  }
-
-  const pixels: number[] = [];
-  for (let row = 0; row < 8; row += 1) {
-    for (let column = 0; column < 8; column += 1) {
-      const sourceRow = verticalFlip ? 7 - row : row;
-      const sourceColumn = horizontalFlip ? 7 - column : column;
-      pixels.push(tile.pixels[sourceRow * 8 + sourceColumn] ?? 0);
-    }
-  }
-  return pixels.join(',');
+  return tilePixelKey(transformTile(tile, horizontalFlip, verticalFlip));
 }
 
 function flipInvariantTileKey(tile: Tile): string {
