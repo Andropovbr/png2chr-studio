@@ -337,7 +337,11 @@ const en = {
   nesChrSizeUnsupported: 'NROM import requires exactly 8 KB of CHR-ROM.',
   nesRomTruncated: 'The ROM ends before its declared CHR-ROM data.',
   imageDecodeFailed:
-    'The PNG could not be read. The file may be damaged or invalid.',
+    'The PNG could not be decoded. It may be damaged, invalid, or unsupported.',
+  imageReadFailed:
+    'The PNG file could not be read. Check that it is available and try again.',
+  imageProcessingFailed:
+    'The PNG was decoded but could not be processed. Try another image.',
   invalidDimensions: 'The image width and height must both be multiples of 8.',
   invalidPixelData: 'The decoded image contains invalid pixel data.',
   partialTransparency: 'Partially transparent pixels are not supported yet.',
@@ -809,7 +813,11 @@ const ptBr = {
   nesChrSizeUnsupported: 'A importação NROM requer exatamente 8 KB de CHR-ROM.',
   nesRomTruncated: 'A ROM termina antes dos dados CHR-ROM declarados.',
   imageDecodeFailed:
-    'Não foi possível ler o PNG. O arquivo pode estar danificado ou ser inválido.',
+    'Não foi possível decodificar o PNG. O arquivo pode estar danificado, ser inválido ou não ser suportado.',
+  imageReadFailed:
+    'Não foi possível ler o arquivo PNG. Verifique se ele está disponível e tente novamente.',
+  imageProcessingFailed:
+    'O PNG foi decodificado, mas não pôde ser processado. Tente outra imagem.',
   invalidDimensions: 'A largura e a altura da imagem devem ser múltiplas de 8.',
   invalidPixelData: 'A imagem decodificada contém dados de pixel inválidos.',
   partialTransparency:
