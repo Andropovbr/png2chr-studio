@@ -8,8 +8,11 @@ export interface AnimationWorkspaceState {
   readonly mappingCollapsed: boolean;
 }
 
+export type WorkspaceView = 'tileset' | 'playfield' | 'animation';
+
 export interface WorkspaceState {
-  /** Transient interaction state. It is intentionally absent from ProjectView. */
+  /** Transient interaction and navigation state. It is intentionally absent from ProjectView. */
+  readonly activeWorkspace: WorkspaceView;
   readonly previewTool: PreviewTool;
   readonly showPaletteNumbers: boolean;
   readonly zoomedPaletteRegion: number | null;
@@ -30,8 +33,10 @@ export interface DerivedStatus {
 export function createWorkspaceState(
   paletteIndex = 0,
   colorIndex = 1,
+  activeWorkspace: WorkspaceView = 'tileset',
 ): WorkspaceState {
   return {
+    activeWorkspace,
     previewTool: 'palette',
     showPaletteNumbers: false,
     zoomedPaletteRegion: null,

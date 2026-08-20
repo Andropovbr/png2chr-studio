@@ -60,6 +60,42 @@ describe('application state update boundaries', () => {
     expect(serializeProject(project)).toBe(serializedBefore);
   });
 
+  it('never marks workspace navigation updates dirty', () => {
+    const current = createWorkspaceState(0, 1, 'tileset');
+    const result = applyWorkspaceUpdate(current, (ws) => ({
+      ...ws,
+      activeWorkspace: 'animation' as const,
+    }));
+
+    expect(result.value.activeWorkspace).toBe('animation');
+    expect(result.marksProjectDirty).toBe(false);
+  });
+
+  it('preserves project data and serialization across workspace navigation', () => {
+    const project = createDefaultProject('Preservation test', 'tileset');
+    const serializedOriginal = serializeProject(project);
+
+    let workspace = createWorkspaceState(0, 1, 'tileset');
+
+    // Navigate to playfield
+    const navPlayfield = applyWorkspaceUpdate(workspace, (ws) => ({
+      ...ws,
+      activeWorkspace: 'playfield' as const,
+    }));
+    workspace = navPlayfield.value;
+    expect(navPlayfield.marksProjectDirty).toBe(false);
+    expect(serializeProject(project)).toBe(serializedOriginal);
+
+    // Navigate to animation
+    const navAnimation = applyWorkspaceUpdate(workspace, (ws) => ({
+      ...ws,
+      activeWorkspace: 'animation' as const,
+    }));
+    workspace = navAnimation.value;
+    expect(navAnimation.marksProjectDirty).toBe(false);
+    expect(serializeProject(project)).toBe(serializedOriginal);
+  });
+
   it('never marks derived loading or error updates dirty', () => {
     const current = createDerivedStatus();
     const result = applyDerivedStatusUpdate(current, (status) => ({

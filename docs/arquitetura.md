@@ -82,8 +82,18 @@ Conforme documentado em [`docs/project-state-boundaries.md`](./project-state-bou
 ```
 
 1. **`StudioProject` (Persistente):** Estado canônico de criação (modo selecionado, fontes gráficas com dataUrl, definições de paleta, slots ativos, pixel overrides, mapa de colisão, animações, instâncias de cena, base CHR). Qualquer alteração gera uma nova identidade de objeto e marca o projeto como não-salvo (`isDirty = true`).
-2. **`WorkspaceState` (Transiente):** Estado de layout da interface (ferramenta ativa no preview, zoom de edição, painéis colapsados, overlays numéricos de paleta).
+2. **`WorkspaceState` (Transiente):** Estado de layout e navegação da interface (área de trabalho ativa, ferramenta ativa no preview, zoom de edição, painéis colapsados, overlays numéricos de paleta).
 3. **`DerivedStatus` (Status):** Estado volátil de carregamento e diagnósticos de erro recuperáveis.
+
+### Estrutura de Layout do AppShell
+
+A interface é orquestrada por um `AppShell` persistente que hospeda os principais marcos de interação:
+
+- **Project Header (`headerHost`):** Metadados do projeto, nome editável, indicador de dirty, botões de ação (Novo, Abrir, Salvar, Salvar Como) e seletor de idioma.
+- **Sidebar (`sidebarHost`):** Navegação entre workspaces (Tileset, Playfield, Animação), âncoras de seção, arquivo ativo e seletor rápido de quantização.
+- **Workspace Host (`workspaceHost`):** Hospeda os editores e painéis ativos do modo de trabalho atual.
+- **Inspector Host (`inspectorHost`):** Região lateral complementar para propriedades contextuais e inspetores.
+- **Diagnostics/Status Host (`diagnosticsHost`):** Painel de métricas, diagnósticos NES, erros de validação e status.
 
 ---
 

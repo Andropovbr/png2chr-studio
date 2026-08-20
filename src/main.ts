@@ -87,6 +87,7 @@ import {
   type QuantizationSettings,
 } from './core/quantization-settings';
 import { getLocale, subscribeToLocale, t } from './i18n';
+import { createAppShell } from './ui/app-shell';
 import { createDiagnostics } from './ui/diagnostics';
 import {
   createAnimationEditor,
@@ -97,12 +98,13 @@ import { createHeader } from './ui/header';
 import { mountImageEditingPanels } from './ui/image-editing-workspace';
 import { createImageInput } from './ui/image-input';
 import { createImagePreview } from './ui/image-preview';
+import { createInspector } from './ui/inspector';
 import { createPaletteEditor } from './ui/palette-editor';
 import {
   createQuantizationPanel,
   type QuantizationPreview,
 } from './ui/quantization-panel';
-import { createStickyNav } from './ui/sticky-nav';
+import { createSidebar } from './ui/sidebar';
 import { createTileGrid } from './ui/tile-grid';
 import {
   applyDerivedStatusUpdate,
@@ -235,7 +237,11 @@ let project: ProjectView = {
 
 let projectName = t('defaultProjectName');
 let projectDirty = false;
-let workspace: WorkspaceState = createWorkspaceState();
+let workspace: WorkspaceState = createWorkspaceState(
+  project.activePaletteIndex,
+  project.activeColorIndex,
+  project.mode,
+);
 let derivedStatus: DerivedStatus = createDerivedStatus();
 
 class PngLoadError extends Error {
@@ -268,6 +274,7 @@ function resetTransientState(error: DisplayError | null = null): void {
   workspace = createWorkspaceState(
     project.activePaletteIndex,
     project.activeColorIndex,
+    project.mode,
   );
   derivedStatus = createDerivedStatus(error);
 }
@@ -1277,7 +1284,11 @@ function changeMode(mode: ProjectMode): void {
       paletteAssignments: new Uint8Array(),
       pixelOverrides: new Uint8Array(),
     });
-    updateWorkspace({ ...workspace, zoomedPaletteRegion: null });
+    updateWorkspace({
+      ...workspace,
+      activeWorkspace: mode,
+      zoomedPaletteRegion: null,
+    });
     setDerivedStatus({ ...derivedStatus, error: null });
     render();
     return;
@@ -1295,7 +1306,11 @@ function changeMode(mode: ProjectMode): void {
       mode === 'playfield' ? false : project.flipDeduplicationEnabled,
     paletteAssignments,
   });
-  updateWorkspace({ ...workspace, zoomedPaletteRegion: null });
+  updateWorkspace({
+    ...workspace,
+    activeWorkspace: mode,
+    zoomedPaletteRegion: null,
+  });
   if (project.sourceKind === 'png' && project.sourceImage !== null) {
     void changeQuantizationSettings(project.quantizationSettings);
   } else {
@@ -2234,6 +2249,7 @@ function renderAnimationWorkspace(): void {
   };
 
   workspaceElement.append(...createAnimationEditor(editorOptions));
+  let errorElement: HTMLElement | null = null;
   if (derivedStatus.error !== null) {
     const error = document.createElement('section');
     error.className = 'panel error-panel animation-error-panel';
@@ -2245,16 +2261,25 @@ function renderAnimationWorkspace(): void {
       derivedStatus.error.variables,
     );
     error.append(heading, message);
-    workspaceElement.append(error);
+    errorElement = error;
   }
-  const nav = createStickyNav({
-    mode: 'animation',
+  const sidebar = createSidebar({
+    activeWorkspace: 'animation',
     fileName: project.fileName,
-    onModeChange: (m) => {
-      changeMode(m);
+    onWorkspaceChange: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      changeMode(view);
     },
   });
-  app.replaceChildren(createProjectHeader(), nav, workspaceElement);
+  const inspector = createInspector();
+  const shell = createAppShell({
+    header: createProjectHeader(),
+    sidebar,
+    workspace: workspaceElement,
+    inspector,
+    diagnostics: errorElement,
+  });
+  app.replaceChildren(shell);
 }
 
 function render(): void {
@@ -2507,8 +2532,19 @@ function render(): void {
     tileGrid,
     exportPanel,
   );
-  const nav = createStickyNav({
-    mode: project.mode,
+  const diagnosticsElement = createDiagnostics({
+    width: project.width,
+    height: project.height,
+    indexedImage: mappedImage,
+    tileCount: visibleTiles.length,
+    chrSize: chr?.length ?? null,
+    playfieldMode: project.mode === 'playfield',
+    nametableSize: nametable?.length ?? null,
+    attributeTableSize: attributeTable?.length ?? null,
+    error: conversionError,
+  });
+  const sidebar = createSidebar({
+    activeWorkspace: project.mode,
     fileName: project.fileName,
     quantizationMode: project.quantizationSettings.quantizationMode,
     onQuantizationModeChange: (quantizationMode) => {
@@ -2517,11 +2553,20 @@ function render(): void {
         quantizationMode,
       });
     },
-    onModeChange: (m) => {
-      changeMode(m);
+    onWorkspaceChange: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      changeMode(view);
     },
   });
-  app.replaceChildren(createProjectHeader(), nav, workspaceElement);
+  const inspector = createInspector();
+  const shell = createAppShell({
+    header: createProjectHeader(),
+    sidebar,
+    workspace: workspaceElement,
+    inspector,
+    diagnostics: diagnosticsElement,
+  });
+  app.replaceChildren(shell);
 }
 
 function setProjectError(error: DisplayError): void {
