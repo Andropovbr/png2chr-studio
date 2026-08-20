@@ -94,6 +94,7 @@ import {
 } from './ui/animation-editor';
 import { createExportPanel } from './ui/export-panel';
 import { createHeader } from './ui/header';
+import { mountImageEditingPanels } from './ui/image-editing-workspace';
 import { createImageInput } from './ui/image-input';
 import { createImagePreview } from './ui/image-preview';
 import { createPaletteEditor } from './ui/palette-editor';
@@ -2322,54 +2323,52 @@ function render(): void {
   editingWorkspace.className = 'playfield-editing-workspace';
   const projectImageInput = createProjectImageInput();
   projectImageInput.id = 'section-image';
-  editingWorkspace.append(
-    createImagePreview({
-      image:
-        mappedImage === null
-          ? project.sourceImage
-          : new ImageData(
-              renderNesPaletteImage(
-                mappedImage,
-                project.paletteSet,
-                project.paletteAssignments,
-                regionSize,
-              ),
-              mappedImage.width,
-              mappedImage.height,
+  const imagePreview = createImagePreview({
+    image:
+      mappedImage === null
+        ? project.sourceImage
+        : new ImageData(
+            renderNesPaletteImage(
+              mappedImage,
+              project.paletteSet,
+              project.paletteAssignments,
+              regionSize,
             ),
-      collisionCells:
-        project.mode === 'playfield' && project.indexedImage !== null
-          ? project.collisionCells
-          : null,
-      paletteAssignments:
-        project.indexedImage === null ? null : project.paletteAssignments,
-      paletteRegionSize: project.indexedImage === null ? null : regionSize,
-      showPaletteNumbers: project.showPaletteNumbers,
-      selectedPaletteRegion: project.zoomedPaletteRegion,
-      activeTool: project.previewTool,
-      activeCollisionType: project.activeCollisionType,
-      onActiveToolChange: (previewTool) => {
-        project = { ...project, previewTool };
-        render();
-      },
-      onCollisionChange: (collisionCells) => {
-        project = { ...project, collisionCells };
-        render();
-      },
-      onCollisionTypeChange: (activeCollisionType) => {
-        project = {
-          ...project,
-          activeCollisionType,
-          previewTool: 'paint-collision',
-        };
-        render();
-      },
-      onPaletteRegionSelect: (zoomedPaletteRegion) => {
-        project = { ...project, zoomedPaletteRegion };
-        render();
-      },
-    }),
-  );
+            mappedImage.width,
+            mappedImage.height,
+          ),
+    collisionCells:
+      project.mode === 'playfield' && project.indexedImage !== null
+        ? project.collisionCells
+        : null,
+    paletteAssignments:
+      project.indexedImage === null ? null : project.paletteAssignments,
+    paletteRegionSize: project.indexedImage === null ? null : regionSize,
+    showPaletteNumbers: project.showPaletteNumbers,
+    selectedPaletteRegion: project.zoomedPaletteRegion,
+    activeTool: project.previewTool,
+    activeCollisionType: project.activeCollisionType,
+    onActiveToolChange: (previewTool) => {
+      project = { ...project, previewTool };
+      render();
+    },
+    onCollisionChange: (collisionCells) => {
+      project = { ...project, collisionCells };
+      render();
+    },
+    onCollisionTypeChange: (activeCollisionType) => {
+      project = {
+        ...project,
+        activeCollisionType,
+        previewTool: 'paint-collision',
+      };
+      render();
+    },
+    onPaletteRegionSelect: (zoomedPaletteRegion) => {
+      project = { ...project, zoomedPaletteRegion };
+      render();
+    },
+  });
   const paletteEditor = createPaletteEditor({
     image: project.indexedImage,
     paletteSet: project.paletteSet,
@@ -2419,7 +2418,14 @@ function render(): void {
       render();
     },
   });
-  paletteEditor.id = 'section-palettes';
+  mountImageEditingPanels(
+    project.mode,
+    (preview, editor) => {
+      editingWorkspace.append(preview, editor);
+    },
+    imagePreview,
+    paletteEditor,
+  );
   const quantizationPanel = createProjectQuantizationPanel();
   quantizationPanel.id = 'section-quantization';
   const tileGrid = createTileGrid(
