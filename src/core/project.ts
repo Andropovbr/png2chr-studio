@@ -447,7 +447,7 @@ export function deserializeProject(
       : createDefaultPaletteDefinitions(paletteSet);
 
   const activeSpritePaletteSlots: readonly (string | null)[] =
-    parsedSlots && parsedSlots.length === 4
+    parsedSlots?.length === 4
       ? parsedSlots
       : [
           palettes[0]?.id ?? null,
@@ -512,9 +512,7 @@ export function deserializeProject(
           : undefined;
 
       const rawPaletteIndex =
-        typeof rawItem.paletteIndex === 'number'
-          ? rawItem.paletteIndex
-          : null;
+        typeof rawItem.paletteIndex === 'number' ? rawItem.paletteIndex : null;
 
       // Migrate paletteIndex to paletteId if paletteId is not explicitly set
       const resolvedPaletteId =
@@ -522,8 +520,8 @@ export function deserializeProject(
         (rawPaletteIndex !== null &&
         rawPaletteIndex >= 0 &&
         rawPaletteIndex < palettes.length
-          ? palettes[rawPaletteIndex]?.id ?? null
-          : palettes[0]?.id ?? null);
+          ? (palettes[rawPaletteIndex]?.id ?? null)
+          : (palettes[0]?.id ?? null));
 
       const rawFramePaletteIds = parseStringArray(rawItem.framePaletteIds);
       const rawFramePalettes = Array.isArray(rawItem.framePalettes)
@@ -535,7 +533,7 @@ export function deserializeProject(
         (rawFramePalettes
           ? rawFramePalettes.map((pIdx) =>
               pIdx !== null && pIdx >= 0 && pIdx < palettes.length
-                ? palettes[pIdx]?.id ?? null
+                ? (palettes[pIdx]?.id ?? null)
                 : null,
             )
           : undefined);

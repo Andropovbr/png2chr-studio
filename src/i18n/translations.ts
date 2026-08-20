@@ -246,10 +246,8 @@ const en = {
   tilePixelActiveIndex: 'Active Index:',
   tilePixelModified: 'Modified',
   tilePixelReset: 'Reset Tile',
-  tilePixelResetHint:
-    'Restore automatic generated pixels for this 8×8 tile',
-  tilePixelSelectPrompt:
-    'Select a frame and tile below to edit its pixels.',
+  tilePixelResetHint: 'Restore automatic generated pixels for this 8×8 tile',
+  tilePixelSelectPrompt: 'Select a frame and tile below to edit its pixels.',
   animationErrorDuplicateName:
     'Animation names must be unique within the asset.',
   animationErrorDuplicateIdentifier:
