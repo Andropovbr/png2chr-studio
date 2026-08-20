@@ -503,6 +503,10 @@ describe('StudioProject core infrastructure', () => {
 
     it('round-trips palettes and activeSpritePaletteSlots', () => {
       const defaultProj = createDefaultProject('animation');
+      expect(defaultProj.animation).toBeDefined();
+      if (!defaultProj.animation) {
+        throw new Error('Expected defaultProj.animation to be defined');
+      }
       const project: StudioProject = {
         ...defaultProj,
         name: 'Palettes Test',
@@ -522,10 +526,15 @@ describe('StudioProject core infrastructure', () => {
               colors: [0x0f, 0x03, 0x13, 0x23],
             },
           ],
-          activeSpritePaletteSlots: ['pal_soldier_blue', 'pal_bat_purple', null, null],
+          activeSpritePaletteSlots: [
+            'pal_soldier_blue',
+            'pal_bat_purple',
+            null,
+            null,
+          ],
         },
         animation: {
-          ...defaultProj.animation!,
+          ...defaultProj.animation,
           animations: [
             {
               id: 'anim_1',
@@ -642,7 +651,7 @@ describe('StudioProject core infrastructure', () => {
 
         const slots = deserialized.project.palette.activeSpritePaletteSlots;
         expect(slots).toBeDefined();
-        expect(slots).toEqual(palettes!.map((p) => p.id));
+        expect(slots).toEqual(palettes?.map((p) => p.id));
 
         // Legacy paletteIndex 1 migrated to palettes[1].id
         const animItem = deserialized.project.animation?.animations[0];

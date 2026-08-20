@@ -21,12 +21,19 @@ export function getTileKey(tileX: number, tileY: number): string {
   return `${String(tileX)}_${String(tileY)}`;
 }
 
-export function parseTileKey(key: string): { tileX: number; tileY: number } | null {
+export function parseTileKey(
+  key: string,
+): { tileX: number; tileY: number } | null {
   const parts = key.split('_');
   if (parts.length !== 2) return null;
   const tileX = parseInt(parts[0] ?? '', 10);
   const tileY = parseInt(parts[1] ?? '', 10);
-  if (!Number.isFinite(tileX) || !Number.isFinite(tileY) || tileX < 0 || tileY < 0) {
+  if (
+    !Number.isFinite(tileX) ||
+    !Number.isFinite(tileY) ||
+    tileX < 0 ||
+    tileY < 0
+  ) {
     return null;
   }
   return { tileX, tileY };
@@ -74,14 +81,20 @@ export function extractTileFromIndexedImage(
   const pixels = new Uint8Array(PIXELS_PER_TILE);
   const startX = tileX * TILE_SIZE;
   const startY = tileY * TILE_SIZE;
-  const tileOverride = overrides ? getTileOverride(overrides, tileX, tileY) : undefined;
+  const tileOverride = overrides
+    ? getTileOverride(overrides, tileX, tileY)
+    : undefined;
 
   for (let y = 0; y < TILE_SIZE; y += 1) {
     const rowOffset = (startY + y) * image.width + startX;
     for (let x = 0; x < TILE_SIZE; x += 1) {
       const offset = y * TILE_SIZE + x;
       const overridden = tileOverride?.[offset];
-      if (typeof overridden === 'number' && overridden >= 0 && overridden <= 3) {
+      if (
+        typeof overridden === 'number' &&
+        overridden >= 0 &&
+        overridden <= 3
+      ) {
         pixels[offset] = overridden;
       } else if (startX + x < image.width && startY + y < image.height) {
         pixels[offset] = image.pixels[rowOffset + x] ?? 0;
@@ -205,7 +218,8 @@ export function applyPixelOverridesToImage(
 
     for (const [offsetStr, colorIndex] of Object.entries(tileMap)) {
       const offset = parseInt(offsetStr, 10);
-      if (!Number.isFinite(offset) || offset < 0 || offset >= PIXELS_PER_TILE) continue;
+      if (!Number.isFinite(offset) || offset < 0 || offset >= PIXELS_PER_TILE)
+        continue;
       if (colorIndex < 0 || colorIndex > 3) continue;
 
       const px = offset % TILE_SIZE;

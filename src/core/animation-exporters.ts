@@ -159,8 +159,7 @@ export function serializeAnimationMetadata(
       base_occupancy: {
         file_size_bytes: model.chr.baseOccupancy.fileSizeBytes,
         file_tile_slots: model.chr.baseOccupancy.fileTileSlots,
-        physical_capacity_tiles:
-          model.chr.baseOccupancy.physicalCapacityTiles,
+        physical_capacity_tiles: model.chr.baseOccupancy.physicalCapacityTiles,
         occupied_tiles: model.chr.baseOccupancy.occupiedTiles,
         free_tiles: model.chr.baseOccupancy.freeTiles,
         pattern_tables: model.chr.baseOccupancy.patternTables.map(

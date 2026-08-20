@@ -682,10 +682,7 @@ describe('animation project model', () => {
           (physicalTileIndex + 1) * 16,
         ),
       ).toEqual(
-        destination.slice(
-          physicalTileIndex * 16,
-          (physicalTileIndex + 1) * 16,
-        ),
+        destination.slice(physicalTileIndex * 16, (physicalTileIndex + 1) * 16),
       );
     }
   });

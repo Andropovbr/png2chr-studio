@@ -51,7 +51,8 @@ export function createTilePixelEditor(
 
   const frameCols = Math.floor(options.indexedImage.width / options.frameWidth);
   const sourceX = (options.frameIndex % frameCols) * options.frameWidth;
-  const sourceY = Math.floor(options.frameIndex / frameCols) * options.frameHeight;
+  const sourceY =
+    Math.floor(options.frameIndex / frameCols) * options.frameHeight;
 
   const { tileX, tileY } = calculateTileCoordinates(
     sourceX,
@@ -118,10 +119,10 @@ export function createTilePixelEditor(
   // Active Index Selector (0, 1, 2, 3)
   let activeIndex = 1;
   const paletteIndices = [0, 1, 2, 3] as const;
-  const subPalette =
-    options.effectivePalette ??
-    options.paletteSet?.[options.effectivePaletteIndex ?? 0] ??
-    [0x0f, 0x00, 0x10, 0x30];
+  const subPalette = options.effectivePalette ??
+    options.paletteSet?.[options.effectivePaletteIndex ?? 0] ?? [
+      0x0f, 0x00, 0x10, 0x30,
+    ];
 
   const paletteSelector = document.createElement('div');
   paletteSelector.className = 'tile-pixel-palette-selector';
@@ -140,7 +141,11 @@ export function createTilePixelEditor(
     btn.className = `tile-pixel-index-btn${idx === activeIndex ? ' is-active' : ''}`;
 
     const colorCode = subPalette[idx];
-    const nesRgb = NES_MASTER_PALETTE[colorCode] ?? { red: 0, green: 0, blue: 0 };
+    const nesRgb = NES_MASTER_PALETTE[colorCode] ?? {
+      red: 0,
+      green: 0,
+      blue: 0,
+    };
 
     const swatch = document.createElement('span');
     swatch.className = 'tile-pixel-swatch';
@@ -198,7 +203,11 @@ export function createTilePixelEditor(
         imgData.data[offset + 3] = 255;
       } else {
         const colorCode = subPalette[pIndex as 0 | 1 | 2 | 3];
-        const nesRgb = NES_MASTER_PALETTE[colorCode] ?? { red: 0, green: 0, blue: 0 };
+        const nesRgb = NES_MASTER_PALETTE[colorCode] ?? {
+          red: 0,
+          green: 0,
+          blue: 0,
+        };
         imgData.data[offset] = nesRgb.red;
         imgData.data[offset + 1] = nesRgb.green;
         imgData.data[offset + 2] = nesRgb.blue;
