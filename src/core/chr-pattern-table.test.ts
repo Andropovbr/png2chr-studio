@@ -93,7 +93,9 @@ describe('NES sprite pattern tables', () => {
   });
 
   it('reports every slot free in a zero-filled 8 KiB CHR', () => {
-    const occupancy = analyzeBaseChrOccupancy(new Uint8Array(NES_CHR_ROM_SIZE));
+    const occupancy = analyzeBaseChrOccupancy(
+      new Uint8Array(NES_CHR_ROM_SIZE),
+    );
 
     expect(occupancy).toMatchObject({
       occupiedTiles: 0,

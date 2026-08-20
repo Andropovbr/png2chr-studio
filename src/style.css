@@ -2354,9 +2354,7 @@ input:focus-visible + label {
   border: 1px solid var(--panel-border);
   border-radius: 0.4rem;
   cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .animation-tile-pixel-tile-btn:hover {
@@ -2484,9 +2482,7 @@ input:focus-visible + label {
   color: inherit;
   font-size: 0.82rem;
   cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .tile-pixel-index-btn:hover {
@@ -2514,11 +2510,7 @@ input:focus-visible + label {
     linear-gradient(45deg, transparent 75%, #1f242d 75%),
     linear-gradient(-45deg, transparent 75%, #1f242d 75%);
   background-size: 8px 8px;
-  background-position:
-    0 0,
-    0 4px,
-    4px -4px,
-    -4px 0px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
 }
 
 .tile-pixel-index-num {
@@ -2612,11 +2604,7 @@ input:focus-visible + label {
     linear-gradient(45deg, transparent 75%, #1f242d 75%),
     linear-gradient(-45deg, transparent 75%, #1f242d 75%);
   background-size: 6px 6px;
-  background-position:
-    0 0,
-    0 3px,
-    3px -3px,
-    -3px 0px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
 }
 
 .palette-definitions-section {
@@ -2697,11 +2685,7 @@ input:focus-visible + label {
     linear-gradient(45deg, transparent 75%, #1f242d 75%),
     linear-gradient(-45deg, transparent 75%, #1f242d 75%);
   background-size: 6px 6px;
-  background-position:
-    0 0,
-    0 3px,
-    3px -3px,
-    -3px 0px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
 }
 
 .palette-definition-actions {
@@ -2727,3 +2711,4 @@ input:focus-visible + label {
   padding: 0.15rem 0.45rem;
   border-radius: 0.3rem;
 }
+

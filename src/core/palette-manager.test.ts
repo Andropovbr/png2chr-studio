@@ -131,50 +131,22 @@ describe('palette-manager domain module', () => {
     expect(colors).toEqual([0x0f, 0x09, 0x19, 0x29]);
 
     // Fallback when ID not found
-    const fallbackColors = resolveEffectivePaletteColors(
-      'nonexistent',
-      [palA],
-      1,
-    );
+    const fallbackColors = resolveEffectivePaletteColors('nonexistent', [palA], 1);
     expect(fallbackColors).toHaveLength(4);
   });
 
   it('analyzes scene palettes and counts active vs unassigned palettes', () => {
-    const palA: PaletteDefinition = {
-      id: 'pal_a',
-      name: 'A',
-      colors: [0x0f, 1, 2, 3] as unknown as NesPalette,
-    };
-    const palB: PaletteDefinition = {
-      id: 'pal_b',
-      name: 'B',
-      colors: [0x0f, 4, 5, 6] as unknown as NesPalette,
-    };
-    const palC: PaletteDefinition = {
-      id: 'pal_c',
-      name: 'C',
-      colors: [0x0f, 7, 8, 9] as unknown as NesPalette,
-    };
-    const palD: PaletteDefinition = {
-      id: 'pal_d',
-      name: 'D',
-      colors: [0x0f, 10, 11, 12] as unknown as NesPalette,
-    };
-    const palE: PaletteDefinition = {
-      id: 'pal_e',
-      name: 'E',
-      colors: [0x0f, 13, 14, 15] as unknown as NesPalette,
-    };
+    const palA: PaletteDefinition = { id: 'pal_a', name: 'A', colors: [0x0f, 1, 2, 3] as unknown as NesPalette };
+    const palB: PaletteDefinition = { id: 'pal_b', name: 'B', colors: [0x0f, 4, 5, 6] as unknown as NesPalette };
+    const palC: PaletteDefinition = { id: 'pal_c', name: 'C', colors: [0x0f, 7, 8, 9] as unknown as NesPalette };
+    const palD: PaletteDefinition = { id: 'pal_d', name: 'D', colors: [0x0f, 10, 11, 12] as unknown as NesPalette };
+    const palE: PaletteDefinition = { id: 'pal_e', name: 'E', colors: [0x0f, 13, 14, 15] as unknown as NesPalette };
 
     const palettes = [palA, palB, palC, palD, palE];
     const activeSlots = ['pal_a', 'pal_b', 'pal_c', 'pal_d'];
 
     // 3 required, all active
-    const analysis1 = analyzeScenePalettes(
-      ['pal_a', 'pal_b', 'pal_a'],
-      activeSlots,
-      palettes,
-    );
+    const analysis1 = analyzeScenePalettes(['pal_a', 'pal_b', 'pal_a'], activeSlots, palettes);
     expect(analysis1.requiredCount).toBe(2);
     expect(analysis1.activeCount).toBe(2);
     expect(analysis1.unassignedPaletteIds).toHaveLength(0);
@@ -226,21 +198,11 @@ describe('palette-manager domain module', () => {
     ];
     const activeSlots = ['pal_hero', 'pal_bat', null, null];
 
-    const heroRefs = findPaletteUsageReferences(
-      'pal_hero',
-      animations,
-      activeSlots,
-    );
+    const heroRefs = findPaletteUsageReferences('pal_hero', animations, activeSlots);
     expect(heroRefs.some((r) => r.type === 'slot')).toBe(true);
-    expect(heroRefs.some((r) => r.type === 'entity' && r.name === 'Hero')).toBe(
-      true,
-    );
+    expect(heroRefs.some((r) => r.type === 'entity' && r.name === 'Hero')).toBe(true);
 
-    const unusedRefs = findPaletteUsageReferences(
-      'pal_unused',
-      animations,
-      activeSlots,
-    );
+    const unusedRefs = findPaletteUsageReferences('pal_unused', animations, activeSlots);
     expect(unusedRefs).toHaveLength(0);
   });
 });

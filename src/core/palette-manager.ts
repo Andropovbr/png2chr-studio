@@ -157,16 +157,12 @@ export function analyzeScenePalettes(
   palettes: readonly PaletteDefinition[],
 ): ScenePaletteAnalysis {
   const distinctSet = new Set(
-    requiredPaletteIds.filter(
-      (id) => typeof id === 'string' && id.trim() !== '',
-    ),
+    requiredPaletteIds.filter((id) => typeof id === 'string' && id.trim() !== ''),
   );
   const distinctPaletteIds = Array.from(distinctSet);
 
   const activeSlotSet = new Set(
-    activeSlots.filter(
-      (id): id is string => typeof id === 'string' && id.trim() !== '',
-    ),
+    activeSlots.filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
   );
 
   const activeCount = distinctPaletteIds.filter((id) =>
