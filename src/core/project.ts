@@ -12,7 +12,7 @@ import {
   type RandomPlayfieldFeature,
 } from './random-playfield';
 import type { AnimationPlayback } from './animation-model';
-import type { ProjectMode } from '../ui/types';
+import type { ProjectMode } from './project-mode';
 import {
   type ProjectScenePreviewConfig,
   type ScenePreviewInstance,

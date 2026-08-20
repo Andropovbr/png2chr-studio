@@ -5,6 +5,7 @@ import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
 import type { PaletteDefinition } from '../core/palette-manager';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
+import type { ProjectMode } from '../core/project-mode';
 import type { FrameDetectionResult } from '../core/frame-detection';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
@@ -21,7 +22,7 @@ export interface DisplayError {
   readonly colors?: readonly string[];
 }
 
-export type ProjectMode = 'tileset' | 'playfield' | 'animation';
+export type { ProjectMode } from '../core/project-mode';
 export type PreviewTool = 'palette' | 'paint-collision' | 'erase-collision';
 export type SourceKind = 'png' | 'chr' | 'nes';
 
@@ -57,6 +58,7 @@ export interface AnimationItemSetting {
   readonly frameIndices: readonly number[];
   readonly frameDurations: readonly number[];
   readonly framePalettes?: readonly (number | null)[];
+  /** Optional presentation projection for the animation editor. Not persisted. */
   readonly collapsed?: boolean;
   /** Last automatic frame-grid detection result for this animation's source. */
   readonly frameDetection?: FrameDetectionResult | null;
@@ -79,8 +81,8 @@ export interface AnimationSettings {
   readonly patternTable: 0 | 1;
   /** Placement for a base CHR shorter than 8 KiB. */
   readonly destinationPatternTable: 0 | 1;
+  /** Optional presentation projections supplied to the animation editor. */
   readonly mappingCollapsed?: boolean;
-  /** UI-only flags (not persisted to any export). */
   readonly configCollapsed?: boolean;
   readonly paletteCollapsed?: boolean;
   readonly quantizationCollapsed?: boolean;
@@ -100,7 +102,6 @@ export interface ProjectView {
   readonly collisionCells: Uint8Array;
   readonly activeCollisionType: CollisionType;
   readonly randomPlayfieldFeatures: readonly RandomPlayfieldFeature[];
-  readonly previewTool: PreviewTool;
   readonly paletteSet: NesPaletteSet;
   readonly palettes?: readonly PaletteDefinition[];
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
@@ -108,18 +109,9 @@ export interface ProjectView {
   readonly pixelOverrides: Uint8Array;
   readonly activePaletteIndex: number;
   readonly activeColorIndex: number;
-  readonly showPaletteNumbers: boolean;
-  readonly zoomedPaletteRegion: number | null;
-  readonly paletteColorTarget: {
-    readonly paletteIndex: number;
-    readonly colorIndex: number;
-  };
   readonly animation: AnimationSettings;
   readonly scenePreview?: ProjectScenePreviewConfig;
   readonly quantizationSettings: QuantizationSettings;
-  readonly quantizationCollapsed?: boolean;
-  readonly error: DisplayError | null;
-  readonly loading: boolean;
 }
 
 export function displayErrorFromPlayfield(

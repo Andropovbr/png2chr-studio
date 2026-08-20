@@ -105,6 +105,12 @@ import {
 import { createStickyNav } from './ui/sticky-nav';
 import { createTileGrid } from './ui/tile-grid';
 import {
+  applyDerivedStatusUpdate,
+  applyProjectUpdate,
+  applyWorkspaceUpdate,
+  type StateUpdater,
+} from './ui/state-update';
+import {
   displayErrorFromAnalysis,
   displayErrorFromInes,
   displayErrorFromPlayfield,
@@ -115,6 +121,12 @@ import {
   type ProjectMode,
   type ProjectView,
 } from './ui/types';
+import {
+  createDerivedStatus,
+  createWorkspaceState,
+  type DerivedStatus,
+  type WorkspaceState,
+} from './ui/workspace-state';
 import { downloadBytes, downloadText } from './utils/download';
 import {
   toAttributeTableFileName,
@@ -167,7 +179,6 @@ function createDefaultAnimationSettings(): AnimationSettings {
         frameIndices: [],
         frameDurations: [],
         framePalettes: [],
-        collapsed: false,
       },
     ],
     flipDeduplication: true,
@@ -178,7 +189,6 @@ function createDefaultAnimationSettings(): AnimationSettings {
     destinationChr: new Uint8Array(),
     patternTable: 0,
     destinationPatternTable: 0,
-    mappingCollapsed: true,
   };
 }
 
@@ -215,22 +225,18 @@ let project: ProjectView = {
   palettes: defaultInitialPalettes,
   activeSpritePaletteSlots: defaultInitialPalettes.map((p) => p.id),
   paletteAssignments: new Uint8Array(),
-  previewTool: 'palette',
   pixelOverrides: new Uint8Array(),
   activePaletteIndex: 0,
   activeColorIndex: 1,
-  showPaletteNumbers: false,
-  zoomedPaletteRegion: null,
-  paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
   animation: createDefaultAnimationSettings(),
   scenePreview: { instances: [] },
   quantizationSettings: loadQuantizationSettings(settingsStorage),
-  error: null,
-  loading: false,
 };
 
 let projectName = t('defaultProjectName');
 let projectDirty = false;
+let workspace: WorkspaceState = createWorkspaceState();
+let derivedStatus: DerivedStatus = createDerivedStatus();
 
 class PngLoadError extends Error {
   constructor(readonly failure: PngLoadFailure) {
@@ -238,8 +244,32 @@ class PngLoadError extends Error {
   }
 }
 
-function markDirty(): void {
+function updateProject(updater: StateUpdater<ProjectView>): void {
+  const result = applyProjectUpdate(project, updater);
+  project = result.value;
+  if (result.marksProjectDirty) projectDirty = true;
+}
+
+function updateProjectName(name: string): void {
+  if (name === projectName) return;
+  projectName = name;
   projectDirty = true;
+}
+
+function updateWorkspace(updater: StateUpdater<WorkspaceState>): void {
+  workspace = applyWorkspaceUpdate(workspace, updater).value;
+}
+
+function setDerivedStatus(updater: StateUpdater<DerivedStatus>): void {
+  derivedStatus = applyDerivedStatusUpdate(derivedStatus, updater).value;
+}
+
+function resetTransientState(error: DisplayError | null = null): void {
+  workspace = createWorkspaceState(
+    project.activePaletteIndex,
+    project.activeColorIndex,
+  );
+  derivedStatus = createDerivedStatus(error);
 }
 
 const assetFileCache = new Map<string, File>();
@@ -503,18 +533,13 @@ function handleNewProject(): void {
     palettes: defaultPalettes,
     activeSpritePaletteSlots: defaultPalettes.map((p) => p.id),
     paletteAssignments: new Uint8Array(),
-    previewTool: 'palette',
     pixelOverrides: new Uint8Array(),
     activePaletteIndex: 0,
     activeColorIndex: 1,
-    showPaletteNumbers: false,
-    zoomedPaletteRegion: null,
-    paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
     animation: createDefaultAnimationSettings(),
     quantizationSettings: loadQuantizationSettings(settingsStorage),
-    error: null,
-    loading: false,
   };
+  resetTransientState();
   render();
 }
 
@@ -689,7 +714,6 @@ async function loadProjectFile(
           frameDurations,
           framePalettes,
           pixelOverrides: anim.pixelOverrides,
-          collapsed: false,
           frameDetection: detection,
         });
       }
@@ -762,22 +786,14 @@ async function loadProjectFile(
             createDefaultPaletteDefinitions(loaded.palette.paletteSet)
           ).map((p) => p.id),
         paletteAssignments: new Uint8Array(),
-        previewTool: 'palette',
         pixelOverrides: new Uint8Array(),
         activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
         activeColorIndex: loaded.palette.activeColorIndex ?? 1,
-        showPaletteNumbers: false,
-        zoomedPaletteRegion: null,
-        paletteColorTarget: {
-          paletteIndex: loaded.palette.activePaletteIndex ?? 0,
-          colorIndex: loaded.palette.activeColorIndex ?? 1,
-        },
         animation,
         scenePreview: loaded.scenePreview ?? { instances: [] },
         quantizationSettings: loaded.settings.quantization,
-        error: restoredPngError ?? missingError,
-        loading: false,
       };
+      resetTransientState(restoredPngError ?? missingError);
       render();
       return;
     }
@@ -979,22 +995,14 @@ async function loadProjectFile(
           createDefaultPaletteDefinitions(loaded.palette.paletteSet)
         ).map((p) => p.id),
       paletteAssignments,
-      previewTool: 'palette',
       pixelOverrides,
       activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
       activeColorIndex: loaded.palette.activeColorIndex ?? 1,
-      showPaletteNumbers: false,
-      zoomedPaletteRegion: null,
-      paletteColorTarget: {
-        paletteIndex: loaded.palette.activePaletteIndex ?? 0,
-        colorIndex: loaded.palette.activeColorIndex ?? 1,
-      },
       animation: createDefaultAnimationSettings(),
       scenePreview: loaded.scenePreview ?? { instances: [] },
       quantizationSettings: loaded.settings.quantization,
-      error: restoredPngError ?? missingError,
-      loading: false,
     };
+    resetTransientState(restoredPngError ?? missingError);
     render();
   } catch {
     setProjectError({ key: 'projectInvalidJson' });
@@ -1006,8 +1014,7 @@ function createProjectHeader(): HTMLElement {
     projectName,
     isDirty: projectDirty,
     onProjectNameChange: (name) => {
-      projectName = name;
-      projectDirty = true;
+      updateProjectName(name);
       render();
     },
     onNewProject: handleNewProject,
@@ -1137,11 +1144,12 @@ async function changeQuantizationSettings(
   quantizationPreviewsLoading = false;
   const source = project.sourceImage;
   if (source === null || project.sourceKind !== 'png') {
-    project = { ...project, quantizationSettings: settings };
+    updateProject({ ...project, quantizationSettings: settings });
     render();
     return;
   }
-  project = { ...project, quantizationSettings: settings, loading: true };
+  updateProject({ ...project, quantizationSettings: settings });
+  setDerivedStatus({ ...derivedStatus, loading: true });
   render();
   await new Promise<void>((resolve) => {
     window.setTimeout(resolve, 0);
@@ -1206,25 +1214,23 @@ async function changeQuantizationSettings(
         settings.colorDistanceMode,
       );
     }
-    project = {
+    updateProject({
       ...project,
       indexedImage,
       tiles: extractTiles(mappedImage),
       paletteAssignments: assignments,
       pixelOverrides,
       animation,
-      loading: false,
-      error: null,
-    };
+    });
+    setDerivedStatus({ error: null, loading: false });
   } catch (error: unknown) {
-    project = {
-      ...project,
+    setDerivedStatus({
       loading: false,
       error:
         error instanceof ImageAnalysisError
           ? displayErrorFromAnalysis(error)
           : { key: 'invalidPixelData' },
-    };
+    });
   }
   render();
 }
@@ -1237,12 +1243,12 @@ function createProjectQuantizationPanel(): HTMLElement {
     settings: project.quantizationSettings,
     previews: quantizationPreviews,
     previewsLoading: quantizationPreviewsLoading,
-    isCollapsed: project.quantizationCollapsed ?? false,
+    isCollapsed: workspace.quantizationCollapsed,
     onToggleCollapse: () => {
-      project = {
-        ...project,
-        quantizationCollapsed: !(project.quantizationCollapsed ?? false),
-      };
+      updateWorkspace({
+        ...workspace,
+        quantizationCollapsed: !workspace.quantizationCollapsed,
+      });
       render();
     },
     onSettingsChange: (settings) => void changeQuantizationSettings(settings),
@@ -1254,7 +1260,7 @@ function changeMode(mode: ProjectMode): void {
     mode !== 'tileset' &&
     (project.sourceKind === 'chr' || project.sourceKind === 'nes')
   ) {
-    project = {
+    updateProject({
       ...project,
       fileName: null,
       sourceKind: null,
@@ -1270,9 +1276,9 @@ function changeMode(mode: ProjectMode): void {
       activeCollisionType: COLLISION_TYPES.solid,
       paletteAssignments: new Uint8Array(),
       pixelOverrides: new Uint8Array(),
-      zoomedPaletteRegion: null,
-      error: null,
-    };
+    });
+    updateWorkspace({ ...workspace, zoomedPaletteRegion: null });
+    setDerivedStatus({ ...derivedStatus, error: null });
     render();
     return;
   }
@@ -1280,7 +1286,7 @@ function changeMode(mode: ProjectMode): void {
     project.indexedImage === null
       ? new Uint8Array()
       : assignmentsForImage(project.indexedImage, mode);
-  project = {
+  updateProject({
     ...project,
     mode,
     deduplicationEnabled:
@@ -1288,8 +1294,8 @@ function changeMode(mode: ProjectMode): void {
     flipDeduplicationEnabled:
       mode === 'playfield' ? false : project.flipDeduplicationEnabled,
     paletteAssignments,
-    zoomedPaletteRegion: null,
-  };
+  });
+  updateWorkspace({ ...workspace, zoomedPaletteRegion: null });
   if (project.sourceKind === 'png' && project.sourceImage !== null) {
     void changeQuantizationSettings(project.quantizationSettings);
   } else {
@@ -1302,12 +1308,12 @@ function createProjectImageInput(): HTMLElement {
     project.fileName,
     project.width,
     project.height,
-    project.loading,
+    derivedStatus.loading,
     project.mode,
     project.randomPlayfieldFeatures,
     changeMode,
     (randomPlayfieldFeatures) => {
-      project = { ...project, randomPlayfieldFeatures };
+      updateProject({ ...project, randomPlayfieldFeatures });
       render();
     },
     (file) => void loadFile(file),
@@ -1342,16 +1348,15 @@ function addAnimation(): void {
     frameIndices: [],
     frameDurations: [],
     framePalettes: [],
-    collapsed: false,
   };
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations: [...project.animation.animations, newAnim],
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
@@ -1371,67 +1376,70 @@ function duplicateAnimation(animId: string): void {
     frameIndices: [...original.frameIndices],
     frameDurations: [...original.frameDurations],
     framePalettes: [...(original.framePalettes ?? [])],
-    collapsed: false,
   };
   const list = [...project.animation.animations];
   list.splice(index + 1, 0, copy);
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations: list,
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
 function removeAnimation(animId: string): void {
   if (project.animation.animations.length <= 1) return;
   const remaining = project.animation.animations.filter((a) => a.id !== animId);
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations: remaining,
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
 function toggleAnimationCollapse(animId: string): void {
-  project = {
-    ...project,
+  updateWorkspace({
+    ...workspace,
     animation: {
-      ...project.animation,
-      animations: project.animation.animations.map((a) =>
-        a.id === animId ? { ...a, collapsed: !a.collapsed } : a,
-      ),
+      ...workspace.animation,
+      collapsedAnimationIds: workspace.animation.collapsedAnimationIds.includes(
+        animId,
+      )
+        ? workspace.animation.collapsedAnimationIds.filter(
+            (id) => id !== animId,
+          )
+        : [...workspace.animation.collapsedAnimationIds, animId],
     },
-  };
+  });
   render();
 }
 
 function toggleAnimationConfigCollapse(): void {
-  project = {
-    ...project,
+  updateWorkspace({
+    ...workspace,
     animation: {
-      ...project.animation,
-      configCollapsed: !(project.animation.configCollapsed ?? false),
+      ...workspace.animation,
+      configCollapsed: !workspace.animation.configCollapsed,
     },
-  };
+  });
   render();
 }
 
 function toggleAnimationPaletteCollapse(): void {
-  project = {
-    ...project,
+  updateWorkspace({
+    ...workspace,
     animation: {
-      ...project.animation,
-      paletteCollapsed: !(project.animation.paletteCollapsed ?? false),
+      ...workspace.animation,
+      paletteCollapsed: !workspace.animation.paletteCollapsed,
     },
-  };
+  });
   render();
 }
 
@@ -1439,13 +1447,12 @@ function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
 ): void {
-  markDirty();
   const manualDimensions = 'frameWidth' in patch || 'frameHeight' in patch;
   const resolvedPatch =
     manualDimensions && !('frameDetection' in patch)
       ? { ...patch, frameDetection: null }
       : patch;
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
@@ -1479,32 +1486,30 @@ function updateAnimation(
         return updated;
       }),
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
 function addSceneInstance(instance: ScenePreviewInstance): void {
-  markDirty();
   const currentInstances = project.scenePreview?.instances ?? [];
-  project = {
+  updateProject({
     ...project,
     scenePreview: {
       instances: [...currentInstances, instance],
     },
-  };
+  });
   render();
 }
 
 function removeSceneInstance(instanceId: string): void {
-  markDirty();
   const currentInstances = project.scenePreview?.instances ?? [];
-  project = {
+  updateProject({
     ...project,
     scenePreview: {
       instances: currentInstances.filter((inst) => inst.id !== instanceId),
     },
-  };
+  });
   render();
 }
 
@@ -1512,16 +1517,15 @@ function updateSceneInstance(
   instanceId: string,
   patch: Partial<ScenePreviewInstance>,
 ): void {
-  markDirty();
   const currentInstances = project.scenePreview?.instances ?? [];
-  project = {
+  updateProject({
     ...project,
     scenePreview: {
       instances: currentInstances.map((inst) =>
         inst.id === instanceId ? { ...inst, ...patch } : inst,
       ),
     },
-  };
+  });
   render();
 }
 
@@ -1533,8 +1537,7 @@ function setTilePixel(
   pixelY: number,
   colorIndex: number,
 ): void {
-  markDirty();
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
@@ -1554,18 +1557,13 @@ function setTilePixel(
         };
       }),
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
-function resetTile(
-  animationId: string,
-  tileX: number,
-  tileY: number,
-): void {
-  markDirty();
-  project = {
+function resetTile(animationId: string, tileX: number, tileY: number): void {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
@@ -1578,8 +1576,8 @@ function resetTile(
         };
       }),
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
@@ -1588,17 +1586,16 @@ async function loadAnimationSourceFile(
   file: File,
 ): Promise<void> {
   cacheAssetFile(file);
-  markDirty();
   const pngLoad = await readAndDecodePng(file, decodePngBlob);
   if (!pngLoad.success) {
     console.error('Animation PNG load failed', {
       fileName: file.name,
       failure: pngLoad.failure,
     });
-    project = {
-      ...project,
+    setDerivedStatus({
+      ...derivedStatus,
       error: displayPngLoadError(pngLoad.failure),
-    };
+    });
     render();
     return;
   }
@@ -1667,26 +1664,26 @@ async function loadAnimationSourceFile(
         framePalettes,
       };
     });
-    project = {
+    updateProject({
       ...project,
       animation: {
         ...project.animation,
         animations,
       },
-      error: null,
-    };
+    });
+    setDerivedStatus({ ...derivedStatus, error: null });
   } catch (error: unknown) {
     console.error('Animation PNG processing failed', {
       fileName: file.name,
       error,
     });
-    project = {
-      ...project,
+    setDerivedStatus({
+      ...derivedStatus,
       error:
         error instanceof ImageAnalysisError
           ? displayErrorFromAnalysis(error)
           : { key: 'imageProcessingFailed' },
-    };
+    });
   }
   render();
 }
@@ -1746,14 +1743,14 @@ function toggleAnimationFrame(animId: string, frameIndex: number): void {
       framePalettes: [...(anim.framePalettes ?? []), null],
     };
   });
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations,
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
@@ -1794,13 +1791,13 @@ function moveAnimationFrame(
       framePalettes: palettes,
     };
   });
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations,
     },
-  };
+  });
   render();
 }
 
@@ -1820,13 +1817,13 @@ function setAnimationFrameDuration(
       frameDurations: durations,
     };
   });
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations,
     },
-  };
+  });
   render();
 }
 
@@ -1836,7 +1833,6 @@ function setAnimationFramePalette(
   paletteIndex: number | null,
   paletteId?: string | null,
 ): void {
-  markDirty();
   const animations = project.animation.animations.map((anim) => {
     if (anim.id !== animId) return anim;
     const framePalettes = [...(anim.framePalettes ?? [])];
@@ -1853,7 +1849,7 @@ function setAnimationFramePalette(
       paletteId !== undefined
         ? paletteId
         : paletteIndex !== null && project.palettes
-          ? project.palettes[paletteIndex]?.id ?? null
+          ? (project.palettes[paletteIndex]?.id ?? null)
           : null;
 
     return {
@@ -1862,14 +1858,14 @@ function setAnimationFramePalette(
       framePaletteIds,
     };
   });
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations,
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
@@ -1882,13 +1878,13 @@ function applyDefaultDurationToAll(animId: string): void {
       frameDurations: durations,
     };
   });
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations,
     },
-  };
+  });
   render();
 }
 
@@ -1909,46 +1905,45 @@ function removeFrameFromAnimation(animId: string, frameIndex: number): void {
       framePalettes,
     };
   });
-  project = {
+  updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations,
     },
-    error: null,
-  };
+  });
+  setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
 
 async function loadAnimationDestination(file: File): Promise<void> {
   cacheAssetFile(file);
-  markDirty();
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (bytes.length === 0 || bytes.length % 16 !== 0 || bytes.length > 8192) {
       throw new RangeError('Invalid animation destination CHR.');
     }
-    project = {
+    updateProject({
       ...project,
       animation: {
         ...project.animation,
         destinationChrName: file.name,
         destinationChr: bytes,
       },
-      error: null,
-    };
+    });
+    setDerivedStatus({ ...derivedStatus, error: null });
   } catch {
-    project = {
-      ...project,
+    setDerivedStatus({
+      ...derivedStatus,
       error: { key: 'animationErrorDestination' },
-    };
+    });
   }
   render();
 }
 
 function renderAnimationWorkspace(): void {
-  const workspace = document.createElement('div');
-  workspace.className = 'workspace animation-workspace';
+  const workspaceElement = document.createElement('div');
+  workspaceElement.className = 'workspace animation-workspace';
   let model: AnimationProjectModel | null = null;
   let modelError: AnimationModelError | null = null;
 
@@ -2007,8 +2002,20 @@ function renderAnimationWorkspace(): void {
     else throw error;
   }
 
+  const animationEditorSettings: AnimationSettings = {
+    ...project.animation,
+    animations: project.animation.animations.map((animation) => ({
+      ...animation,
+      collapsed: workspace.animation.collapsedAnimationIds.includes(
+        animation.id,
+      ),
+    })),
+    configCollapsed: workspace.animation.configCollapsed,
+    paletteCollapsed: workspace.animation.paletteCollapsed,
+    mappingCollapsed: workspace.animation.mappingCollapsed,
+  };
   const editorOptions: AnimationEditorOptions = {
-    settings: project.animation,
+    settings: animationEditorSettings,
     model,
     modelError,
     paletteSet: project.paletteSet,
@@ -2017,18 +2024,27 @@ function renderAnimationWorkspace(): void {
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     scenePreview: project.scenePreview,
     onSettingsChange: (animation: AnimationSettings) => {
-      project = { ...project, animation, error: null };
+      updateProject({
+        ...project,
+        animation: {
+          ...project.animation,
+          flipDeduplication: animation.flipDeduplication,
+          patternTable: animation.patternTable,
+          destinationPatternTable: animation.destinationPatternTable,
+        },
+      });
+      setDerivedStatus({ ...derivedStatus, error: null });
       render();
     },
     onDefaultPaletteIndexChange: (defaultPaletteIndex: number) => {
-      project = {
+      updateProject({
         ...project,
         animation: {
           ...project.animation,
           defaultPaletteIndex,
         },
-        error: null,
-      };
+      });
+      setDerivedStatus({ ...derivedStatus, error: null });
       render();
     },
     onAddAnimation: addAnimation,
@@ -2036,13 +2052,13 @@ function renderAnimationWorkspace(): void {
     onRemoveAnimation: removeAnimation,
     onToggleAnimationCollapse: toggleAnimationCollapse,
     onToggleMappingCollapse: () => {
-      project = {
-        ...project,
+      updateWorkspace({
+        ...workspace,
         animation: {
-          ...project.animation,
-          mappingCollapsed: !(project.animation.mappingCollapsed ?? true),
+          ...workspace.animation,
+          mappingCollapsed: !workspace.animation.mappingCollapsed,
         },
-      };
+      });
       render();
     },
     onToggleConfigCollapse: toggleAnimationConfigCollapse,
@@ -2071,23 +2087,21 @@ function renderAnimationWorkspace(): void {
         name: name ?? `Palette ${String(currentPalettes.length + 1)}`,
         colors: [0x0f, 0x00, 0x10, 0x30],
       };
-      project = {
+      updateProject({
         ...project,
         palettes: [...currentPalettes, newDef],
-      };
-      projectDirty = true;
+      });
       render();
     },
     onUpdatePaletteName: (paletteId, name) => {
       const currentPalettes =
         project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-      project = {
+      updateProject({
         ...project,
         palettes: currentPalettes.map((p) =>
           p.id === paletteId ? { ...p, name } : p,
         ),
-      };
-      projectDirty = true;
+      });
       render();
     },
     onUpdatePaletteColorDef: (paletteId, colorSlotIndex, nesColor) => {
@@ -2102,7 +2116,7 @@ function renderAnimationWorkspace(): void {
       const slots =
         project.activeSpritePaletteSlots ??
         updatedPalettes.slice(0, 4).map((p) => p.id);
-      project = {
+      updateProject({
         ...project,
         palettes: updatedPalettes,
         paletteSet: resolveActivePaletteSet(
@@ -2110,8 +2124,7 @@ function renderAnimationWorkspace(): void {
           slots,
           project.paletteSet,
         ),
-      };
-      projectDirty = true;
+      });
       render();
     },
     onDuplicatePalette: (paletteId) => {
@@ -2120,11 +2133,10 @@ function renderAnimationWorkspace(): void {
       const source = currentPalettes.find((p) => p.id === paletteId);
       if (source) {
         const dup = duplicatePaletteDefinition(source);
-        project = {
+        updateProject({
           ...project,
           palettes: [...currentPalettes, dup],
-        };
-        projectDirty = true;
+        });
         render();
       }
     },
@@ -2136,7 +2148,7 @@ function renderAnimationWorkspace(): void {
         currentPalettes.slice(0, 4).map((p) => p.id);
       const newSlots = currentSlots.map((id) => (id === paletteId ? null : id));
       const updatedPalettes = currentPalettes.filter((p) => p.id !== paletteId);
-      project = {
+      updateProject({
         ...project,
         palettes: updatedPalettes,
         activeSpritePaletteSlots: newSlots,
@@ -2145,8 +2157,7 @@ function renderAnimationWorkspace(): void {
           newSlots,
           project.paletteSet,
         ),
-      };
-      projectDirty = true;
+      });
       render();
     },
     onUpdateActiveSlot: (slotIndex, paletteId) => {
@@ -2157,7 +2168,7 @@ function renderAnimationWorkspace(): void {
           currentPalettes.slice(0, 4).map((p) => p.id)),
       ];
       currentSlots[slotIndex] = paletteId;
-      project = {
+      updateProject({
         ...project,
         activeSpritePaletteSlots: currentSlots,
         paletteSet: resolveActivePaletteSet(
@@ -2165,23 +2176,22 @@ function renderAnimationWorkspace(): void {
           currentSlots,
           project.paletteSet,
         ),
-      };
-      projectDirty = true;
+      });
       render();
     },
     onSpritePaletteSelectionChange: (
       paletteIndex: number,
       colorIndex: number,
     ) => {
-      project = {
+      updateProject({
         ...project,
         animation: {
           ...project.animation,
           spritePalette: paletteIndex,
           spriteColorIndex: colorIndex,
         },
-        error: null,
-      };
+      });
+      setDerivedStatus({ ...derivedStatus, error: null });
       render();
     },
     onPaletteColorChange: (
@@ -2189,7 +2199,7 @@ function renderAnimationWorkspace(): void {
       colorIndex: number,
       colorCode: number,
     ) => {
-      project = {
+      updateProject({
         ...project,
         paletteSet: setNesPaletteColor(
           project.paletteSet,
@@ -2202,38 +2212,40 @@ function renderAnimationWorkspace(): void {
           spritePalette: paletteIndex,
           spriteColorIndex: colorIndex,
         },
-        error: null,
-      };
+      });
+      setDerivedStatus({ ...derivedStatus, error: null });
       render();
     },
     onDestinationFile: (file: File) => void loadAnimationDestination(file),
     onDestinationClear: () => {
-      markDirty();
-      project = {
+      updateProject({
         ...project,
         animation: {
           ...project.animation,
           destinationChrName: null,
           destinationChr: new Uint8Array(),
         },
-        error: null,
-      };
+      });
+      setDerivedStatus({ ...derivedStatus, error: null });
       render();
     },
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,
   };
 
-  workspace.append(...createAnimationEditor(editorOptions));
-  if (project.error !== null) {
+  workspaceElement.append(...createAnimationEditor(editorOptions));
+  if (derivedStatus.error !== null) {
     const error = document.createElement('section');
     error.className = 'panel error-panel animation-error-panel';
     const heading = document.createElement('h2');
     heading.textContent = t('errorTitle');
     const message = document.createElement('p');
-    message.textContent = t(project.error.key, project.error.variables);
+    message.textContent = t(
+      derivedStatus.error.key,
+      derivedStatus.error.variables,
+    );
     error.append(heading, message);
-    workspace.append(error);
+    workspaceElement.append(error);
   }
   const nav = createStickyNav({
     mode: 'animation',
@@ -2242,7 +2254,7 @@ function renderAnimationWorkspace(): void {
       changeMode(m);
     },
   });
-  app.replaceChildren(createProjectHeader(), nav, workspace);
+  app.replaceChildren(createProjectHeader(), nav, workspaceElement);
 }
 
 function render(): void {
@@ -2296,7 +2308,7 @@ function render(): void {
     : mappedTiles;
   let nametable: Uint8Array | null = null;
   let attributeTable: Uint8Array | null = null;
-  let conversionError = project.error;
+  let conversionError = derivedStatus.error;
 
   if (project.mode === 'playfield' && mappedImage !== null) {
     try {
@@ -2317,8 +2329,8 @@ function render(): void {
   }
 
   const chr = mappedImage === null ? null : padChrRom(encodeChr(visibleTiles));
-  const workspace = document.createElement('div');
-  workspace.className = 'workspace';
+  const workspaceElement = document.createElement('div');
+  workspaceElement.className = 'workspace';
   const editingWorkspace = document.createElement('div');
   editingWorkspace.className = 'playfield-editing-workspace';
   const projectImageInput = createProjectImageInput();
@@ -2344,28 +2356,28 @@ function render(): void {
     paletteAssignments:
       project.indexedImage === null ? null : project.paletteAssignments,
     paletteRegionSize: project.indexedImage === null ? null : regionSize,
-    showPaletteNumbers: project.showPaletteNumbers,
-    selectedPaletteRegion: project.zoomedPaletteRegion,
-    activeTool: project.previewTool,
+    showPaletteNumbers: workspace.showPaletteNumbers,
+    selectedPaletteRegion: workspace.zoomedPaletteRegion,
+    activeTool: workspace.previewTool,
     activeCollisionType: project.activeCollisionType,
     onActiveToolChange: (previewTool) => {
-      project = { ...project, previewTool };
+      updateWorkspace({ ...workspace, previewTool });
       render();
     },
     onCollisionChange: (collisionCells) => {
-      project = { ...project, collisionCells };
+      updateProject({ ...project, collisionCells });
       render();
     },
     onCollisionTypeChange: (activeCollisionType) => {
-      project = {
+      updateProject({
         ...project,
         activeCollisionType,
-        previewTool: 'paint-collision',
-      };
+      });
+      updateWorkspace({ ...workspace, previewTool: 'paint-collision' });
       render();
     },
     onPaletteRegionSelect: (zoomedPaletteRegion) => {
-      project = { ...project, zoomedPaletteRegion };
+      updateWorkspace({ ...workspace, zoomedPaletteRegion });
       render();
     },
   });
@@ -2376,31 +2388,31 @@ function render(): void {
     regionSize,
     activePaletteIndex: project.activePaletteIndex,
     activeColorIndex: project.activeColorIndex,
-    showPaletteNumbers: project.showPaletteNumbers,
-    zoomedRegionIndex: project.zoomedPaletteRegion,
-    colorTarget: project.paletteColorTarget,
+    showPaletteNumbers: workspace.showPaletteNumbers,
+    zoomedRegionIndex: workspace.zoomedPaletteRegion,
+    colorTarget: workspace.paletteColorTarget,
     onActivePaletteChange: (activePaletteIndex) => {
-      project = { ...project, activePaletteIndex };
+      updateProject({ ...project, activePaletteIndex });
       render();
     },
     onActiveColorChange: (activeColorIndex) => {
-      project = { ...project, activeColorIndex };
+      updateProject({ ...project, activeColorIndex });
       render();
     },
     onShowPaletteNumbersChange: (showPaletteNumbers) => {
-      project = { ...project, showPaletteNumbers };
+      updateWorkspace({ ...workspace, showPaletteNumbers });
       render();
     },
     onZoomedRegionChange: (zoomedPaletteRegion) => {
-      project = { ...project, zoomedPaletteRegion };
+      updateWorkspace({ ...workspace, zoomedPaletteRegion });
       render();
     },
     onColorTargetChange: (paletteColorTarget) => {
-      project = { ...project, paletteColorTarget };
+      updateWorkspace({ ...workspace, paletteColorTarget });
       render();
     },
     onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
-      project = {
+      updateProject({
         ...project,
         paletteSet: setNesPaletteColor(
           project.paletteSet,
@@ -2408,13 +2420,13 @@ function render(): void {
           colorIndex,
           colorCode,
         ),
-      };
+      });
       render();
     },
     pixelOverrides: project.pixelOverrides,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
-      project = { ...project, pixelOverrides, paletteAssignments };
+      updateProject({ ...project, pixelOverrides, paletteAssignments });
       render();
     },
   });
@@ -2434,19 +2446,19 @@ function render(): void {
     mappedTiles.length,
     project.deduplicationEnabled,
     (enabled) => {
-      project = {
+      updateProject({
         ...project,
         deduplicationEnabled: enabled,
         flipDeduplicationEnabled: enabled
           ? project.flipDeduplicationEnabled
           : false,
-      };
+      });
       render();
     },
     project.mode === 'tileset',
     project.flipDeduplicationEnabled,
     (enabled) => {
-      project = { ...project, flipDeduplicationEnabled: enabled };
+      updateProject({ ...project, flipDeduplicationEnabled: enabled });
       render();
     },
     project.paletteSet,
@@ -2477,7 +2489,7 @@ function render(): void {
     onDownload: downloadBytes,
   });
   exportPanel.id = 'section-export';
-  workspace.append(
+  workspaceElement.append(
     projectImageInput,
     quantizationPanel,
     editingWorkspace,
@@ -2509,7 +2521,7 @@ function render(): void {
       changeMode(m);
     },
   });
-  app.replaceChildren(createProjectHeader(), nav, workspace);
+  app.replaceChildren(createProjectHeader(), nav, workspaceElement);
 }
 
 function setProjectError(error: DisplayError): void {
@@ -2517,9 +2529,8 @@ function setProjectError(error: DisplayError): void {
     ...project,
     indexedImage: null,
     tiles: [],
-    error,
-    loading: false,
   };
+  setDerivedStatus({ error, loading: false });
   render();
 }
 
@@ -2566,16 +2577,11 @@ async function loadFile(file: File): Promise<void> {
     return;
   }
 
-  markDirty();
   const isChrFile = lowerCaseName.endsWith('.chr');
   const isNesFile = lowerCaseName.endsWith('.nes');
   const isPngFile = lowerCaseName.endsWith('.png');
   if ((isChrFile || isNesFile) && project.mode !== 'tileset') {
-    project = {
-      ...project,
-      error: { key: 'chrTilesetOnly' },
-      loading: false,
-    };
+    setDerivedStatus({ error: { key: 'chrTilesetOnly' }, loading: false });
     render();
     return;
   }
@@ -2591,9 +2597,9 @@ async function loadFile(file: File): Promise<void> {
   const flipDeduplicationEnabled = project.flipDeduplicationEnabled;
   const paletteSet = project.paletteSet;
   const activePaletteIndex = project.activePaletteIndex;
-  const paletteColorTarget = project.paletteColorTarget;
+  const paletteColorTarget = workspace.paletteColorTarget;
   const activeColorIndex = project.activeColorIndex;
-  const showPaletteNumbers = project.showPaletteNumbers;
+  const showPaletteNumbers = workspace.showPaletteNumbers;
   const randomPlayfieldFeatures = project.randomPlayfieldFeatures;
   const sourceSymbolPrefix = normalizeCIdentifier(
     file.name.replace(/\.[^.]*$/, ''),
@@ -2606,7 +2612,7 @@ async function loadFile(file: File): Promise<void> {
         }
       : project.animation;
   const quantizationSettings = project.quantizationSettings;
-  project = {
+  updateProject({
     fileName: file.name,
     sourceKind: isChrFile
       ? 'chr'
@@ -2628,18 +2634,20 @@ async function loadFile(file: File): Promise<void> {
     randomPlayfieldFeatures,
     paletteSet,
     paletteAssignments: new Uint8Array(),
-    previewTool: 'palette',
     pixelOverrides: new Uint8Array(),
     activePaletteIndex,
     activeColorIndex,
+    animation,
+    quantizationSettings,
+  });
+  updateWorkspace({
+    ...workspace,
+    previewTool: 'palette',
     showPaletteNumbers,
     zoomedPaletteRegion: null,
     paletteColorTarget,
-    animation,
-    quantizationSettings,
-    error: null,
-    loading: true,
-  };
+  });
+  setDerivedStatus({ error: null, loading: true });
   render();
 
   if (!isChrFile && !isNesFile && (!isPngFile || file.type !== 'image/png')) {
@@ -2669,7 +2677,7 @@ async function loadFile(file: File): Promise<void> {
       const indexedImage = chrTilesToIndexedImage(tiles, previewColors);
       const paletteAssignments = assignmentsForImage(indexedImage, 'tileset');
       const pixelOverrides = indexedImage.pixels.slice();
-      project = {
+      updateProject({
         ...project,
         width: indexedImage.width,
         height: indexedImage.height,
@@ -2677,9 +2685,8 @@ async function loadFile(file: File): Promise<void> {
         tiles,
         paletteAssignments,
         pixelOverrides,
-        error: null,
-        loading: false,
-      };
+      });
+      setDerivedStatus({ error: null, loading: false });
       render();
     } catch (error: unknown) {
       if (error instanceof InesRomError) {
@@ -2713,12 +2720,12 @@ async function loadFile(file: File): Promise<void> {
     return;
   }
 
-  project = {
+  updateProject({
     ...project,
     width: imageData.width,
     height: imageData.height,
     sourceImage: imageData,
-  };
+  });
 
   try {
     const indexedImage = quantizePngSource(
@@ -2781,7 +2788,6 @@ async function loadFile(file: File): Promise<void> {
                   frameIndices: [],
                   frameDurations: [],
                   framePalettes: [],
-                  collapsed: false,
                   frameDetection: detection,
                 },
               ]
@@ -2800,16 +2806,15 @@ async function loadFile(file: File): Promise<void> {
       );
     }
     const tiles = extractTiles(mappedImage);
-    project = {
+    updateProject({
       ...project,
       indexedImage,
       tiles,
       paletteAssignments,
       pixelOverrides,
       animation: nextAnimation,
-      error: null,
-      loading: false,
-    };
+    });
+    setDerivedStatus({ error: null, loading: false });
     render();
   } catch (error: unknown) {
     console.error('PNG processing failed', { fileName: file.name, error });
@@ -2863,7 +2868,7 @@ function generatePlayfield(): void {
     false,
     project.quantizationSettings.colorDistanceMode,
   );
-  project = {
+  updateProject({
     fileName: 'random-playfield.png',
     sourceKind: 'png',
     width: indexedImage.width,
@@ -2879,18 +2884,13 @@ function generatePlayfield(): void {
     randomPlayfieldFeatures: project.randomPlayfieldFeatures,
     paletteSet,
     paletteAssignments,
-    previewTool: 'palette',
     pixelOverrides,
     activePaletteIndex: 0,
     activeColorIndex: 1,
-    showPaletteNumbers: false,
-    zoomedPaletteRegion: null,
-    paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
     animation: project.animation,
     quantizationSettings: project.quantizationSettings,
-    error: null,
-    loading: false,
-  };
+  });
+  resetTransientState();
   render();
 }
 

@@ -33,6 +33,22 @@ be reopened with its original asset available.
 | 10   | Remove the base CHR, save, and reopen again.                                               | No base CHR is restored and its occupancy/reference do not reappear.                                                                                             |
 | 11   | Attempt to load an invalid or corrupt file labelled as PNG, then load the valid PNG again. | A visible load error is shown for the invalid PNG; the valid PNG then loads normally and the application remains usable.                                         |
 
+## State-boundary checks
+
+After opening or saving a project so the dirty marker is clear:
+
+1. Collapse and expand quantization, animation configuration, palette, mapping,
+   or individual animation panels. The project must remain clean.
+2. Change the active preview tool, palette-number overlay, or zoomed palette
+   region. The project must remain clean.
+3. Change a palette color, assignment, pixel override, collision cell,
+   animation frame/duration, CHR destination, or project name. The project must
+   show the dirty marker.
+4. Save and reopen the project. Persistable edits must be restored; collapsed
+   panels and other workspace-only state may reset to defaults.
+5. Trigger a recoverable load/processing error. Showing or clearing the error
+   alone must not mark an otherwise clean project dirty.
+
 ## Automated counterpart
 
 Run these checks before or alongside the manual flow:

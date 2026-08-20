@@ -269,6 +269,11 @@ src/
 
 The `core` directory does not access the DOM or Canvas API, which keeps conversion behavior deterministic and straightforward to test.
 
+The browser orchestrator keeps persistable project changes separate from
+workspace-only interaction state and derived loading/error status. See
+[`docs/project-state-boundaries.md`](docs/project-state-boundaries.md) for the
+state ownership and dirty-tracking rules that UI changes must preserve.
+
 ## Roadmap
 
 Possible future versions may add custom collision types, slopes, rotation-aware
