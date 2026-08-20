@@ -14,16 +14,16 @@ The application runs locally in the browser and should remain lightweight, under
 
 When working on this repository:
 
-* Prefer simple and explicit solutions over clever abstractions.
-* Preserve existing behavior unless the task intentionally changes it.
-* Avoid large unrelated refactors while implementing a focused change.
-* Reuse existing project patterns before introducing new architectural concepts.
-* Keep NES hardware constraints visible in the domain model instead of hiding them behind UI assumptions.
-* Treat exported files and metadata as interfaces consumed by external projects.
-* Maintain backward compatibility where practical, especially for persisted project data and exported formats.
-* Do not silently change file formats or semantics.
-* Avoid adding dependencies when the existing stack or browser APIs can reasonably solve the problem.
-* Keep the application usable without a backend or external runtime service.
+- Prefer simple and explicit solutions over clever abstractions.
+- Preserve existing behavior unless the task intentionally changes it.
+- Avoid large unrelated refactors while implementing a focused change.
+- Reuse existing project patterns before introducing new architectural concepts.
+- Keep NES hardware constraints visible in the domain model instead of hiding them behind UI assumptions.
+- Treat exported files and metadata as interfaces consumed by external projects.
+- Maintain backward compatibility where practical, especially for persisted project data and exported formats.
+- Do not silently change file formats or semantics.
+- Avoid adding dependencies when the existing stack or browser APIs can reasonably solve the problem.
+- Keep the application usable without a backend or external runtime service.
 
 The goal is not architectural perfection. The goal is reliable software that remains understandable as the project grows.
 
@@ -51,18 +51,18 @@ NES hardware limitations are part of the application's domain and should be trea
 
 Examples include:
 
-* 8×8 tiles;
-* 2 bits per pixel;
-* four colors per palette;
-* sprite/background palette restrictions;
-* 256 tile indexes per pattern table;
-* two 4 KiB pattern tables in an 8 KiB CHR-ROM;
-* OAM-local tile indexes;
-* sprite and background pattern-table selection;
-* nametable and Attribute Table limitations;
-* sprite-per-scanline limitations where relevant;
-* CHR capacity and occupancy;
-* mapper-specific limitations when ROM support is involved.
+- 8×8 tiles;
+- 2 bits per pixel;
+- four colors per palette;
+- sprite/background palette restrictions;
+- 256 tile indexes per pattern table;
+- two 4 KiB pattern tables in an 8 KiB CHR-ROM;
+- OAM-local tile indexes;
+- sprite and background pattern-table selection;
+- nametable and Attribute Table limitations;
+- sprite-per-scanline limitations where relevant;
+- CHR capacity and occupancy;
+- mapper-specific limitations when ROM support is involved.
 
 Do not remove or bypass hardware validation simply to make an operation succeed.
 
@@ -76,13 +76,13 @@ Treat project files and exported data carefully.
 
 When modifying persistence or exporters:
 
-* preserve existing project data whenever possible;
-* provide migration/default behavior for older project versions when necessary;
-* keep format versions explicit;
-* do not silently reinterpret existing fields;
-* validate indexes, offsets, sizes, and CHR boundaries;
-* ensure exported C/ca65 data remains consistent with the canonical project/JSON representation;
-* ensure physical CHR positions and NES-visible indexes are not accidentally confused.
+- preserve existing project data whenever possible;
+- provide migration/default behavior for older project versions when necessary;
+- keep format versions explicit;
+- do not silently reinterpret existing fields;
+- validate indexes, offsets, sizes, and CHR boundaries;
+- ensure exported C/ca65 data remains consistent with the canonical project/JSON representation;
+- ensure physical CHR positions and NES-visible indexes are not accidentally confused.
 
 Changes affecting exported formats should receive regression tests.
 
@@ -96,17 +96,17 @@ Bug fixes should preferably include a regression test demonstrating the failure 
 
 Prioritize tests around:
 
-* CHR encoding and decoding;
-* tile allocation and reuse;
-* pattern-table boundaries;
-* base CHR handling;
-* deduplication;
-* palette behavior;
-* project persistence and loading;
-* animation metadata;
-* exporters;
-* validation rules;
-* previously reported regressions.
+- CHR encoding and decoding;
+- tile allocation and reuse;
+- pattern-table boundaries;
+- base CHR handling;
+- deduplication;
+- palette behavior;
+- project persistence and loading;
+- animation metadata;
+- exporters;
+- validation rules;
+- previously reported regressions.
 
 Before considering a task complete, run the relevant tests.
 
@@ -122,20 +122,12 @@ A change is not complete merely because it works manually in the browser.
 
 Documentation must evolve together with the code.
 
-**A task is not complete if it leaves relevant documentation knowingly outdated.**
+> **Regra fundamental:** Mudanças que alterem comportamento, arquitetura, formatos, workflows, comandos de desenvolvimento ou funcionalidades documentadas devem atualizar a documentação correspondente no mesmo trabalho/PR.
 
-After every meaningful change, review the documentation affected by that change.
-
-At minimum, inspect:
-
-* `README.md`;
-* relevant files under `docs/`;
-* examples, when applicable;
-* comments describing formats or non-obvious NES behavior.
-
-Update documentation in the same branch/PR when behavior, workflow, architecture, formats, limitations, commands, or user-visible capabilities change.
-
-Do not wait for a separate "update documentation" task.
+- **Sincronia obrigatória:** A documentação deve ser atualizada junto com o código, não posteriormente. Uma tarefa ou PR não está concluída se deixar a documentação conscientemente desatualizada.
+- **Porta de entrada:** O `README.md` deve representar com precisão o estado atual do projeto, funcionando como porta de entrada clara e objetiva.
+- **Detalhamento técnico em `docs/`:** A documentação técnica detalhada deve residir prioritariamente na pasta `docs/` (como `arquitetura.md`, `desenvolvimento.md`, `formatos-e-exportacao.md`), com links apropriados no README.
+- **Fidelidade à implementação:** Os documentos devem descrever o comportamento efetivamente implementado e verificado, e não funcionalidades futuras ou planejadas como se já existissem.
 
 ### README responsibility
 
@@ -151,19 +143,19 @@ If detailed technical information becomes too large for the README, move it into
 
 ### Technical documentation
 
-Important behavior that would be difficult to reconstruct from the code should be documented.
+Important behavior that would be difficult to reconstruct from the code should be documented in `docs/`.
 
 Good candidates include:
 
-* CHR allocation rules;
-* pattern-table behavior;
-* project file formats;
-* exporter formats;
-* persistence/version migrations;
-* palette model;
-* animation model;
-* NES validation rules;
-* architectural decisions that affect future development.
+- CHR allocation rules;
+- pattern-table behavior;
+- project file formats;
+- exporter formats;
+- persistence/version migrations;
+- palette model;
+- animation model;
+- NES validation rules;
+- architectural decisions that affect future development.
 
 Prefer explaining **why a rule exists**, especially when it comes from NES hardware behavior.
 
@@ -175,9 +167,9 @@ Do not document intended behavior as if it already exists.
 
 Documentation should clearly distinguish between:
 
-* implemented behavior;
-* known limitations;
-* planned work.
+- implemented behavior;
+- known limitations;
+- planned work.
 
 When code and documentation disagree, fix the inconsistency as part of the task whenever it is related to the area being changed.
 
@@ -191,20 +183,20 @@ Follow the existing TypeScript style and project conventions.
 
 Prefer:
 
-* small focused functions;
-* explicit domain types;
-* pure functions for conversion and validation logic;
-* deterministic processing;
-* descriptive names;
-* separation between UI state and NES conversion logic.
+- small focused functions;
+- explicit domain types;
+- pure functions for conversion and validation logic;
+- deterministic processing;
+- descriptive names;
+- separation between UI state and NES conversion logic.
 
 Avoid:
 
-* unexplained magic numbers;
-* duplicated NES rules in multiple UI components;
-* hidden mutations;
-* unnecessary global state;
-* mixing file parsing, domain logic, rendering, and exporting when they can reasonably remain separate.
+- unexplained magic numbers;
+- duplicated NES rules in multiple UI components;
+- hidden mutations;
+- unnecessary global state;
+- mixing file parsing, domain logic, rendering, and exporting when they can reasonably remain separate.
 
 NES constants should have names or comments when their meaning is not immediately obvious.
 
@@ -234,9 +226,9 @@ Implement the requested task completely, but avoid expanding its scope unnecessa
 
 Small adjacent fixes are acceptable when they are:
 
-* directly related;
-* low risk;
-* necessary to keep behavior consistent.
+- directly related;
+- low risk;
+- necessary to keep behavior consistent.
 
 Larger discoveries should be documented or proposed separately rather than quietly folded into the current change.
 
@@ -248,25 +240,25 @@ Do not perform broad cleanup merely because nearby code could be improved.
 
 Before finishing a task, verify:
 
-* the requested behavior is implemented;
-* existing behavior was not unintentionally broken;
-* relevant regression tests were added or updated;
-* relevant tests pass;
-* the production build succeeds when appropriate;
-* persisted/exported formats remain valid;
-* NES hardware constraints are still respected;
-* `README.md` was reviewed for impact;
-* relevant `docs/` files were reviewed for impact;
-* documentation was updated when necessary;
-* obsolete documentation introduced or exposed by the change was removed or corrected.
+- the requested behavior is implemented;
+- existing behavior was not unintentionally broken;
+- relevant regression tests were added or updated;
+- relevant tests pass;
+- the production build succeeds when appropriate;
+- persisted/exported formats remain valid;
+- NES hardware constraints are still respected;
+- `README.md` was reviewed for impact;
+- relevant `docs/` files were reviewed for impact;
+- documentation was updated when necessary;
+- obsolete documentation introduced or exposed by the change was removed or corrected.
 
 When reporting completion, summarize:
 
-* what changed;
-* important implementation decisions;
-* tests performed;
-* documentation updated;
-* any remaining limitations or follow-up work.
+- what changed;
+- important implementation decisions;
+- tests performed;
+- documentation updated;
+- any remaining limitations or follow-up work.
 
 ---
 
