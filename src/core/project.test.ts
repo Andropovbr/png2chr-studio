@@ -503,6 +503,11 @@ describe('StudioProject core infrastructure', () => {
 
     it('round-trips palettes and activeSpritePaletteSlots', () => {
       const defaultProj = createDefaultProject('animation');
+      if (!defaultProj.animation) {
+        throw new Error(
+          'Default animation project must have animation settings',
+        );
+      }
       const project: StudioProject = {
         ...defaultProj,
         name: 'Palettes Test',
@@ -522,10 +527,15 @@ describe('StudioProject core infrastructure', () => {
               colors: [0x0f, 0x03, 0x13, 0x23],
             },
           ],
-          activeSpritePaletteSlots: ['pal_soldier_blue', 'pal_bat_purple', null, null],
+          activeSpritePaletteSlots: [
+            'pal_soldier_blue',
+            'pal_bat_purple',
+            null,
+            null,
+          ],
         },
         animation: {
-          ...defaultProj.animation!,
+          ...defaultProj.animation,
           animations: [
             {
               id: 'anim_1',
@@ -636,17 +646,19 @@ describe('StudioProject core infrastructure', () => {
       if (deserialized.success) {
         const palettes = deserialized.project.palette.palettes;
         expect(palettes).toBeDefined();
-        expect(palettes).toHaveLength(4);
-        expect(palettes?.[0]?.colors).toEqual([0x0f, 0x01, 0x11, 0x21]);
-        expect(palettes?.[1]?.colors).toEqual([0x0f, 0x05, 0x15, 0x25]);
+        if (palettes) {
+          expect(palettes).toHaveLength(4);
+          expect(palettes[0]?.colors).toEqual([0x0f, 0x01, 0x11, 0x21]);
+          expect(palettes[1]?.colors).toEqual([0x0f, 0x05, 0x15, 0x25]);
 
-        const slots = deserialized.project.palette.activeSpritePaletteSlots;
-        expect(slots).toBeDefined();
-        expect(slots).toEqual(palettes!.map((p) => p.id));
+          const slots = deserialized.project.palette.activeSpritePaletteSlots;
+          expect(slots).toBeDefined();
+          expect(slots).toEqual(palettes.map((p) => p.id));
 
-        // Legacy paletteIndex 1 migrated to palettes[1].id
-        const animItem = deserialized.project.animation?.animations[0];
-        expect(animItem?.paletteId).toBe(palettes?.[1]?.id);
+          // Legacy paletteIndex 1 migrated to palettes[1].id
+          const animItem = deserialized.project.animation?.animations[0];
+          expect(animItem?.paletteId).toBe(palettes[1]?.id);
+        }
       }
     });
   });

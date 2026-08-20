@@ -1,0 +1,203 @@
+# Formatos e Exportação
+
+Este documento especifica todos os formatos de arquivo suportados, importados e exportados pelo **PNG2CHR Studio**, detalhando seus contratos de dados, estruturas binárias e regras de compatibilidade com o hardware do Nintendo Entertainment System (NES).
+
+---
+
+## 1. Imagem PNG (`.png`)
+
+O PNG é o formato primário de entrada para criação de gráficos (Tileset, Playfield e Spritesheet de Animação).
+
+### Regras de validação de entrada
+
+- **Dimensões:** A largura e a altura devem ser múltiplos positivos de 8 pixels.
+  - Para o modo Playfield: a imagem deve ter exatamente **256×240 pixels** (32×30 tiles de 8×8).
+  - Para o modo Spritesheet / Animação: a largura e altura dos frames devem ser múltiplos de 8 pixels.
+- **Transparência:** Suporte estrito a transparência binária (1-bit alfa). Pixels devem ser 100% opacos (alfa = 255) ou 100% transparentes (alfa = 0). Pixels com transparência intermediária (1 a 254) são rejeitados com diagnóstico explícito.
+- **Cores:** Pixels transparentes recebem automaticamente o índice 0 da paleta. Pixels opacos passam pelo pipeline configurável de quantização (Nearest, Median Cut ou K-Means) e são mapeados para a paleta master do NES (64 cores) e, em seguida, para os 4 índices da paleta ativa do tile/região.
+
+---
+
+## 2. CHR Binário do NES (`.chr`)
+
+Arquivo binário contendo os padrões gráficos brutos no formato planar 2bpp (2 bits por pixel) nativo da PPU do NES.
+
+### Estrutura de cada Tile 8×8 (16 bytes)
+
+- **Tamanho:** 16 bytes por tile.
+- **Bitplane 0 (bytes 0–7):** Bit menos significativo (bit 0) do índice de cor de cada pixel da linha correspondente (0 a 7).
+- **Bitplane 1 (bytes 8–15):** Bit mais significativo (bit 1) do índice de cor de cada pixel da linha correspondente (0 a 7).
+- **Ordem dos bits no byte:** O pixel mais à esquerda corresponde ao **bit 7** (MSB); o pixel mais à direita corresponde ao **bit 0** (LSB).
+- **Montagem do índice de cor (0–3):** `cor = ((bitplane1 >> bit) & 1) << 1 | ((bitplane0 >> bit) & 1)`.
+
+### Importação de CHR
+
+- O arquivo deve ter tamanho múltiplo positivo de 16 bytes.
+- Os tiles são decodificados em sequência e organizados em grade para visualização.
+
+### Exportação de CHR
+
+- **Modos Tileset e Playfield:** Exporta a lista de tiles brutos ou deduplicados.
+- **Modo Animação:** Exporta um arquivo consolidado no formato de CHR-ROM física completa de **8.192 bytes** (512 tiles / duas pattern tables de 4 KiB: PT0 em `0x0000–0x0FFF` e PT1 em `0x1000–0x1FFF`).
+
+---
+
+## 3. Cartucho iNES / ROM NES (`.nes`)
+
+Suporte a extração gráfica a partir de ROMs de jogos simples do NES.
+
+### Regras de importação
+
+- **Formato:** Cabeçalho iNES padrão (16 bytes, iniciando com `NES\x1A`).
+- **Mapper:** Apenas **Mapper 0 (NROM)** é suportado. Outros mappers são rejeitados com mensagem descritiva.
+- **Tamanho PRG-ROM:** 16 KiB ou 32 KiB.
+- **Tamanho CHR-ROM:** Exatamente 8 KiB (512 tiles). Jogos que utilizam CHR-RAM (0 KB de CHR-ROM) ou múltiplos bancos de CHR são rejeitados.
+- **Trainer:** Suporte opcional a trainer de 512 bytes antes do PRG-ROM.
+- **Extração:** Extrai os 8.192 bytes de CHR-ROM divididos em duas pattern tables consecutivas de 256 tiles cada (PT0 e PT1).
+
+---
+
+## 4. Nametable do NES (`.nam`)
+
+Representa o mapa de fundo (background) de uma tela completa de 256×240 pixels (32 colunas × 30 linhas de tiles 8×8).
+
+- **Tamanho:** **960 bytes**.
+- **Organização:** Array contínuo de 960 bytes, lido da esquerda para a direita, linha por linha (ordem de varredura).
+- **Conteúdo:** Cada byte armazena o índice do tile (0 a 255) na pattern table da PPU selecionada para o background.
+- **Restrição de Hardware:** Como cada entrada é de 1 byte (8 bits), o playfield não pode referenciar mais de 256 tiles únicos. Quando o playfield ultrapassa 256 tiles únicos e a deduplicação não é suficiente, a exportação de `.nam` e `.atr` é desabilitada na UI até que o número de tiles seja reduzido.
+
+---
+
+## 5. Attribute Table do NES (`.atr`)
+
+Define a atribuição de paleta de background para as regiões do playfield.
+
+- **Tamanho:** **64 bytes**.
+- **Resolução de Hardware:** A PPU do NES não permite definir paletas por tile 8×8 individual no background; a seleção de paleta é feita em blocos de **16×16 pixels** (2×2 tiles), agrupados em metatiles de **32×32 pixels** (4 blocos 16×16 por byte).
+- **Estrutura de cada Byte da Attribute Table:**
+  - Bits 1–0: Paleta do quadrante superior esquerdo (Top-Left, 16×16)
+  - Bits 3–2: Paleta do quadrante superior direito (Top-Right, 16×16)
+  - Bits 5–4: Paleta do quadrante inferior esquerdo (Bottom-Left, 16×16)
+  - Bits 7–6: Paleta do quadrante inferior direito (Bottom-Right, 16×16)
+- **Cálculo de índice:** `byteIndex = (row / 4) * 8 + (col / 4)`.
+
+---
+
+## 6. Arquivo de Paletas do NES (`.pal`)
+
+Armazena as paletas de cores configuradas para background ou sprites.
+
+- **Tamanho:** **16 bytes**.
+- **Formato:** Sequência de 16 bytes, onde cada byte é um código de cor da PPU do NES no intervalo hexadecimal `$00` a `$3F` (64 cores).
+- **Disposição:**
+  - Bytes 0–3: Paleta 0 (Byte 0 = Cor Universal de Fundo)
+  - Bytes 4–7: Paleta 1 (Byte 4 = Cor Universal de Fundo)
+  - Bytes 8–11: Paleta 2 (Byte 8 = Cor Universal de Fundo)
+  - Bytes 12–15: Paleta 3 (Byte 12 = Cor Universal de Fundo)
+- **Regra de Hardware:** O índice 0 de todas as 4 paletas compartilha a mesma cor universal de fundo da PPU (`$3F00`).
+
+---
+
+## 7. Mapa de Colisão (`.col`)
+
+Armazena dados de colisão e física para jogos de NES, pintados sobre a grade 32×30 do playfield.
+
+- **Tamanho:** **480 bytes** (960 células / 2 células por byte).
+- **Formato de Empacotamento:** Cada célula 8×8 é codificada como um valor de 4 bits (nibble, 0–15). Em cada byte:
+  - **Nibble Alto (bits 7–4):** Célula da esquerda `(x, y)`
+  - **Nibble Baixo (bits 3–0):** Célula da direita `(x+1, y)`
+- **Linha:** Cada linha de 32 células ocupa exatamente 16 bytes.
+- **Tipos de Colisão Suportados:**
+
+| Código | Nome Técnico (`CollisionType`) | Descrição                               |
+| ------ | ------------------------------ | --------------------------------------- |
+| `0`    | `none`                         | Espaço livre / sem colisão              |
+| `1`    | `solid`                        | Sólido / obstáculo intransponível       |
+| `2`    | `damage`                       | Dano / perigo / espinho                 |
+| `3`    | `ladder`                       | Escada bidirecional                     |
+| `4`    | `moveUp`                       | Força subida / escada de sentido único  |
+| `5`    | `water`                        | Água / fluído                           |
+| `6`    | `oneWay`                       | Plataforma unidirecional (atravessável) |
+| `7`    | `ice`                          | Gelo / superfície escorregadia          |
+| `8`    | `conveyorLeft`                 | Esteira rolante para esquerda           |
+| `9`    | `conveyorRight`                | Esteira rolante para direita            |
+| `10`   | `moveDown`                     | Força descida                           |
+
+---
+
+## 8. Arquivo de Projeto do Studio (`.p2c` / `.p2c.json` / `.json`)
+
+Formato canônico em JSON para persistência completa de projetos no PNG2CHR Studio.
+
+- **Extensões reconhecidas:** `.p2c`, `.p2c.json`, `.json`.
+- **Versão atual do schema:** `1` (`CURRENT_PROJECT_FORMAT_VERSION = 1`).
+- **Recursos persistidos:**
+  - Identificação: `name`, `version`, `mode` (`tileset`, `playfield`, `animation`).
+  - Fonte primária: `source` contendo `path`, `sourceKind` e `dataUrl` embutido em Base64 (permitindo reabertura offline sem perda do asset original).
+  - Paletas: Definições nomeadas (`PaletteDefinition`), slots de sprite ativos (`activeSpritePaletteSlots`), paleta selecionada e conjunto de 4 paletas clássicas.
+  - Tileset / Playfield: Atribuições de paleta por tile/região, overrides de pixels 8×8, células de colisão, flags de deduplicação e flip.
+  - Animação: Lista de animações com dimensões de frame, âncoras de origem (X, Y), durações, modos de reprodução, frames selecionados, referências a spritesheets independentes, paletas por frame e pattern table selecionada (PT0 ou PT1).
+  - Scene Preview: Instâncias multi-entidade com posicionamento (X, Y), animação ativa e visibilidade.
+  - Base CHR: Referência ao arquivo de base CHR de até 8 KiB para preservação de ocupação de slots.
+
+---
+
+## 9. Metadados de Animação em JSON (`.json`)
+
+Contrato padronizado de metadados para pipelines de assets em projetos de jogos.
+
+- **Cabeçalho:** `"format": "png2chr-studio-animation"`, `"version": 5`.
+- **Conteúdo:**
+  - `name`, `symbol_prefix`, `symbol_base`, `default_palette_index`, `pattern_table`, `color_reduction`.
+  - Estatísticas de CHR: `total_capacity`, `total_occupied`, `pattern_tables[0..1]`.
+  - Array `animations`: Para cada animação, exporta `name`, `source_file`, `frame_width`, `frame_height`, `origin_x`, `origin_y`, `playback` (`"loop"` ou `"once"`), flags de flip (`allow_horizontal_flip`, `allow_vertical_flip`), `default_frame_duration` e lista de `frames`.
+  - Cada frame contém lista de `sprites` (metasprite) com: `x`, `y` (offsets assinados de 8 bits), `tile_index` (índice local OAM de 8 bits `$00–$FF`), `physical_tile_index` (0–511), `attributes` (bits OAM da PPU: bits 0-1 paleta, bit 6 flip H, bit 7 flip V), `palette`, `flip_h`, `flip_v`, `reuse_source` e coordenadas da célula de origem.
+
+---
+
+## 10. Exportação C para cc65 (`.h` / `.c`)
+
+Gera código-fonte em C e cabeçalho prontos para compilação com o compilador **cc65** para NES.
+
+### Estruturas de Dados em ROM
+
+```c
+typedef struct {
+    signed char x;
+    signed char y;
+    unsigned char tile;
+    unsigned char attr;
+} Png2chrSprite;
+
+typedef struct {
+    unsigned short sprite_offset;
+    unsigned char sprite_count;
+    unsigned char duration;
+} Png2chrFrame;
+
+typedef struct {
+    unsigned short frame_offset;
+    unsigned char frame_count;
+    unsigned char width_tiles;
+    unsigned char height_tiles;
+    unsigned char playback;
+    unsigned char flags;
+} Png2chrAnimation;
+```
+
+### Otimização de Memória
+
+- `Png2chrSprite`: **4 bytes** por sprite do metasprite.
+- `Png2chrFrame`: **4 bytes** por frame.
+- `Png2chrAnimation`: **7 bytes** por animação.
+- Dados são declarados em tabelas `const` para residirem integralmente na ROM (PRG-ROM).
+- Enum gerado `${PascalCase}AnimationId` com identificadores para indexação type-safe no jogo.
+
+---
+
+## 11. Exportação Assembler para ca65 (`.inc` / `.s`)
+
+Gera arquivos de inclusão (`.inc`) e tabelas de dados em assembly 6502 (`.s`) para o montador **ca65**.
+
+- Emite diretivas `.byte` e `.word` mapeando exatamente a mesma estrutura compacta da exportação C.
+- Constantes simbólicas para IDs de animação, flags de flip (`ANIMATION_ALLOW_H_FLIP = $40`, `ANIMATION_ALLOW_V_FLIP = $80`) e modos de reprodução (`ANIMATION_PLAYBACK_LOOP = 0`, `ANIMATION_PLAYBACK_ONCE = 1`).

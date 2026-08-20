@@ -154,7 +154,8 @@ export function createPaletteManagerPanel(
     const select = document.createElement('select');
     select.className = 'active-slot-select';
 
-    const currentPaletteId = options.activeSpritePaletteSlots[slotIndex] ?? null;
+    const currentPaletteId =
+      options.activeSpritePaletteSlots[slotIndex] ?? null;
 
     const optNone = document.createElement('option');
     optNone.value = '';
@@ -172,7 +173,8 @@ export function createPaletteManagerPanel(
     });
 
     select.addEventListener('change', () => {
-      const selectedId = select.value.trim() !== '' ? select.value.trim() : null;
+      const selectedId =
+        select.value.trim() !== '' ? select.value.trim() : null;
       options.onUpdateActiveSlot(slotIndex, selectedId);
     });
 
@@ -301,7 +303,10 @@ export function createPaletteManagerPanel(
     btnDel.addEventListener('click', () => {
       if (refs.length > 0) {
         const refList = refs
-          .map((r) => `• [${r.type.toUpperCase()}] ${r.name}${r.detail ? ` (${r.detail})` : ''}`)
+          .map(
+            (r) =>
+              `• [${r.type.toUpperCase()}] ${r.name}${r.detail ? ` (${r.detail})` : ''}`,
+          )
           .join('\n');
         const confirmMsg = `${t('paletteManagerDeleteConfirmUsed', { name: palette.name })}\n\n${refList}`;
         if (window.confirm(confirmMsg)) {

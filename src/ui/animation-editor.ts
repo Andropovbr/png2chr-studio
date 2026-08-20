@@ -328,11 +328,31 @@ function createSpritePaletteEditor(
       activeSpritePaletteSlots: options.activeSpritePaletteSlots ?? [],
       animations: options.settings.animations,
       onCreatePalette: options.onCreatePalette,
-      onUpdatePaletteName: options.onUpdatePaletteName ?? (() => {}),
-      onUpdatePaletteColor: options.onUpdatePaletteColorDef ?? (() => {}),
-      onDuplicatePalette: options.onDuplicatePalette ?? (() => {}),
-      onDeletePalette: options.onDeletePalette ?? (() => {}),
-      onUpdateActiveSlot: options.onUpdateActiveSlot ?? (() => {}),
+      onUpdatePaletteName:
+        options.onUpdatePaletteName ??
+        (() => {
+          /* no-op */
+        }),
+      onUpdatePaletteColor:
+        options.onUpdatePaletteColorDef ??
+        (() => {
+          /* no-op */
+        }),
+      onDuplicatePalette:
+        options.onDuplicatePalette ??
+        (() => {
+          /* no-op */
+        }),
+      onDeletePalette:
+        options.onDeletePalette ??
+        (() => {
+          /* no-op */
+        }),
+      onUpdateActiveSlot:
+        options.onUpdateActiveSlot ??
+        (() => {
+          /* no-op */
+        }),
     });
 
     return createCollapsiblePanel({
@@ -1068,13 +1088,13 @@ function createFrameOrderList(
         framePaletteSelect.append(opt);
       });
 
+      const legacyPalIndex = anim.framePalettes?.[orderIndex];
+      const legacyPalette =
+        legacyPalIndex !== null && legacyPalIndex !== undefined
+          ? options.palettes[legacyPalIndex]
+          : undefined;
       const currentFramePalId =
-        anim.framePaletteIds?.[orderIndex] ??
-        (anim.framePalettes?.[orderIndex] !== null &&
-        anim.framePalettes?.[orderIndex] !== undefined &&
-        options.palettes[anim.framePalettes[orderIndex]!]
-          ? options.palettes[anim.framePalettes[orderIndex]!]?.id ?? ''
-          : '');
+        anim.framePaletteIds?.[orderIndex] ?? legacyPalette?.id ?? '';
 
       framePaletteSelect.value = currentFramePalId;
       framePaletteSelect.addEventListener('change', () => {
@@ -1082,12 +1102,7 @@ function createFrameOrderList(
           framePaletteSelect.value.trim() !== ''
             ? framePaletteSelect.value.trim()
             : null;
-        options.onFramePaletteChange(
-          anim.id,
-          orderIndex,
-          null,
-          selId,
-        );
+        options.onFramePaletteChange(anim.id, orderIndex, null, selId);
       });
     } else {
       for (let p = 0; p < 4; p += 1) {
@@ -1223,11 +1238,14 @@ function createAnimationTilePixelSection(
     const sourceX = (frameIndex % frameCols) * anim.frameWidth;
     const sourceY = Math.floor(frameIndex / frameCols) * anim.frameHeight;
 
-    const framePaletteId = anim.framePaletteIds?.[selectedFrameOrder] ?? anim.paletteId;
+    const framePaletteId =
+      anim.framePaletteIds?.[selectedFrameOrder] ?? anim.paletteId;
     const frameEffectiveColors = resolveEffectivePaletteColors(
       framePaletteId,
       options.palettes,
-      anim.framePalettes?.[selectedFrameOrder] ?? anim.paletteIndex ?? options.settings.defaultPaletteIndex,
+      anim.framePalettes?.[selectedFrameOrder] ??
+        anim.paletteIndex ??
+        options.settings.defaultPaletteIndex,
       options.paletteSet,
     );
 
@@ -1250,13 +1268,8 @@ function createAnimationTilePixelSection(
           c,
           r,
         );
-        const hasOverride = hasTileOverride(
-          anim.pixelOverrides,
-          tileX,
-          tileY,
-        );
-        const isSelectedTile =
-          c === selectedTileCol && r === selectedTileRow;
+        const hasOverride = hasTileOverride(anim.pixelOverrides, tileX, tileY);
+        const isSelectedTile = c === selectedTileCol && r === selectedTileRow;
 
         const tileBtn = document.createElement('button');
         tileBtn.type = 'button';

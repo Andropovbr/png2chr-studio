@@ -746,9 +746,8 @@ export function buildAnimationProjectModel(
 
   const countOccupiedTiles = (table: SpritePatternTable): number => {
     const [start, end] = patternTablePhysicalRange(table);
-    return slots
-      .slice(start, end + 1)
-      .filter((slot) => slot.tile !== null).length;
+    return slots.slice(start, end + 1).filter((slot) => slot.tile !== null)
+      .length;
   };
   const patternTableFinalTileCounts: [number, number] = [
     countOccupiedTiles(0),
