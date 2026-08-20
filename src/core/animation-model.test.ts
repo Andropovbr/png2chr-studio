@@ -642,6 +642,54 @@ describe('animation project model', () => {
     );
   });
 
+  it('preserves sparse base CHR slots and allocates into the first free slot', () => {
+    const destination = chrWithOccupiedPhysicalTiles([1, 255, 257, 511]);
+    const importedTile = tileWith([
+      [2, 3],
+      [4, 5],
+    ]);
+    const model = buildAnimationProjectModel({
+      name: 'player',
+      sourceImageName: 'player.png',
+      image: sheetFromTiles([importedTile]),
+      frameWidth: 8,
+      frameHeight: 8,
+      animations: [
+        { name: 'idle', category: 'idle', frameIndices: [0], frameDuration: 8 },
+      ],
+      baseChr: destination,
+      patternTable: 0,
+    });
+
+    expect(model.chr.baseOccupancy).toMatchObject({
+      occupiedTiles: 4,
+      freeTiles: 508,
+      patternTables: [
+        { patternTable: 0, occupiedTiles: 2, freeTiles: 254 },
+        { patternTable: 1, occupiedTiles: 2, freeTiles: 254 },
+      ],
+    });
+    expect(model.chr.appendedTileStart).toBe(0);
+    expect(model.animations[0]?.frames[0]?.sprites[0]).toMatchObject({
+      tile: 0,
+      physicalTileIndex: 0,
+      reuse: 'new',
+    });
+    for (const physicalTileIndex of [1, 255, 257, 511]) {
+      expect(
+        model.finalChr.slice(
+          physicalTileIndex * 16,
+          (physicalTileIndex + 1) * 16,
+        ),
+      ).toEqual(
+        destination.slice(
+          physicalTileIndex * 16,
+          (physicalTileIndex + 1) * 16,
+        ),
+      );
+    }
+  });
+
   it('keeps pattern table 1 available when only table 0 is occupied', () => {
     const destination = new Uint8Array(8192);
     destination.set(

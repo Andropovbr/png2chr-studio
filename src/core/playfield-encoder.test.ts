@@ -4,6 +4,7 @@ import {
   ATTRIBUTE_TABLE_SIZE,
   encodePlayfield,
   NAMETABLE_SIZE,
+  PLAYFIELD_TILE_COUNT,
   PlayfieldEncodingError,
 } from './playfield-encoder';
 import type { IndexedImage, Tile } from './types';
@@ -26,6 +27,14 @@ function tile(id: number, value: number): Tile {
     row: Math.floor(id / 32),
     pixels: new Uint8Array(64).fill(value),
   };
+}
+
+function uniquelyEncodedTile(id: number): Tile {
+  const result = tile(id, 0);
+  for (let bit = 0; bit < 9; bit += 1) {
+    result.pixels[bit] = (id >> bit) & 1;
+  }
+  return result;
 }
 
 function capturePlayfieldError(
@@ -109,5 +118,38 @@ describe('playfield encoding', () => {
 
     expect(error.code).toBe('too-many-playfield-tiles');
     expect(error.tileCount).toBe(960);
+  });
+
+  it.each([
+    [255, 254],
+    [256, 255],
+  ])(
+    'preserves the final 8-bit nametable index with %i unique tiles',
+    (uniqueTileCount, expectedLastIndex) => {
+      const tiles = Array.from({ length: PLAYFIELD_TILE_COUNT }, (_, index) =>
+        uniquelyEncodedTile(Math.min(index, uniqueTileCount - 1)),
+      );
+
+      const result = encodePlayfield(indexedImage(), tiles, true);
+
+      expect(result.chrTiles).toHaveLength(uniqueTileCount);
+      expect(result.nametable[uniqueTileCount - 1]).toBe(expectedLastIndex);
+      expect(result.nametable[PLAYFIELD_TILE_COUNT - 1]).toBe(
+        expectedLastIndex,
+      );
+    },
+  );
+
+  it('rejects 257 unique tiles instead of wrapping nametable indexes', () => {
+    const tiles = Array.from({ length: PLAYFIELD_TILE_COUNT }, (_, index) =>
+      uniquelyEncodedTile(Math.min(index, 256)),
+    );
+
+    const error = capturePlayfieldError(() =>
+      encodePlayfield(indexedImage(), tiles, true),
+    );
+
+    expect(error.code).toBe('too-many-playfield-tiles');
+    expect(error.tileCount).toBe(257);
   });
 });
