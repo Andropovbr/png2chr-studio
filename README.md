@@ -124,7 +124,7 @@ The `src/core/` directory contains no DOM or Canvas references, ensuring all NES
 
 ## Versioning and Project Status
 
-The codebase is versioned according to semantic releases tracked via Git tags (`v0.11`, `v0.12.0`, `v0.13.0`, etc.) and `package.json`. All recent capabilities—such as the persistent project model (`.p2c`), multi-entity scene preview, tile pixel editor, project palette manager, assisted frame detection, and 512-tile independent pattern tables—are fully integrated and tested in the current baseline.
+The project is at version **v0.13.0** (declared in `package.json` and aligned with the repository's `v0.13.0` release tag). All current capabilities—such as the persistent project model (`.p2c`), multi-entity scene preview, tile pixel editor, project palette manager, assisted frame detection, and 512-tile independent pattern tables—are fully integrated and tested in the current baseline.
 
 ---
 
