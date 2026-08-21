@@ -51,7 +51,22 @@ src/
 │   ├── tile-extraction.ts      # Particionamento de imagens em blocos 8x8
 │   └── types.ts                # Tipos fundamentais de imagem e tiles
 ├── i18n/                       # Internacionalização (pt-BR e en)
-├── ui/                         # Componentes de interface e editores Canvas
+├── ui/                         # Componentes de interface, workspaces e editores Canvas
+│   ├── animation-editor.ts     # Workspace e editor de metasprites/animação
+│   ├── app-shell.ts            # Estrutura base de layout (header, sidebar, hosts)
+│   ├── diagnostics.ts          # Painel de métricas e diagnósticos NES
+│   ├── export-panel.ts         # Painel de exportação de binários e código
+│   ├── header.ts               # Barra superior de controle do projeto
+│   ├── image-editing-workspace.ts # Composição de preview e editor de paleta
+│   ├── image-input.ts          # Área de importação e dropzone de arquivos
+│   ├── image-preview.ts        # Preview Canvas 2D com zoom, grid e colisões
+│   ├── inspector.ts            # Painel lateral inspetor
+│   ├── palette-editor.ts       # Editor interativo de paletas e atribuições
+│   ├── playfield-workspace.ts  # Workspace composicional do modo Playfield
+│   ├── quantization-panel.ts   # Painel de controle de quantização e dithering
+│   ├── sidebar.ts              # Barra lateral de navegação e âncoras
+│   ├── tile-grid.ts            # Grade visualizadora de tiles CHR
+│   └── tileset-workspace.ts    # Workspace composicional do modo Tileset
 ├── utils/                      # Downloads de arquivos e sanitização de nomes
 ├── workers/                    # Web Worker de quantização assíncrona
 └── main.ts                     # Orquestrador central e gerenciador de ciclo de vida
