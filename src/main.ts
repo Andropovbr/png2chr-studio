@@ -9,8 +9,6 @@ import type {
   AnimationDefinitionInput,
   AnimationProjectModel,
 } from './core/animation-model';
-import { encodeChr } from './core/chr-encoder';
-import { padChrRom } from './core/chr-rom';
 import { normalizeCIdentifier } from './core/c-identifier';
 import {
   ChrDecodingError,
@@ -19,9 +17,7 @@ import {
 } from './core/chr-decoder';
 import {
   COLLISION_TYPES,
-  countCollisionCells,
   createEmptyCollisionMap,
-  encodeCollisionMap,
 } from './core/collision-encoder';
 import {
   decideFrameDimensions,
@@ -38,11 +34,9 @@ import {
   createDefaultNesPaletteSet,
   createPaletteAssignments,
   createPixelOverrides,
-  encodeNesBackgroundPalettes,
   mapImageToNesPalettes,
   NES_MASTER_PALETTE,
   PLAYFIELD_PALETTE_REGION_SIZE,
-  renderNesPaletteImage,
   setNesPaletteColor,
   TILESET_PALETTE_REGION_SIZE,
 } from './core/nes-palette';
@@ -54,17 +48,9 @@ import {
   type PaletteDefinition,
 } from './core/palette-manager';
 import {
-  encodePlayfield,
-  PlayfieldEncodingError,
-} from './core/playfield-encoder';
-import {
   DEFAULT_RANDOM_PLAYFIELD_FEATURES,
   generateRandomPlayfield,
 } from './core/random-playfield';
-import {
-  deduplicateTiles,
-  deduplicateTilesConsideringFlips,
-} from './core/tile-deduplication';
 import { extractTiles } from './core/tile-extraction';
 import { ImageAnalysisError, type IndexedImage, type Tile } from './core/types';
 import { quantizeImageToNes } from './core/image-quantization';
@@ -88,24 +74,16 @@ import {
 } from './core/quantization-settings';
 import { getLocale, subscribeToLocale, t } from './i18n';
 import { createAppShell } from './ui/app-shell';
-import { createDiagnostics } from './ui/diagnostics';
 import {
   createAnimationEditor,
   type AnimationEditorOptions,
 } from './ui/animation-editor';
-import { createExportPanel } from './ui/export-panel';
 import { createHeader } from './ui/header';
-import { mountImageEditingPanels } from './ui/image-editing-workspace';
-import { createImageInput } from './ui/image-input';
-import { createImagePreview } from './ui/image-preview';
 import { createInspector } from './ui/inspector';
-import { createPaletteEditor } from './ui/palette-editor';
-import {
-  createQuantizationPanel,
-  type QuantizationPreview,
-} from './ui/quantization-panel';
+import type { QuantizationPreview } from './ui/quantization-panel';
 import { createSidebar } from './ui/sidebar';
-import { createTileGrid } from './ui/tile-grid';
+import { createTilesetWorkspace } from './ui/tileset-workspace';
+import { createPlayfieldWorkspace } from './ui/playfield-workspace';
 import {
   applyDerivedStatusUpdate,
   applyProjectUpdate,
@@ -115,7 +93,6 @@ import {
 import {
   displayErrorFromAnalysis,
   displayErrorFromInes,
-  displayErrorFromPlayfield,
   type DisplayError,
   type AnimationItemSetting,
   type AnimationSettings,
@@ -130,13 +107,6 @@ import {
   type WorkspaceState,
 } from './ui/workspace-state';
 import { downloadBytes, downloadText } from './utils/download';
-import {
-  toAttributeTableFileName,
-  toChrFileName,
-  toCollisionMapFileName,
-  toNametableFileName,
-  toPaletteFileName,
-} from './utils/file-name';
 import type {
   QuantizationPreviewRequest,
   QuantizationPreviewResponse,
@@ -1242,26 +1212,6 @@ async function changeQuantizationSettings(
   render();
 }
 
-function createProjectQuantizationPanel(): HTMLElement {
-  ensureQuantizationPreviews();
-  return createQuantizationPanel({
-    sourceImage: project.sourceImage,
-    pngActive: project.sourceKind === 'png',
-    settings: project.quantizationSettings,
-    previews: quantizationPreviews,
-    previewsLoading: quantizationPreviewsLoading,
-    isCollapsed: workspace.quantizationCollapsed,
-    onToggleCollapse: () => {
-      updateWorkspace({
-        ...workspace,
-        quantizationCollapsed: !workspace.quantizationCollapsed,
-      });
-      render();
-    },
-    onSettingsChange: (settings) => void changeQuantizationSettings(settings),
-  });
-}
-
 function changeMode(mode: ProjectMode): void {
   if (
     mode !== 'tileset' &&
@@ -1316,24 +1266,6 @@ function changeMode(mode: ProjectMode): void {
   } else {
     render();
   }
-}
-
-function createProjectImageInput(): HTMLElement {
-  return createImageInput(
-    project.fileName,
-    project.width,
-    project.height,
-    derivedStatus.loading,
-    project.mode,
-    project.randomPlayfieldFeatures,
-    changeMode,
-    (randomPlayfieldFeatures) => {
-      updateProject({ ...project, randomPlayfieldFeatures });
-      render();
-    },
-    (file) => void loadFile(file),
-    generatePlayfield,
-  );
 }
 
 function addAnimation(): void {
@@ -2282,140 +2214,52 @@ function renderAnimationWorkspace(): void {
   app.replaceChildren(shell);
 }
 
-function render(): void {
-  document.documentElement.lang = getLocale();
-  document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
-  if (project.mode === 'animation') {
-    renderAnimationWorkspace();
-    return;
-  }
-  const outputName =
-    project.fileName === null
-      ? t('defaultOutputName')
-      : toChrFileName(project.fileName);
-  const nametableName =
-    project.fileName === null
-      ? t('defaultNametableName')
-      : toNametableFileName(project.fileName);
-  const attributeTableName =
-    project.fileName === null
-      ? t('defaultAttributeTableName')
-      : toAttributeTableFileName(project.fileName);
-  const collisionMapName =
-    project.fileName === null
-      ? t('defaultCollisionMapName')
-      : toCollisionMapFileName(project.fileName);
-  const paletteName =
-    project.fileName === null
-      ? t('defaultPaletteName')
-      : toPaletteFileName(project.fileName);
-  const regionSize = paletteRegionSize(project.mode, project.indexedImage);
-  const mappedImage =
-    project.indexedImage === null
-      ? null
-      : mapImageToNesPalettes(
-          project.indexedImage,
-          project.paletteSet,
-          project.paletteAssignments,
-          regionSize,
-          project.pixelOverrides,
-          false,
-          project.quantizationSettings.colorDistanceMode,
-        );
-  const mappedTiles =
-    mappedImage === null
-      ? []
-      : extractTiles(mappedImage).slice(0, project.tiles.length);
-  let visibleTiles = project.deduplicationEnabled
-    ? project.mode === 'tileset' && project.flipDeduplicationEnabled
-      ? deduplicateTilesConsideringFlips(mappedTiles)
-      : deduplicateTiles(mappedTiles)
-    : mappedTiles;
-  let nametable: Uint8Array | null = null;
-  let attributeTable: Uint8Array | null = null;
-  let conversionError = derivedStatus.error;
-
-  if (project.mode === 'playfield' && mappedImage !== null) {
-    try {
-      const playfield = encodePlayfield(
-        mappedImage,
-        mappedTiles,
-        project.deduplicationEnabled,
-        project.paletteAssignments,
-      );
-      visibleTiles = playfield.chrTiles;
-      nametable = playfield.nametable;
-      attributeTable = playfield.attributeTable;
-    } catch (error: unknown) {
-      if (error instanceof PlayfieldEncodingError) {
-        conversionError = displayErrorFromPlayfield(error);
-      }
-    }
-  }
-
-  const chr = mappedImage === null ? null : padChrRom(encodeChr(visibleTiles));
-  const workspaceElement = document.createElement('div');
-  workspaceElement.className = 'workspace';
-  const editingWorkspace = document.createElement('div');
-  editingWorkspace.className = 'playfield-editing-workspace';
-  const projectImageInput = createProjectImageInput();
-  projectImageInput.id = 'section-image';
-  const imagePreview = createImagePreview({
-    image:
-      mappedImage === null
-        ? project.sourceImage
-        : new ImageData(
-            renderNesPaletteImage(
-              mappedImage,
-              project.paletteSet,
-              project.paletteAssignments,
-              regionSize,
-            ),
-            mappedImage.width,
-            mappedImage.height,
-          ),
-    collisionCells:
-      project.mode === 'playfield' && project.indexedImage !== null
-        ? project.collisionCells
-        : null,
-    paletteAssignments:
-      project.indexedImage === null ? null : project.paletteAssignments,
-    paletteRegionSize: project.indexedImage === null ? null : regionSize,
+function renderTilesetWorkspace(): void {
+  ensureQuantizationPreviews();
+  const workspaceElement = createTilesetWorkspace({
+    fileName: project.fileName,
+    sourceKind: project.sourceKind,
+    width: project.width,
+    height: project.height,
+    sourceImage: project.sourceImage,
+    indexedImage: project.indexedImage,
+    tiles: project.tiles,
+    deduplicationEnabled: project.deduplicationEnabled,
+    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    paletteSet: project.paletteSet,
+    paletteAssignments: project.paletteAssignments,
+    pixelOverrides: project.pixelOverrides,
+    activePaletteIndex: project.activePaletteIndex,
+    activeColorIndex: project.activeColorIndex,
+    quantizationSettings: project.quantizationSettings,
+    quantizationPreviews,
+    quantizationPreviewsLoading,
+    quantizationCollapsed: workspace.quantizationCollapsed,
     showPaletteNumbers: workspace.showPaletteNumbers,
-    selectedPaletteRegion: workspace.zoomedPaletteRegion,
-    activeTool: workspace.previewTool,
-    activeCollisionType: project.activeCollisionType,
+    previewTool: workspace.previewTool,
+    zoomedPaletteRegion: workspace.zoomedPaletteRegion,
+    paletteColorTarget: workspace.paletteColorTarget,
+    loading: derivedStatus.loading,
+    error: derivedStatus.error,
+    onModeChange: changeMode,
+    onFile: (file) => void loadFile(file),
+    onToggleQuantizationCollapse: () => {
+      updateWorkspace({
+        ...workspace,
+        quantizationCollapsed: !workspace.quantizationCollapsed,
+      });
+      render();
+    },
+    onQuantizationSettingsChange: (settings) =>
+      void changeQuantizationSettings(settings),
     onActiveToolChange: (previewTool) => {
       updateWorkspace({ ...workspace, previewTool });
-      render();
-    },
-    onCollisionChange: (collisionCells) => {
-      updateProject({ ...project, collisionCells });
-      render();
-    },
-    onCollisionTypeChange: (activeCollisionType) => {
-      updateProject({
-        ...project,
-        activeCollisionType,
-      });
-      updateWorkspace({ ...workspace, previewTool: 'paint-collision' });
       render();
     },
     onPaletteRegionSelect: (zoomedPaletteRegion) => {
       updateWorkspace({ ...workspace, zoomedPaletteRegion });
       render();
     },
-  });
-  const paletteEditor = createPaletteEditor({
-    image: project.indexedImage,
-    paletteSet: project.paletteSet,
-    assignments: project.paletteAssignments,
-    regionSize,
-    activePaletteIndex: project.activePaletteIndex,
-    activeColorIndex: project.activeColorIndex,
-    showPaletteNumbers: workspace.showPaletteNumbers,
-    zoomedRegionIndex: workspace.zoomedPaletteRegion,
-    colorTarget: workspace.paletteColorTarget,
     onActivePaletteChange: (activePaletteIndex) => {
       updateProject({ ...project, activePaletteIndex });
       render();
@@ -2448,29 +2292,11 @@ function render(): void {
       });
       render();
     },
-    pixelOverrides: project.pixelOverrides,
-    colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
       updateProject({ ...project, pixelOverrides, paletteAssignments });
       render();
     },
-  });
-  mountImageEditingPanels(
-    project.mode,
-    (preview, editor) => {
-      editingWorkspace.append(preview, editor);
-    },
-    imagePreview,
-    paletteEditor,
-  );
-  const quantizationPanel = createProjectQuantizationPanel();
-  quantizationPanel.id = 'section-quantization';
-  const tileGrid = createTileGrid(
-    visibleTiles,
-    project.indexedImage,
-    mappedTiles.length,
-    project.deduplicationEnabled,
-    (enabled) => {
+    onDeduplicationChange: (enabled) => {
       updateProject({
         ...project,
         deduplicationEnabled: enabled,
@@ -2480,71 +2306,15 @@ function render(): void {
       });
       render();
     },
-    project.mode === 'tileset',
-    project.flipDeduplicationEnabled,
-    (enabled) => {
+    onFlipDeduplicationChange: (enabled) => {
       updateProject({ ...project, flipDeduplicationEnabled: enabled });
       render();
     },
-    project.paletteSet,
-    project.paletteAssignments,
-    regionSize,
-  );
-  tileGrid.id = 'section-tiles';
-  const exportPanel = createExportPanel({
-    chrName: outputName,
-    nametableName,
-    attributeTableName,
-    collisionMapName,
-    paletteName,
-    tileCount: visibleTiles.length,
-    originalTileCount: mappedTiles.length,
-    deduplicationEnabled: project.deduplicationEnabled,
-    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
-    playfieldMode: project.mode === 'playfield',
-    chr,
-    nametable,
-    attributeTable,
-    collisionMap:
-      project.mode === 'playfield' && nametable !== null
-        ? encodeCollisionMap(project.collisionCells)
-        : null,
-    palette: encodeNesBackgroundPalettes(project.paletteSet),
-    collisionCellCount: countCollisionCells(project.collisionCells),
-    onDownload: downloadBytes,
+    onDownloadBytes: downloadBytes,
   });
-  exportPanel.id = 'section-export';
-  workspaceElement.append(
-    projectImageInput,
-    quantizationPanel,
-    editingWorkspace,
-    createDiagnostics({
-      width: project.width,
-      height: project.height,
-      indexedImage: mappedImage,
-      tileCount: visibleTiles.length,
-      chrSize: chr?.length ?? null,
-      playfieldMode: project.mode === 'playfield',
-      nametableSize: nametable?.length ?? null,
-      attributeTableSize: attributeTable?.length ?? null,
-      error: conversionError,
-    }),
-    tileGrid,
-    exportPanel,
-  );
-  const diagnosticsElement = createDiagnostics({
-    width: project.width,
-    height: project.height,
-    indexedImage: mappedImage,
-    tileCount: visibleTiles.length,
-    chrSize: chr?.length ?? null,
-    playfieldMode: project.mode === 'playfield',
-    nametableSize: nametable?.length ?? null,
-    attributeTableSize: attributeTable?.length ?? null,
-    error: conversionError,
-  });
+
   const sidebar = createSidebar({
-    activeWorkspace: project.mode,
+    activeWorkspace: 'tileset',
     fileName: project.fileName,
     quantizationMode: project.quantizationSettings.quantizationMode,
     onQuantizationModeChange: (quantizationMode) => {
@@ -2564,9 +2334,158 @@ function render(): void {
     sidebar,
     workspace: workspaceElement,
     inspector,
-    diagnostics: diagnosticsElement,
+    diagnostics: workspaceElement.diagnosticsElement,
   });
   app.replaceChildren(shell);
+}
+
+function renderPlayfieldWorkspace(): void {
+  ensureQuantizationPreviews();
+  const workspaceElement = createPlayfieldWorkspace({
+    fileName: project.fileName,
+    sourceKind: project.sourceKind,
+    width: project.width,
+    height: project.height,
+    sourceImage: project.sourceImage,
+    indexedImage: project.indexedImage,
+    tiles: project.tiles,
+    deduplicationEnabled: project.deduplicationEnabled,
+    collisionCells: project.collisionCells,
+    activeCollisionType: project.activeCollisionType,
+    randomPlayfieldFeatures: project.randomPlayfieldFeatures,
+    paletteSet: project.paletteSet,
+    paletteAssignments: project.paletteAssignments,
+    pixelOverrides: project.pixelOverrides,
+    activePaletteIndex: project.activePaletteIndex,
+    activeColorIndex: project.activeColorIndex,
+    quantizationSettings: project.quantizationSettings,
+    quantizationPreviews,
+    quantizationPreviewsLoading,
+    quantizationCollapsed: workspace.quantizationCollapsed,
+    showPaletteNumbers: workspace.showPaletteNumbers,
+    previewTool: workspace.previewTool,
+    zoomedPaletteRegion: workspace.zoomedPaletteRegion,
+    paletteColorTarget: workspace.paletteColorTarget,
+    loading: derivedStatus.loading,
+    error: derivedStatus.error,
+    onModeChange: changeMode,
+    onFile: (file) => void loadFile(file),
+    onRandomPlayfieldFeaturesChange: (randomPlayfieldFeatures) => {
+      updateProject({ ...project, randomPlayfieldFeatures });
+      render();
+    },
+    onGeneratePlayfield: generatePlayfield,
+    onToggleQuantizationCollapse: () => {
+      updateWorkspace({
+        ...workspace,
+        quantizationCollapsed: !workspace.quantizationCollapsed,
+      });
+      render();
+    },
+    onQuantizationSettingsChange: (settings) =>
+      void changeQuantizationSettings(settings),
+    onActiveToolChange: (previewTool) => {
+      updateWorkspace({ ...workspace, previewTool });
+      render();
+    },
+    onCollisionChange: (collisionCells) => {
+      updateProject({ ...project, collisionCells });
+      render();
+    },
+    onCollisionTypeChange: (activeCollisionType) => {
+      updateProject({
+        ...project,
+        activeCollisionType,
+      });
+      updateWorkspace({ ...workspace, previewTool: 'paint-collision' });
+      render();
+    },
+    onPaletteRegionSelect: (zoomedPaletteRegion) => {
+      updateWorkspace({ ...workspace, zoomedPaletteRegion });
+      render();
+    },
+    onActivePaletteChange: (activePaletteIndex) => {
+      updateProject({ ...project, activePaletteIndex });
+      render();
+    },
+    onActiveColorChange: (activeColorIndex) => {
+      updateProject({ ...project, activeColorIndex });
+      render();
+    },
+    onShowPaletteNumbersChange: (showPaletteNumbers) => {
+      updateWorkspace({ ...workspace, showPaletteNumbers });
+      render();
+    },
+    onZoomedRegionChange: (zoomedPaletteRegion) => {
+      updateWorkspace({ ...workspace, zoomedPaletteRegion });
+      render();
+    },
+    onColorTargetChange: (paletteColorTarget) => {
+      updateWorkspace({ ...workspace, paletteColorTarget });
+      render();
+    },
+    onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
+      updateProject({
+        ...project,
+        paletteSet: setNesPaletteColor(
+          project.paletteSet,
+          paletteIndex,
+          colorIndex,
+          colorCode,
+        ),
+      });
+      render();
+    },
+    onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
+      updateProject({ ...project, pixelOverrides, paletteAssignments });
+      render();
+    },
+    onDeduplicationChange: (enabled) => {
+      updateProject({
+        ...project,
+        deduplicationEnabled: enabled,
+      });
+      render();
+    },
+    onDownloadBytes: downloadBytes,
+  });
+
+  const sidebar = createSidebar({
+    activeWorkspace: 'playfield',
+    fileName: project.fileName,
+    quantizationMode: project.quantizationSettings.quantizationMode,
+    onQuantizationModeChange: (quantizationMode) => {
+      void changeQuantizationSettings({
+        ...project.quantizationSettings,
+        quantizationMode,
+      });
+    },
+    onWorkspaceChange: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      changeMode(view);
+    },
+  });
+  const inspector = createInspector();
+  const shell = createAppShell({
+    header: createProjectHeader(),
+    sidebar,
+    workspace: workspaceElement,
+    inspector,
+    diagnostics: workspaceElement.diagnosticsElement,
+  });
+  app.replaceChildren(shell);
+}
+
+function render(): void {
+  document.documentElement.lang = getLocale();
+  document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
+  if (project.mode === 'animation') {
+    renderAnimationWorkspace();
+  } else if (project.mode === 'playfield') {
+    renderPlayfieldWorkspace();
+  } else {
+    renderTilesetWorkspace();
+  }
 }
 
 function setProjectError(error: DisplayError): void {
