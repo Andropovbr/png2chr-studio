@@ -63,7 +63,8 @@ const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
 export interface AnimationEditorOptions {
   readonly settings: AnimationSettings;
   readonly selectedAnimationId?: string | null;
-  readonly activeTab?: 'frames' | 'pixels' | 'mapping';
+  readonly selectedSceneInstanceId?: string | null;
+  readonly activeTab?: 'frames' | 'pixels' | 'mapping' | 'scene';
   readonly model: AnimationProjectModel | null;
   readonly modelError: AnimationModelError | null;
   readonly paletteSet: NesPaletteSet;
@@ -72,7 +73,10 @@ export interface AnimationEditorOptions {
   readonly colorDistanceMode?: ColorDistanceMode;
   readonly scenePreview?: ProjectScenePreviewConfig;
   readonly onSelectAnimation?: (animationId: string) => void;
-  readonly onSelectTab?: (tab: 'frames' | 'pixels' | 'mapping') => void;
+  readonly onSelectTab?: (
+    tab: 'frames' | 'pixels' | 'mapping' | 'scene',
+  ) => void;
+  readonly onSelectSceneInstance?: (instanceId: string | null) => void;
   readonly onSettingsChange: (settings: AnimationSettings) => void;
   readonly onDefaultPaletteIndexChange: (index: number) => void;
   readonly onAddAnimation: () => void;
@@ -84,6 +88,7 @@ export interface AnimationEditorOptions {
   readonly onTogglePaletteCollapse: () => void;
   readonly onAddSceneInstance: (instance: ScenePreviewInstance) => void;
   readonly onRemoveSceneInstance: (instanceId: string) => void;
+  readonly onDuplicateSceneInstance?: (instanceId: string) => void;
   readonly onUpdateSceneInstance: (
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
@@ -1988,10 +1993,14 @@ function createSelectedAnimationEditorPanel(
   tabsBar.className = 'animation-tabs-bar';
   tabsBar.setAttribute('role', 'tablist');
 
-  const tabs: readonly ['frames' | 'pixels' | 'mapping', TranslationKey][] = [
+  const tabs: readonly [
+    'frames' | 'pixels' | 'mapping' | 'scene',
+    TranslationKey,
+  ][] = [
     ['frames', 'animationTabFrames'],
     ['pixels', 'animationTabPixels'],
     ['mapping', 'animationTabMapping'],
+    ['scene', 'animationTabScene'],
   ];
 
   tabs.forEach(([tabKey, labelKey]) => {
@@ -2027,13 +2036,32 @@ function createSelectedAnimationEditorPanel(
     );
   } else if (activeTab === 'pixels') {
     mainColumn.append(createAnimationTilePixelSection(options, anim));
-  } else {
+  } else if (activeTab === 'mapping') {
     mainColumn.append(createSelectedAnimationMapping(options, anim));
+  } else {
+    mainColumn.classList.add('is-scene-tab');
+    const scenePreviewPanel = createScenePreviewPanel({
+      instances: options.scenePreview?.instances ?? [],
+      selectedInstanceId: options.selectedSceneInstanceId,
+      animations: options.settings.animations,
+      paletteSet: options.paletteSet,
+      palettes: options.palettes,
+      activeSpritePaletteSlots: options.activeSpritePaletteSlots,
+      defaultPaletteIndex: options.settings.defaultPaletteIndex,
+      onSelectInstance: options.onSelectSceneInstance,
+      onAddInstance: options.onAddSceneInstance,
+      onRemoveInstance: options.onRemoveSceneInstance,
+      onDuplicateInstance: options.onDuplicateSceneInstance,
+      onUpdateInstance: options.onUpdateSceneInstance,
+    });
+    mainColumn.append(scenePreviewPanel);
   }
 
   const previewColumn = document.createElement('div');
   previewColumn.className = 'animation-selected-preview-col';
-  previewColumn.append(createStickyAnimationPreview(options, anim));
+  if (activeTab !== 'scene') {
+    previewColumn.append(createStickyAnimationPreview(options, anim));
+  }
 
   layout.append(mainColumn, previewColumn);
   panel.append(layout);
@@ -2487,29 +2515,37 @@ export function createAnimationEditor(
   );
   selectedEditorPanel.id = 'section-animation-editor';
 
-  const scenePreviewPanel = createScenePreviewPanel({
-    instances: options.scenePreview?.instances ?? [],
-    animations: options.settings.animations,
-    paletteSet: options.paletteSet,
-    palettes: options.palettes,
-    activeSpritePaletteSlots: options.activeSpritePaletteSlots,
-    defaultPaletteIndex: options.settings.defaultPaletteIndex,
-    onAddInstance: options.onAddSceneInstance,
-    onRemoveInstance: options.onRemoveSceneInstance,
-    onUpdateInstance: options.onUpdateSceneInstance,
-  });
-  scenePreviewPanel.id = 'section-scene-preview';
-  const mappingPanel = createMapping(options);
-  mappingPanel.id = 'section-mapping';
-  const exportsPanel = createExports(options);
-  exportsPanel.id = 'section-export';
-  return [
+  const panels: HTMLElement[] = [
     configPanel,
     palettePanel,
     listPanel,
     selectedEditorPanel,
-    scenePreviewPanel,
-    mappingPanel,
-    exportsPanel,
   ];
+
+  if (options.activeTab !== 'scene') {
+    const scenePreviewPanel = createScenePreviewPanel({
+      instances: options.scenePreview?.instances ?? [],
+      selectedInstanceId: options.selectedSceneInstanceId,
+      animations: options.settings.animations,
+      paletteSet: options.paletteSet,
+      palettes: options.palettes,
+      activeSpritePaletteSlots: options.activeSpritePaletteSlots,
+      defaultPaletteIndex: options.settings.defaultPaletteIndex,
+      onSelectInstance: options.onSelectSceneInstance,
+      onAddInstance: options.onAddSceneInstance,
+      onRemoveInstance: options.onRemoveSceneInstance,
+      onDuplicateInstance: options.onDuplicateSceneInstance,
+      onUpdateInstance: options.onUpdateSceneInstance,
+    });
+    scenePreviewPanel.id = 'section-scene-preview';
+    panels.push(scenePreviewPanel);
+  }
+
+  const mappingPanel = createMapping(options);
+  mappingPanel.id = 'section-mapping';
+  const exportsPanel = createExports(options);
+  exportsPanel.id = 'section-export';
+  panels.push(mappingPanel, exportsPanel);
+
+  return panels;
 }

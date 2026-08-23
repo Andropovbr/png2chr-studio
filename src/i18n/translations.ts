@@ -252,6 +252,7 @@ const en = {
   animationTabFrames: 'Frames & Timing',
   animationTabPixels: 'Pixel Overrides',
   animationTabMapping: 'Metasprite Mapping',
+  animationTabScene: 'Scene Preview',
   animationSelectedEditorTitle: 'Selected Animation',
   animationNoSelected: 'No animation selected.',
   animationSelectAction: 'Edit',
@@ -293,6 +294,12 @@ const en = {
   scenePreviewVisible: 'Visible',
   scenePreviewRemove: 'Remove',
   scenePreviewInstanceLabel: 'Instance',
+  scenePreviewInspectorTitle: 'Instance Inspector',
+  scenePreviewNoSelectedInstance:
+    'Select an instance from the list or canvas to inspect and edit its properties.',
+  scenePreviewDuplicate: 'Duplicate Instance',
+  scenePreviewInstanceName: 'Instance Name',
+  scenePreviewPaletteStatus: 'Assigned Palette',
   scenePreviewStats:
     '{entities} entities · {instances} instances (NES 256×240)',
   scenePreviewPalettesUsed: 'Sprite palettes: {count} / 4',
@@ -838,6 +845,7 @@ const ptBr = {
   animationTabFrames: 'Frames e Temporização',
   animationTabPixels: 'Edição de Pixels',
   animationTabMapping: 'Mapeamento Metasprite',
+  animationTabScene: 'Cena Interativa',
   animationSelectedEditorTitle: 'Animação selecionada',
   animationNoSelected: 'Nenhuma animação selecionada.',
   animationSelectAction: 'Editar',
@@ -880,6 +888,12 @@ const ptBr = {
   scenePreviewVisible: 'Visível',
   scenePreviewRemove: 'Remover',
   scenePreviewInstanceLabel: 'Instância',
+  scenePreviewInspectorTitle: 'Inspetor da Instância',
+  scenePreviewNoSelectedInstance:
+    'Selecione uma instância na lista ou na tela para inspecionar e editar suas propriedades.',
+  scenePreviewDuplicate: 'Duplicar Instância',
+  scenePreviewInstanceName: 'Nome da Instância',
+  scenePreviewPaletteStatus: 'Paleta Atribuída',
   scenePreviewStats:
     '{entities} entidades · {instances} instâncias (NES 256×240)',
   scenePreviewPalettesUsed: 'Paletas de sprite: {count} / 4',

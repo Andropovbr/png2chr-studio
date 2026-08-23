@@ -21,7 +21,7 @@ It is designed for retro game developers and pixel artists who need a transparen
   - Assisted frame-grid detection for sprite sheets.
   - Metasprite generation with transparent 8×8 cell omission to minimize OAM usage and scanline limits.
   - Physical 8 KiB CHR-ROM modeling with independent sprite pattern table selection (PT0 / PT1), 8-bit local OAM tile indexes, sparse allocation, and base CHR preservation.
-  - Multi-entity scene preview with independent positioning and playback.
+  - Multi-entity Scene Preview subworkspace (Animation > Scene) with persistent NES 256×240 canvas, instance list with selection, and contextual instance inspector.
 - **Project Palette Workspace:** Dedicated workspace to manage reusable NES palette definitions and configure the 4 hardware sprite palette slots (0..3), while preserving contextual palette assignments, brush tools, and pixel overrides in each editor.
 - **CHR Memory & Pattern Table Workspace:** Projected read-only view of physical 8 KiB CHR-ROM memory (PT0 / PT1 pattern table isolation, base CHR retention, physical vs. 8-bit OAM-local sprite indexing, and deduplication reuse breakdown).
 - **Production Exporters:**

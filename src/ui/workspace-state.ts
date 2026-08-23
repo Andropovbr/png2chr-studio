@@ -1,10 +1,11 @@
 import type { DisplayError, PreviewTool } from './types';
 
-export type AnimationWorkspaceTab = 'frames' | 'pixels' | 'mapping';
+export type AnimationWorkspaceTab = 'frames' | 'pixels' | 'mapping' | 'scene';
 
 export interface AnimationWorkspaceState {
   /** Presentation and selection state projected onto the animation editor at render time. */
   readonly selectedAnimationId?: string | null;
+  readonly selectedSceneInstanceId?: string | null;
   readonly activeTab?: AnimationWorkspaceTab;
   readonly collapsedAnimationIds?: readonly string[];
   readonly configCollapsed: boolean;
