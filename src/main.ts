@@ -1450,18 +1450,53 @@ function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
 ): void {
-  const manualDimensions = 'frameWidth' in patch || 'frameHeight' in patch;
-  const resolvedPatch =
-    manualDimensions && !('frameDetection' in patch)
-      ? { ...patch, frameDetection: null }
-      : patch;
   updateProject({
     ...project,
     animation: {
       ...project.animation,
       animations: project.animation.animations.map((a) => {
         if (a.id !== animId) return a;
-        const updated = { ...a, ...resolvedPatch };
+        let updated = { ...a, ...patch };
+        if (
+          (patch.frameWidth !== undefined || patch.frameHeight !== undefined) &&
+          updated.source !== null &&
+          updated.frameWidth > 0 &&
+          updated.frameHeight > 0
+        ) {
+          const totalFrames =
+            Math.floor(updated.source.sourceImage.width / updated.frameWidth) *
+            Math.floor(updated.source.sourceImage.height / updated.frameHeight);
+          const validIndices = updated.frameIndices.filter(
+            (idx) => idx < totalFrames,
+          );
+          const frameIndices =
+            validIndices.length > 0
+              ? validIndices
+              : Array.from({ length: Math.max(1, totalFrames) }, (_, i) => i);
+          const frameDurations = updated.frameDurations.slice(
+            0,
+            frameIndices.length,
+          );
+          const framePalettes = (updated.framePalettes ?? []).slice(
+            0,
+            frameIndices.length,
+          );
+          updated = {
+            ...updated,
+            frameIndices,
+            frameDurations:
+              frameDurations.length === frameIndices.length
+                ? frameDurations
+                : Array.from(
+                    { length: frameIndices.length },
+                    () => updated.defaultDuration,
+                  ),
+            framePalettes:
+              framePalettes.length === frameIndices.length
+                ? framePalettes
+                : Array.from({ length: frameIndices.length }, () => null),
+          };
+        }
         if (
           (patch.quantizationMode !== undefined ||
             patch.ditheringMode !== undefined) &&
@@ -1705,18 +1740,31 @@ function reDetectAnimationFrames(animId: string): void {
   const rows = Math.floor(anim.source.sourceImage.height / height);
   const totalFrames = columns * rows;
   const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
-  const validDurations = anim.frameDurations.slice(0, validIndices.length);
+  const frameIndices =
+    validIndices.length > 0
+      ? validIndices
+      : Array.from({ length: Math.max(1, totalFrames) }, (_, i) => i);
+  const validDurations = anim.frameDurations.slice(0, frameIndices.length);
   const validPalettes = (anim.framePalettes ?? []).slice(
     0,
-    validIndices.length,
+    frameIndices.length,
   );
   updateAnimation(animId, {
     frameDetection: detection,
     frameWidth: width,
     frameHeight: height,
-    frameIndices: validIndices,
-    frameDurations: validDurations,
-    framePalettes: validPalettes,
+    frameIndices,
+    frameDurations:
+      validDurations.length === frameIndices.length
+        ? validDurations
+        : Array.from(
+            { length: frameIndices.length },
+            () => anim.defaultDuration,
+          ),
+    framePalettes:
+      validPalettes.length === frameIndices.length
+        ? validPalettes
+        : Array.from({ length: frameIndices.length }, () => null),
   });
 }
 

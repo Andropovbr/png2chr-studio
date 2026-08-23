@@ -955,49 +955,108 @@ select {
 .animation-detection {
   grid-column: 1 / -1;
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  padding: 0.5rem 0.75rem;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem 0.95rem;
   border: 1px solid var(--panel-border);
-  border-radius: 0.45rem;
-  background: rgba(255, 255, 255, 0.01);
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 1.5%);
   font-size: 0.82rem;
 }
 
-.animation-detection-status {
-  color: var(--muted);
-  font-weight: 700;
+.animation-detection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
 }
 
-.animation-detection-confidence {
-  padding: 0.15rem 0.5rem;
+.animation-detection-title {
+  font-weight: 700;
+  color: #fff;
+}
+
+.animation-detection-badge {
+  padding: 0.2rem 0.55rem;
   border-radius: 0.35rem;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
+.badge-confidence-high,
 .animation-detection-confidence-high {
   color: var(--accent);
+  background: rgb(87 211 164 / 12%);
+  border: 1px solid rgb(87 211 164 / 28%);
+}
+
+.badge-confidence-medium,
+.animation-detection-confidence-medium {
+  color: #ffd569;
+  background: rgb(255 213 105 / 12%);
+  border: 1px solid rgb(255 213 105 / 28%);
+}
+
+.badge-confidence-low,
+.animation-detection-confidence-low {
+  color: var(--danger);
+  background: rgb(255 99 88 / 12%);
+  border: 1px solid rgb(255 99 88 / 28%);
+}
+
+.animation-detection-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.animation-detection-status {
+  margin: 0;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.animation-detection-applied-status {
+  color: var(--accent);
+}
+
+.animation-detection-custom-status {
+  color: #cbd5e1;
+}
+
+.animation-detection-suggested-info {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.animation-detection-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgb(255 255 255 / 5%);
+}
+
+.animation-apply-detection-btn {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+  border-color: rgb(87 211 164 / 40%);
+  color: var(--accent);
+}
+
+.animation-apply-detection-btn:hover {
   background: rgb(87 211 164 / 10%);
 }
 
-.animation-detection-confidence-medium {
-  color: #ffd569;
-  background: rgb(255 213 105 / 10%);
-}
-
-.animation-detection-confidence-low {
-  color: var(--danger);
-  background: rgb(255 99 88 / 10%);
-}
-
 .animation-detect-btn {
-  margin-left: auto;
-  font-size: 0.8rem;
-  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
   white-space: nowrap;
-  height: fit-content;
 }
 
 .animation-apply-all-btn {

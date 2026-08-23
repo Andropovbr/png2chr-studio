@@ -652,4 +652,135 @@ describe('Animation Editor Split Architecture', () => {
       });
     }
   });
+
+  it('renders high-confidence frame detection with applied status', () => {
+    const animWithHighConfidence = {
+      ...createSampleAnimation('anim-1', 'idle', 'hero'),
+      frameWidth: 16,
+      frameHeight: 16,
+      frameDetection: {
+        recommendedWidth: 16,
+        recommendedHeight: 16,
+        confidence: 'high' as const,
+        candidates: [],
+      },
+    };
+    const options = createOptions({
+      settings: {
+        ...createOptions().settings,
+        animations: [animWithHighConfidence],
+      },
+      selectedAnimationId: 'anim-1',
+      activeTab: 'frames',
+    });
+    const panels = createAnimationEditor(options);
+    const editorPanel = panels.find((p) => p.id === 'section-animation-editor');
+    expect(editorPanel).toBeDefined();
+    const mockEditor = editorPanel as unknown as MockElement;
+
+    const detectionCard = mockEditor.querySelector('.animation-detection-card');
+    expect(detectionCard).not.toBeNull();
+
+    const confidenceBadge = mockEditor.querySelector(
+      '.animation-detection-badge',
+    );
+    expect(confidenceBadge).not.toBeNull();
+    expect(confidenceBadge?.classList.contains('badge-confidence-high')).toBe(
+      true,
+    );
+
+    const appliedStatus = mockEditor.querySelector(
+      '.animation-detection-applied-status',
+    );
+    expect(appliedStatus).not.toBeNull();
+    expect(
+      mockEditor.querySelector('.animation-apply-detection-btn'),
+    ).toBeNull();
+  });
+
+  it('renders medium/low-confidence detection with suggestion and apply button when custom dimensions differ', () => {
+    const onUpdateAnimation = vi.fn();
+    const animWithMediumConfidence = {
+      ...createSampleAnimation('anim-1', 'idle', 'hero'),
+      frameWidth: 24,
+      frameHeight: 24,
+      frameDetection: {
+        recommendedWidth: 16,
+        recommendedHeight: 16,
+        confidence: 'medium' as const,
+        candidates: [],
+      },
+    };
+    const options = createOptions({
+      settings: {
+        ...createOptions().settings,
+        animations: [animWithMediumConfidence],
+      },
+      selectedAnimationId: 'anim-1',
+      activeTab: 'frames',
+      onUpdateAnimation,
+    });
+    const panels = createAnimationEditor(options);
+    const editorPanel = panels.find((p) => p.id === 'section-animation-editor');
+    expect(editorPanel).toBeDefined();
+    const mockEditor = editorPanel as unknown as MockElement;
+
+    const confidenceBadge = mockEditor.querySelector(
+      '.animation-detection-badge',
+    );
+    expect(confidenceBadge).not.toBeNull();
+    expect(confidenceBadge?.classList.contains('badge-confidence-medium')).toBe(
+      true,
+    );
+
+    const customStatus = mockEditor.querySelector(
+      '.animation-detection-custom-status',
+    );
+    expect(customStatus).not.toBeNull();
+
+    const suggestedInfo = mockEditor.querySelector(
+      '.animation-detection-suggested-info',
+    );
+    expect(suggestedInfo).not.toBeNull();
+
+    const applyBtn = mockEditor.querySelector('.animation-apply-detection-btn');
+    expect(applyBtn).not.toBeNull();
+
+    applyBtn?.click();
+    expect(onUpdateAnimation).toHaveBeenCalledWith('anim-1', {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
+  });
+
+  it('triggers onFrameDetection when clicking retry detect button', () => {
+    const onFrameDetection = vi.fn();
+    const anim = {
+      ...createSampleAnimation('anim-1', 'idle', 'hero'),
+      frameDetection: {
+        recommendedWidth: 8,
+        recommendedHeight: 8,
+        confidence: 'low' as const,
+        candidates: [],
+      },
+    };
+    const options = createOptions({
+      settings: {
+        ...createOptions().settings,
+        animations: [anim],
+      },
+      selectedAnimationId: 'anim-1',
+      activeTab: 'frames',
+      onFrameDetection,
+    });
+    const panels = createAnimationEditor(options);
+    const editorPanel = panels.find((p) => p.id === 'section-animation-editor');
+    expect(editorPanel).toBeDefined();
+    const mockEditor = editorPanel as unknown as MockElement;
+
+    const detectBtn = mockEditor.querySelector('.animation-detect-btn');
+    expect(detectBtn).not.toBeNull();
+    detectBtn?.click();
+    expect(onFrameDetection).toHaveBeenCalledWith('anim-1');
+  });
 });
