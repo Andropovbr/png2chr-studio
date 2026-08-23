@@ -40,6 +40,7 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
     ['playfield', 'playfieldMode'],
     ['animation', 'animationMode'],
     ['palette', 'palettesMode'],
+    ['chr', 'chrMode'],
   ];
 
   workspaces.forEach(([viewKey, labelKey]) => {
@@ -71,28 +72,36 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
   linksContainer.className = 'sidebar-links';
 
   const links: readonly (readonly [string, string])[] =
-    options.activeWorkspace === 'palette'
+    options.activeWorkspace === 'chr'
       ? [
-          ['#section-palettes-intro', t('paletteManagerTitle')],
-          ['#section-active-slots', t('paletteManagerActiveSlotsTitle')],
-          ['#section-palette-definitions', t('paletteManagerListTitle')],
-          ['#section-palette-export', t('paletteWorkspaceExportTitle')],
+          ['#section-chr-intro', t('chrWorkspaceIntroTitle')],
+          ['#section-chr-occupancy', t('chrWorkspaceOccupancyTitle')],
+          ['#section-chr-sprite-context', t('chrWorkspaceSpriteContextTitle')],
+          ['#section-chr-tiles-reuse', t('chrWorkspaceReuseTitle')],
+          ['#section-chr-export', t('chrWorkspaceExportTitle')],
         ]
-      : options.activeWorkspace === 'animation'
+      : options.activeWorkspace === 'palette'
         ? [
-            ['#section-asset', t('navigationAsset')],
-            ['#section-palettes', t('navigationPalettes')],
-            ['#section-animations', t('navigationAnimations')],
-            ['#section-scene-preview', t('navigationScenePreview')],
-            ['#section-mapping', t('navigationMapping')],
-            ['#section-export', t('navigationExport')],
+            ['#section-palettes-intro', t('paletteManagerTitle')],
+            ['#section-active-slots', t('paletteManagerActiveSlotsTitle')],
+            ['#section-palette-definitions', t('paletteManagerListTitle')],
+            ['#section-palette-export', t('paletteWorkspaceExportTitle')],
           ]
-        : [
-            ['#section-image', t('navigationImage')],
-            ['#section-palettes', t('navigationPalettes')],
-            ['#section-tiles', t('navigationTiles')],
-            ['#section-export', t('navigationExport')],
-          ];
+        : options.activeWorkspace === 'animation'
+          ? [
+              ['#section-asset', t('navigationAsset')],
+              ['#section-palettes', t('navigationPalettes')],
+              ['#section-animations', t('navigationAnimations')],
+              ['#section-scene-preview', t('navigationScenePreview')],
+              ['#section-mapping', t('navigationMapping')],
+              ['#section-export', t('navigationExport')],
+            ]
+          : [
+              ['#section-image', t('navigationImage')],
+              ['#section-palettes', t('navigationPalettes')],
+              ['#section-tiles', t('navigationTiles')],
+              ['#section-export', t('navigationExport')],
+            ];
 
   links.forEach(([href, label]) => {
     const anchor = document.createElement('a');
@@ -108,7 +117,11 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
   const metaSection = document.createElement('div');
   metaSection.className = 'sidebar-section sidebar-meta';
 
-  if (options.fileName !== null && options.activeWorkspace !== 'palette') {
+  if (
+    options.fileName !== null &&
+    options.activeWorkspace !== 'palette' &&
+    options.activeWorkspace !== 'chr'
+  ) {
     const file = document.createElement('div');
     file.className = 'sidebar-file';
     file.textContent = t('navigationImageValue', { name: options.fileName });
@@ -119,6 +132,7 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
   if (
     options.activeWorkspace !== 'animation' &&
     options.activeWorkspace !== 'palette' &&
+    options.activeWorkspace !== 'chr' &&
     options.quantizationMode &&
     options.onQuantizationModeChange
   ) {

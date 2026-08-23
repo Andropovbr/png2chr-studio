@@ -28,6 +28,7 @@ const en = {
   playfieldMode: 'Playfield / game screen',
   animationMode: 'Sprite sheet / animation',
   palettesMode: 'Palettes',
+  chrMode: 'CHR Memory',
   paletteWorkspaceTitle: 'Project Palettes',
   paletteWorkspaceHint:
     'Manage reusable NES palette definitions and configure active sprite palette slots for the project.',
@@ -43,6 +44,41 @@ const en = {
   paletteWorkspaceDownloadPal: 'Download Palette (.pal)',
   paletteWorkspaceStats:
     '{count} palette definitions · {active} active slots · {references} references',
+  chrWorkspaceTitle: 'CHR Memory & Pattern Tables',
+  chrWorkspaceHint:
+    'Projected hardware view of physical 8 KiB CHR-ROM occupancy, pattern tables (PT0 / PT1), base CHR retention, and OAM-local tile indexing.',
+  chrWorkspaceIntroTitle: 'Overview',
+  chrWorkspaceOccupancyTitle: 'Physical Occupancy & Pattern Tables',
+  chrWorkspaceSpriteContextTitle: 'Sprite Capacity & OAM Indexes',
+  chrWorkspaceReuseTitle: 'Tiles & Reuse Breakdown',
+  chrWorkspaceExportTitle: 'CHR Export & Links',
+  chrWorkspaceTotalOccupancy:
+    'Total CHR Occupancy: {occupied} / {capacity} tiles ({percent}%)',
+  chrWorkspaceFreeTiles: '{count} free tiles',
+  chrWorkspaceRomSize: 'Output size: 8 KiB ({bytes} bytes)',
+  chrWorkspacePt0Title: 'Pattern Table 0 (PT0 - $0000..$0FFF)',
+  chrWorkspacePt1Title: 'Pattern Table 1 (PT1 - $1000..$1FFF)',
+  chrWorkspacePtOccupancy: '{occupied} / 256 tiles occupied',
+  chrWorkspacePtBaseCount: '{count} tiles from Base CHR',
+  chrWorkspacePtRoleBackground: 'Background Table (Default)',
+  chrWorkspacePtRoleSprite: 'Active Sprite Table (OAM Target)',
+  chrWorkspaceOamIndexExplain:
+    'The NES PPU addresses sprites using an 8-bit tile index (0..255). Pattern table selection (PT0 / PT1) is controlled globally via PPU register $2000 (PPUCTRL bit 3). Local OAM tile index is always physicalIndex % 256.',
+  chrWorkspaceActiveSpritePt: 'Active Sprite Table: PT{table} (${address})',
+  chrWorkspaceSpriteCapacity:
+    'Sprite Pattern Table Capacity: {occupied} / 256 tiles ({remaining} remaining)',
+  chrWorkspaceBaseTilesCount: 'Base CHR Retained',
+  chrWorkspaceReusedTilesCount: 'Reused / Shared Tiles',
+  chrWorkspaceNewTilesCount: 'New Unique Tiles',
+  chrWorkspaceSavedDeduplication: 'Deduplication Savings',
+  chrWorkspaceDownloadChr: 'Download 8 KiB CHR (.chr)',
+  chrWorkspaceDownloadJson: 'Download Metadata (.json)',
+  chrWorkspaceGoToMapping: 'Go to Metasprite Mapping',
+  chrWorkspaceGoToAnimation: 'Go to Animation Editor',
+  chrWorkspaceGoToPalettes: 'Go to Palette Workspace',
+  chrWorkspaceNoBaseChr: 'No Base CHR loaded (Fresh 8 KiB space)',
+  chrWorkspaceBaseChrLoaded:
+    'Base CHR: {name} ({size} bytes, {slots} slots, {occupied} occupied)',
   tilesetModeHint:
     'Use a PNG, a CHR file, or an iNES mapper 0 ROM with 8 KB of CHR-ROM.',
   playfieldModeHint:
@@ -577,6 +613,7 @@ const ptBr = {
   playfieldMode: 'Playfield / tela do jogo',
   animationMode: 'Sprite sheet / animação',
   palettesMode: 'Paletas',
+  chrMode: 'Memória CHR',
   paletteWorkspaceTitle: 'Paletas do Projeto',
   paletteWorkspaceHint:
     'Gerencie definições reutilizáveis de paletas NES e configure os slots de paletas de sprites do projeto.',
@@ -592,6 +629,41 @@ const ptBr = {
   paletteWorkspaceDownloadPal: 'Baixar Paleta (.pal)',
   paletteWorkspaceStats:
     '{count} definições de paleta · {active} slots ativos · {references} referências',
+  chrWorkspaceTitle: 'Memória CHR e Tabelas de Padrões',
+  chrWorkspaceHint:
+    'Visão de hardware projetada da ocupação física da CHR-ROM de 8 KiB, tabelas de padrões (PT0 / PT1), retenção de CHR-base e indexação local OAM.',
+  chrWorkspaceIntroTitle: 'Visão Geral',
+  chrWorkspaceOccupancyTitle: 'Ocupação Física e Tabelas de Padrões',
+  chrWorkspaceSpriteContextTitle: 'Capacidade de Sprites e Índices OAM',
+  chrWorkspaceReuseTitle: 'Detalhamento de Tiles e Reúso',
+  chrWorkspaceExportTitle: 'Exportação de CHR e Links',
+  chrWorkspaceTotalOccupancy:
+    'Ocupação Total da CHR: {occupied} / {capacity} tiles ({percent}%)',
+  chrWorkspaceFreeTiles: '{count} tiles livres',
+  chrWorkspaceRomSize: 'Tamanho de saída: 8 KiB ({bytes} bytes)',
+  chrWorkspacePt0Title: 'Tabela de Padrões 0 (PT0 - $0000..$0FFF)',
+  chrWorkspacePt1Title: 'Tabela de Padrões 1 (PT1 - $1000..$1FFF)',
+  chrWorkspacePtOccupancy: '{occupied} / 256 tiles ocupados',
+  chrWorkspacePtBaseCount: '{count} tiles do CHR-base',
+  chrWorkspacePtRoleBackground: 'Tabela de Background (Padrão)',
+  chrWorkspacePtRoleSprite: 'Tabela Ativa de Sprites (Alvo OAM)',
+  chrWorkspaceOamIndexExplain:
+    'A PPU do NES endereça sprites usando um índice de tile de 8 bits (0..255). A seleção da tabela de padrões (PT0 / PT1) é controlada globalmente via registrador $2000 (PPUCTRL bit 3). O índice local OAM é sempre physicalIndex % 256.',
+  chrWorkspaceActiveSpritePt: 'Tabela Ativa de Sprites: PT{table} (${address})',
+  chrWorkspaceSpriteCapacity:
+    'Capacidade da Tabela de Sprites: {occupied} / 256 tiles ({remaining} restantes)',
+  chrWorkspaceBaseTilesCount: 'CHR-Base Retido',
+  chrWorkspaceReusedTilesCount: 'Tiles Reutilizados / Compartilhados',
+  chrWorkspaceNewTilesCount: 'Novos Tiles Únicos',
+  chrWorkspaceSavedDeduplication: 'Economia por Deduplicação',
+  chrWorkspaceDownloadChr: 'Baixar CHR de 8 KiB (.chr)',
+  chrWorkspaceDownloadJson: 'Baixar Metadados (.json)',
+  chrWorkspaceGoToMapping: 'Ir para Mapeamento de Metasprites',
+  chrWorkspaceGoToAnimation: 'Ir para Editor de Animação',
+  chrWorkspaceGoToPalettes: 'Ir para Workspace de Paletas',
+  chrWorkspaceNoBaseChr: 'Nenhum CHR-base carregado (Espaço limpo de 8 KiB)',
+  chrWorkspaceBaseChrLoaded:
+    'CHR-Base: {name} ({size} bytes, {slots} slots, {occupied} ocupados)',
   tilesetModeHint:
     'Use um PNG, um arquivo CHR ou uma ROM iNES mapper 0 com 8 KB de CHR-ROM.',
   playfieldModeHint:

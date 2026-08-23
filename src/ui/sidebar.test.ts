@@ -118,17 +118,19 @@ describe('Sidebar component', () => {
     const buttons = (sidebar as unknown as MockElement).querySelectorAll(
       '.sidebar-nav-item',
     );
-    expect(buttons.length).toBe(4);
+    expect(buttons.length).toBe(5);
 
     const btn0 = buttons[0];
     const btn1 = buttons[1];
     const btn2 = buttons[2];
     const btn3 = buttons[3];
+    const btn4 = buttons[4];
     expect(btn0).toBeDefined();
     expect(btn1).toBeDefined();
     expect(btn2).toBeDefined();
     expect(btn3).toBeDefined();
-    if (!btn0 || !btn1 || !btn2 || !btn3) return;
+    expect(btn4).toBeDefined();
+    if (!btn0 || !btn1 || !btn2 || !btn3 || !btn4) return;
 
     // Tileset
     expect(btn0.classList.contains('is-active')).toBe(false);
@@ -146,6 +148,10 @@ describe('Sidebar component', () => {
     expect(btn3.classList.contains('is-active')).toBe(false);
     expect(btn3.getAttribute('aria-pressed')).toBe('false');
 
+    // CHR
+    expect(btn4.classList.contains('is-active')).toBe(false);
+    expect(btn4.getAttribute('aria-pressed')).toBe('false');
+
     // Click tileset button
     btn0.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('tileset');
@@ -157,6 +163,10 @@ describe('Sidebar component', () => {
     // Click palette button
     btn3.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('palette');
+
+    // Click CHR button
+    btn4.click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('chr');
   });
 
   it('renders section anchors for tileset / playfield modes', () => {
@@ -215,6 +225,26 @@ describe('Sidebar component', () => {
       '#section-active-slots',
       '#section-palette-definitions',
       '#section-palette-export',
+    ]);
+  });
+
+  it('renders section anchors for chr mode', () => {
+    const sidebar = createSidebar({
+      activeWorkspace: 'chr',
+      fileName: null,
+    });
+
+    const links = (sidebar as unknown as MockElement).querySelectorAll(
+      '.sidebar-link',
+    );
+    const hrefs = links.map((link) => link.getAttribute('href'));
+
+    expect(hrefs).toEqual([
+      '#section-chr-intro',
+      '#section-chr-occupancy',
+      '#section-chr-sprite-context',
+      '#section-chr-tiles-reuse',
+      '#section-chr-export',
     ]);
   });
 
