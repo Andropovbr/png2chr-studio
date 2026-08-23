@@ -141,10 +141,12 @@ describe('Sidebar component', () => {
     // Playfield (active)
     expect(btn1.classList.contains('is-active')).toBe(true);
     expect(btn1.getAttribute('aria-pressed')).toBe('true');
+    expect(btn1.getAttribute('aria-current')).toBe('page');
 
     // Animation
     expect(btn2.classList.contains('is-active')).toBe(false);
     expect(btn2.getAttribute('aria-pressed')).toBe('false');
+    expect(btn2.getAttribute('aria-current')).toBeNull();
 
     // Palette
     expect(btn3.classList.contains('is-active')).toBe(false);
@@ -232,7 +234,7 @@ describe('Sidebar component', () => {
       '#section-asset',
       '#section-palettes',
       '#section-animations',
-      '#section-scene-preview',
+      '#section-animation-editor',
       '#section-mapping',
       '#section-export',
     ]);

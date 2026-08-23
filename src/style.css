@@ -1457,9 +1457,15 @@ button.quantization-preview-card {
 
 .button:focus-visible,
 select:focus-visible,
+input:focus-visible,
+a:focus-visible,
+.sidebar-nav-item:focus-visible,
+.sidebar-link:focus-visible,
+.preview-collapse-toggle:focus-visible,
+.inspector-close-btn:focus-visible,
 input:focus-visible + label {
-  outline: 3px solid #b6ffe3;
-  outline-offset: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .file-details {
@@ -3178,6 +3184,40 @@ input:focus-visible + label {
   .app-shell-layout,
   .app-shell-layout.has-inspector {
     grid-template-columns: 1fr;
+  }
+
+  .app-shell-sidebar-host {
+    position: static;
+  }
+
+  .app-shell-inspector-host {
+    position: static;
+    width: 100%;
+  }
+
+  .inspector-panel {
+    position: static;
+    width: 100%;
+  }
+
+  .app-sidebar {
+    gap: 1rem;
+  }
+
+  .sidebar-nav-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 0.35rem;
+  }
+
+  .sidebar-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .sidebar-link {
+    display: inline-block;
   }
 }
 
