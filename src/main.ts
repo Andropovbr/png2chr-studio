@@ -1303,6 +1303,13 @@ function addAnimation(): void {
       animations: [...project.animation.animations, newAnim],
     },
   });
+  updateWorkspace({
+    ...workspace,
+    animation: {
+      ...workspace.animation,
+      selectedAnimationId: newId,
+    },
+  });
   setDerivedStatus({ ...derivedStatus, error: null });
   render();
 }
@@ -1322,7 +1329,15 @@ function duplicateAnimation(animId: string): void {
     ditheringMode: original.ditheringMode ?? 'none',
     frameIndices: [...original.frameIndices],
     frameDurations: [...original.frameDurations],
-    framePalettes: [...(original.framePalettes ?? [])],
+    framePalettes: original.framePalettes
+      ? [...original.framePalettes]
+      : undefined,
+    framePaletteIds: original.framePaletteIds
+      ? [...original.framePaletteIds]
+      : undefined,
+    pixelOverrides: original.pixelOverrides
+      ? { ...original.pixelOverrides }
+      : undefined,
   };
   const list = [...project.animation.animations];
   list.splice(index + 1, 0, copy);
@@ -1331,6 +1346,13 @@ function duplicateAnimation(animId: string): void {
     animation: {
       ...project.animation,
       animations: list,
+    },
+  });
+  updateWorkspace({
+    ...workspace,
+    animation: {
+      ...workspace.animation,
+      selectedAnimationId: newId,
     },
   });
   setDerivedStatus({ ...derivedStatus, error: null });
@@ -1347,7 +1369,41 @@ function removeAnimation(animId: string): void {
       animations: remaining,
     },
   });
+  if (
+    workspace.animation.selectedAnimationId === animId ||
+    !remaining.some((a) => a.id === workspace.animation.selectedAnimationId)
+  ) {
+    updateWorkspace({
+      ...workspace,
+      animation: {
+        ...workspace.animation,
+        selectedAnimationId: remaining[0]?.id ?? null,
+      },
+    });
+  }
   setDerivedStatus({ ...derivedStatus, error: null });
+  render();
+}
+
+function selectAnimation(animationId: string): void {
+  updateWorkspace({
+    ...workspace,
+    animation: {
+      ...workspace.animation,
+      selectedAnimationId: animationId,
+    },
+  });
+  render();
+}
+
+function selectAnimationTab(tab: 'frames' | 'pixels' | 'mapping'): void {
+  updateWorkspace({
+    ...workspace,
+    animation: {
+      ...workspace.animation,
+      activeTab: tab,
+    },
+  });
   render();
 }
 
@@ -1356,13 +1412,13 @@ function toggleAnimationCollapse(animId: string): void {
     ...workspace,
     animation: {
       ...workspace.animation,
-      collapsedAnimationIds: workspace.animation.collapsedAnimationIds.includes(
-        animId,
-      )
-        ? workspace.animation.collapsedAnimationIds.filter(
+      collapsedAnimationIds: (
+        workspace.animation.collapsedAnimationIds ?? []
+      ).includes(animId)
+        ? (workspace.animation.collapsedAnimationIds ?? []).filter(
             (id) => id !== animId,
           )
-        : [...workspace.animation.collapsedAnimationIds, animId],
+        : [...(workspace.animation.collapsedAnimationIds ?? []), animId],
     },
   });
   render();
@@ -1949,11 +2005,20 @@ function renderAnimationWorkspace(): void {
     else throw error;
   }
 
+  const selectedAnimationId =
+    workspace.animation.selectedAnimationId !== undefined &&
+    workspace.animation.selectedAnimationId !== null &&
+    project.animation.animations.some(
+      (a) => a.id === workspace.animation.selectedAnimationId,
+    )
+      ? workspace.animation.selectedAnimationId
+      : (project.animation.animations[0]?.id ?? null);
+
   const animationEditorSettings: AnimationSettings = {
     ...project.animation,
     animations: project.animation.animations.map((animation) => ({
       ...animation,
-      collapsed: workspace.animation.collapsedAnimationIds.includes(
+      collapsed: (workspace.animation.collapsedAnimationIds ?? []).includes(
         animation.id,
       ),
     })),
@@ -1963,6 +2028,8 @@ function renderAnimationWorkspace(): void {
   };
   const editorOptions: AnimationEditorOptions = {
     settings: animationEditorSettings,
+    selectedAnimationId,
+    activeTab: workspace.animation.activeTab ?? 'frames',
     model,
     modelError,
     paletteSet: project.paletteSet,
@@ -1970,6 +2037,8 @@ function renderAnimationWorkspace(): void {
     activeSpritePaletteSlots: project.activeSpritePaletteSlots,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     scenePreview: project.scenePreview,
+    onSelectAnimation: selectAnimation,
+    onSelectTab: selectAnimationTab,
     onSettingsChange: (animation: AnimationSettings) => {
       updateProject({
         ...project,

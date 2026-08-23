@@ -1,8 +1,12 @@
 import type { DisplayError, PreviewTool } from './types';
 
+export type AnimationWorkspaceTab = 'frames' | 'pixels' | 'mapping';
+
 export interface AnimationWorkspaceState {
-  /** Presentation state projected onto the animation editor at render time. */
-  readonly collapsedAnimationIds: readonly string[];
+  /** Presentation and selection state projected onto the animation editor at render time. */
+  readonly selectedAnimationId?: string | null;
+  readonly activeTab?: AnimationWorkspaceTab;
+  readonly collapsedAnimationIds?: readonly string[];
   readonly configCollapsed: boolean;
   readonly paletteCollapsed: boolean;
   readonly mappingCollapsed: boolean;
@@ -43,6 +47,8 @@ export function createWorkspaceState(
     paletteColorTarget: { paletteIndex, colorIndex },
     quantizationCollapsed: false,
     animation: {
+      selectedAnimationId: null,
+      activeTab: 'frames',
       collapsedAnimationIds: [],
       configCollapsed: false,
       paletteCollapsed: false,

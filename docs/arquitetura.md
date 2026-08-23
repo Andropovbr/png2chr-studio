@@ -191,8 +191,13 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 
 ### 6.3 Modo Spritesheet e Animação
 
-- Criação de conjuntos de animações genéricas para entidades de jogo.
-- Cada animação possui controle de spritesheet PNG, dimensões de frame, âncora de origem assinada (`originX`, `originY`), modo de reprodução (`loop` ou `once`), flags de flip e durações por frame.
+- Criação e edição de conjuntos de animações para entidades de jogo com arquitetura desacoplada:
+  - **Lista de Animações / Entidades (`#section-animations`):** Visão geral em cartões compactos exibindo entidade, nome, quantidade de frames, modo de reprodução e status de seleção, sem expandir todos os formulários simultaneamente.
+  - **Editor da Animação Selecionada (`#section-animation-editor`):** Focado exclusivamente na animação ativa com abas contextuais:
+    - _Frames & Timing:_ Dimensões, âncora de origem (`originX`, `originY`), fonte PNG, detecção assistida de grade, durações por frame, paleta por frame e variantes de espelhamento (H/V).
+    - _Pixel Overrides:_ Editor de pixels nos tiles 8×8 da animação ativa com preservação de sobreposições manuais.
+    - _Metasprite Mapping:_ Inspeção detalhada do mapeamento de metasprites e células 8×8 da animação ativa.
+  - **Sticky Preview & Sumário:** Painel lateral fixo com player interativo (Play/Pause, Passo Anterior/Próximo), alternador de variantes (Original / Flip H / Flip V), modo de cor (NES / PNG Original) e sumário de métricas da animação selecionada.
 - **Detecção Assistida de Frames (`src/core/frame-detection.ts`):** Analisa a transparência e as dimensões da folha para sugerir a grade de frames automaticamente.
 - **Geração de Metasprites:** Cada frame selecionado é subdividido em células 8×8. Células totalmente transparentes são **omitidas**, economizando slots na OAM e respeitando o limite do hardware de 8 sprites por linha de varredura (_scanline limit_).
 - **Projeção de Mapeamento (`src/core/animation-mapping.ts`):** Painel que inspeciona detalhadamente o índice local OAM, índice físico CHR, paleta efetiva e atributos de cada tile de cada frame.

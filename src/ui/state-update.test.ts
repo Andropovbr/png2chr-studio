@@ -52,11 +52,15 @@ describe('application state update boundaries', () => {
       quantizationCollapsed: true,
       animation: {
         ...workspace.animation,
+        selectedAnimationId: 'anim-1',
+        activeTab: 'pixels' as const,
         collapsedAnimationIds: ['anim-id'],
       },
     }));
 
     expect(result.marksProjectDirty).toBe(false);
+    expect(result.value.animation.selectedAnimationId).toBe('anim-1');
+    expect(result.value.animation.activeTab).toBe('pixels');
     expect(serializeProject(project)).toBe(serializedBefore);
   });
 

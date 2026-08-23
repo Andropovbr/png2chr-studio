@@ -7,11 +7,11 @@ NES-domain behavior into component state.
 
 ## State ownership
 
-| Boundary                | Owns                                                                                                                                                                                                        | Dirty effect                                        |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `updateProject(...)`    | Project settings, selected mode and source, palettes and assignments, pixel overrides, collisions, animation definitions, scene instances, CHR destination, and other data represented by the saved project | A changed project identity marks the project dirty  |
-| `updateWorkspace(...)`  | Active workspace navigation, active preview tool, palette-number overlay, zoomed palette region, palette color target, collapsed panels, and collapsed animation cards                                      | Never marks the project dirty and is not serialized |
-| `setDerivedStatus(...)` | Loading state and processing/validation errors                                                                                                                                                              | Never marks the project dirty and is not serialized |
+| Boundary                | Owns                                                                                                                                                                                                                                 | Dirty effect                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `updateProject(...)`    | Project settings, selected mode and source, palettes and assignments, pixel overrides, collisions, animation definitions, scene instances, CHR destination, and other data represented by the saved project                          | A changed project identity marks the project dirty  |
+| `updateWorkspace(...)`  | Active workspace navigation, active preview tool, palette-number overlay, zoomed palette region, palette color target, collapsed panels, active animation selection (`selectedAnimationId`), and active contextual tab (`activeTab`) | Never marks the project dirty and is not serialized |
+| `setDerivedStatus(...)` | Loading state and processing/validation errors                                                                                                                                                                                       | Never marks the project dirty and is not serialized |
 
 `ProjectView` also carries reconstructed source images and conversion caches
 needed by the current browser workflow. New projects and successfully loaded
@@ -24,10 +24,9 @@ callback uses the same dirty rule through `updateProjectName(...)`.
 
 ## Rendering transient animation state
 
-The animation editor still accepts optional collapsed flags in its render
-options. `renderAnimationWorkspace()` projects those flags from
-`WorkspaceState` onto the editor options. They are not written back to the
-canonical animation settings and do not appear in project files or exports.
+The animation editor splits animation workflows into a compact animation/entity list, a single selected animation editor, and a sticky live preview/summary column.
+
+Active animation selection (`selectedAnimationId`) and active subtool tab (`activeTab: 'frames' | 'pixels' | 'mapping'`) are managed strictly within `WorkspaceState.animation`. `renderAnimationWorkspace()` projects these selection states onto the editor options at render time. Switching active animations or contextual tabs does not mark the project dirty and is never serialized into the project schema or export files.
 
 Persistable editor callbacks update only the existing project model. CHR
 allocation, deduplication, mirroring, palette meaning, animation mapping, and

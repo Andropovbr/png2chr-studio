@@ -62,6 +62,8 @@ const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
 
 export interface AnimationEditorOptions {
   readonly settings: AnimationSettings;
+  readonly selectedAnimationId?: string | null;
+  readonly activeTab?: 'frames' | 'pixels' | 'mapping';
   readonly model: AnimationProjectModel | null;
   readonly modelError: AnimationModelError | null;
   readonly paletteSet: NesPaletteSet;
@@ -69,12 +71,14 @@ export interface AnimationEditorOptions {
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly colorDistanceMode?: ColorDistanceMode;
   readonly scenePreview?: ProjectScenePreviewConfig;
+  readonly onSelectAnimation?: (animationId: string) => void;
+  readonly onSelectTab?: (tab: 'frames' | 'pixels' | 'mapping') => void;
   readonly onSettingsChange: (settings: AnimationSettings) => void;
   readonly onDefaultPaletteIndexChange: (index: number) => void;
   readonly onAddAnimation: () => void;
   readonly onDuplicateAnimation: (animationId: string) => void;
   readonly onRemoveAnimation: (animationId: string) => void;
-  readonly onToggleAnimationCollapse: (animationId: string) => void;
+  readonly onToggleAnimationCollapse?: (animationId: string) => void;
   readonly onToggleMappingCollapse: () => void;
   readonly onToggleConfigCollapse: () => void;
   readonly onTogglePaletteCollapse: () => void;
@@ -1335,491 +1339,626 @@ function createAnimationTilePixelSection(
   return container;
 }
 
-function createAnimationCard(
+function createAnimationPropertiesFields(
   options: AnimationEditorOptions,
   anim: AnimationItemSetting,
 ): HTMLElement {
-  const card = document.createElement('section');
-  card.className = 'animation-card';
+  const fields = document.createElement('div');
+  fields.className = 'animation-card-fields';
 
-  const isCollapsed = anim.collapsed === true;
-  card.classList.toggle('is-collapsed', isCollapsed);
-
-  // Card Header
-  const header = document.createElement('header');
-  header.className = 'animation-card-header';
-
-  const toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'animation-collapse-toggle';
-  toggleBtn.textContent = isCollapsed ? '▶' : '▼';
-  toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
-  toggleBtn.addEventListener('click', () => {
-    options.onToggleAnimationCollapse(anim.id);
+  // Entity input
+  const entityLabel = document.createElement('label');
+  entityLabel.className = 'animation-field';
+  const entityText = document.createElement('span');
+  entityText.textContent = t('animationEntityLabel');
+  const entityInput = document.createElement('input');
+  entityInput.type = 'text';
+  entityInput.value = anim.entity ?? 'entity';
+  entityInput.placeholder = 'entity';
+  entityInput.addEventListener('change', () => {
+    const trimmed = entityInput.value.trim();
+    options.onUpdateAnimation(anim.id, {
+      entity: trimmed !== '' ? trimmed : 'entity',
+    });
   });
+  entityLabel.append(entityText, entityInput);
+
+  // Name input
+  const nameLabel = document.createElement('label');
+  nameLabel.className = 'animation-field';
+  const nameText = document.createElement('span');
+  nameText.textContent = t('animationItemNameLabel');
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = anim.name;
+  nameInput.addEventListener('change', () => {
+    options.onUpdateAnimation(anim.id, { name: nameInput.value });
+  });
+  nameLabel.append(nameText, nameInput);
+
+  // Source PNG picker
+  const sourceContainer = document.createElement('div');
+  sourceContainer.className = 'animation-field animation-source-field';
+  const sourceText = document.createElement('span');
+  sourceText.textContent = t('animationSourceFileLabel');
+  const sourceControls = document.createElement('div');
+  sourceControls.className = 'animation-source-controls';
+
+  const sourceInput = document.createElement('input');
+  sourceInput.type = 'file';
+  sourceInput.accept = '.png,image/png';
+  sourceInput.id = `anim-file-${anim.id}`;
+  sourceInput.className = 'visually-hidden';
+  sourceInput.addEventListener('change', () => {
+    const file = sourceInput.files?.[0];
+    if (file !== undefined) {
+      options.onAnimationSourceFile(anim.id, file);
+    }
+  });
+
+  const sourceBtn = document.createElement('label');
+  sourceBtn.htmlFor = sourceInput.id;
+  sourceBtn.className = 'button secondary-button';
+  sourceBtn.textContent = anim.source
+    ? t('animationChangeSource')
+    : t('animationChooseSource');
+
+  const sourceBadge = document.createElement('span');
+  sourceBadge.className = 'animation-source-badge';
+  sourceBadge.textContent = anim.source ? anim.source.fileName : '—';
+
+  sourceControls.append(sourceInput, sourceBtn, sourceBadge);
+  sourceContainer.append(sourceText, sourceControls);
+
+  // Per-animation quantization selector & preview
+  const quantElements: HTMLElement[] = [];
+  if (anim.source !== null) {
+    const animSource = anim.source;
+    const quantContainer = document.createElement('div');
+    quantContainer.className =
+      'animation-field animation-quantization-item-field';
+
+    const quantHeader = document.createElement('div');
+    quantHeader.className = 'animation-quantization-item-header';
+    const quantTitle = document.createElement('span');
+    quantTitle.textContent = t('animationColorReductionTitle');
+    quantHeader.append(quantTitle);
+
+    const quantCards = document.createElement('div');
+    quantCards.className = 'animation-reduction-cards';
+
+    const currentQuantMode = anim.quantizationMode ?? 'median-cut';
+    const currentDithMode = anim.ditheringMode ?? 'none';
+    const activePaletteIndex =
+      anim.paletteIndex ?? options.settings.defaultPaletteIndex;
+
+    QUANTIZATION_MODES.forEach((mode) => {
+      const active = currentQuantMode === mode;
+      const cardBtn = document.createElement('button');
+      cardBtn.type = 'button';
+      cardBtn.className = 'quantization-preview-card animation-reduction-card';
+      cardBtn.classList.toggle('is-active', active);
+      cardBtn.setAttribute('aria-pressed', String(active));
+
+      const cardTitle = document.createElement('strong');
+      cardTitle.textContent = t(QUANTIZATION_LABELS[mode]);
+
+      const reduced = quantizeImageToNes(
+        animSource.sourceImage,
+        NES_MASTER_PALETTE,
+        imageHasTransparency(animSource.sourceImage) ? 3 : 4,
+        {
+          quantizationMode: mode,
+          ditheringMode: currentDithMode,
+          colorDistanceMode: options.colorDistanceMode ?? 'perceptual',
+        },
+      );
+      const reducedIndexed = analyzeImage(reduced.image);
+      const nesRaw = renderAnimationToRawImageData(
+        reducedIndexed,
+        options.paletteSet,
+        activePaletteIndex,
+      );
+      const canvas = cropCanvas(nesRaw, 0, 0, nesRaw.width, nesRaw.height);
+      canvas.className = 'animation-reduction-preview-canvas';
+
+      cardBtn.append(cardTitle, canvas);
+      cardBtn.addEventListener('click', () => {
+        if (mode !== currentQuantMode) {
+          options.onUpdateAnimation(anim.id, { quantizationMode: mode });
+        }
+      });
+      quantCards.append(cardBtn);
+    });
+
+    quantContainer.append(quantHeader, quantCards);
+    quantElements.push(quantContainer);
+  }
+
+  // Animation Palette Selector
+  const paletteField = document.createElement('label');
+  paletteField.className = 'animation-field';
+  const paletteFieldText = document.createElement('span');
+  paletteFieldText.textContent = t('animationPaletteLabel');
+  const paletteSelect = document.createElement('select');
+
+  if (options.palettes && options.palettes.length > 0) {
+    options.palettes.forEach((pal) => {
+      const slotRes = resolveSpritePaletteSlot(
+        pal.id,
+        options.activeSpritePaletteSlots,
+        options.palettes,
+      );
+      const opt = document.createElement('option');
+      opt.value = pal.id;
+      const slotInfo = slotRes.isActive
+        ? ` (Slot ${String(slotRes.slotIndex)})`
+        : ` (${t('paletteManagerSlotInactive')})`;
+      opt.textContent = `${pal.name}${slotInfo}`;
+      paletteSelect.append(opt);
+    });
+
+    let effectiveSelectedId = anim.paletteId;
+    if (
+      !effectiveSelectedId ||
+      !options.palettes.some((p) => p.id === effectiveSelectedId)
+    ) {
+      if (
+        typeof anim.paletteIndex === 'number' &&
+        anim.paletteIndex >= 0 &&
+        anim.paletteIndex < options.palettes.length
+      ) {
+        effectiveSelectedId =
+          options.palettes[anim.paletteIndex]?.id ??
+          options.palettes[0]?.id ??
+          '';
+      } else {
+        effectiveSelectedId = options.palettes[0]?.id ?? '';
+      }
+    }
+
+    paletteSelect.value = effectiveSelectedId;
+    paletteSelect.addEventListener('change', () => {
+      const selId =
+        paletteSelect.value.trim() !== '' ? paletteSelect.value.trim() : null;
+      options.onUpdateAnimation(anim.id, {
+        paletteId: selId,
+      });
+    });
+  } else {
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = t('animationPaletteInherit', {
+      palette: t('nesPaletteName', {
+        index: options.settings.defaultPaletteIndex,
+      }),
+    });
+    paletteSelect.append(defaultOpt);
+    for (let p = 0; p < 4; p += 1) {
+      const opt = document.createElement('option');
+      opt.value = String(p);
+      opt.textContent = t('nesPaletteName', { index: p });
+      paletteSelect.append(opt);
+    }
+    paletteSelect.value =
+      anim.paletteIndex === null || anim.paletteIndex === undefined
+        ? ''
+        : String(anim.paletteIndex);
+    paletteSelect.addEventListener('change', () => {
+      options.onUpdateAnimation(anim.id, {
+        paletteIndex:
+          paletteSelect.value === '' ? null : Number(paletteSelect.value),
+      });
+    });
+  }
+  paletteField.append(paletteFieldText, paletteSelect);
+
+  // Frame width / height
+  const widthField = numberInput(
+    t('animationFrameWidthLabel'),
+    anim.frameWidth,
+    8,
+    128,
+    (frameWidth) => {
+      options.onUpdateAnimation(anim.id, { frameWidth });
+    },
+  );
+
+  const heightField = numberInput(
+    t('animationFrameHeightLabel'),
+    anim.frameHeight,
+    8,
+    128,
+    (frameHeight) => {
+      options.onUpdateAnimation(anim.id, { frameHeight });
+    },
+  );
+
+  // Frame grid detection
+  const detectionElements: HTMLElement[] = [];
+  if (anim.source !== null) {
+    const detectionBlock = document.createElement('div');
+    detectionBlock.className = 'animation-detection';
+    const detectBtn = document.createElement('button');
+    detectBtn.type = 'button';
+    detectBtn.className = 'button secondary-button animation-detect-btn';
+    detectBtn.textContent = t('frameDetectionRetry');
+    detectBtn.addEventListener('click', () => {
+      options.onFrameDetection(anim.id);
+    });
+
+    const detection = anim.frameDetection ?? null;
+    if (detection !== null) {
+      const status = document.createElement('span');
+      status.className = 'animation-detection-status';
+      status.textContent = t('frameDetectionApplied', {
+        width: detection.recommendedWidth,
+        height: detection.recommendedHeight,
+      });
+      const confidence = document.createElement('span');
+      confidence.className =
+        detection.confidence === 'high'
+          ? 'animation-detection-confidence animation-detection-confidence-high'
+          : detection.confidence === 'medium'
+            ? 'animation-detection-confidence animation-detection-confidence-medium'
+            : 'animation-detection-confidence animation-detection-confidence-low';
+      confidence.textContent = t(
+        detection.confidence === 'high'
+          ? 'frameDetectionRecommended'
+          : detection.confidence === 'medium'
+            ? 'frameDetectionAmbiguous'
+            : 'frameDetectionLow',
+      );
+      detectionBlock.append(status, confidence, detectBtn);
+    } else {
+      detectionBlock.append(detectBtn);
+    }
+    detectionElements.push(detectionBlock);
+  }
+
+  // Origin X / Y
+  const originXField = numberInput(
+    t('animationOriginX'),
+    anim.originX,
+    -128,
+    127,
+    (originX) => {
+      options.onUpdateAnimation(anim.id, { originX });
+    },
+  );
+
+  const originYField = numberInput(
+    t('animationOriginY'),
+    anim.originY,
+    -128,
+    127,
+    (originY) => {
+      options.onUpdateAnimation(anim.id, { originY });
+    },
+  );
+
+  // Playback selector
+  const playbackLabelElem = document.createElement('label');
+  playbackLabelElem.className = 'animation-field';
+  const playbackText = document.createElement('span');
+  playbackText.textContent = t('animationPlaybackLabel');
+  const playbackSelect = document.createElement('select');
+  const optLoop = document.createElement('option');
+  optLoop.value = 'loop';
+  optLoop.textContent = t('animationPlaybackLoop');
+  optLoop.selected = anim.playback === 'loop';
+  const optOnce = document.createElement('option');
+  optOnce.value = 'once';
+  optOnce.textContent = t('animationPlaybackOnce');
+  optOnce.selected = anim.playback === 'once';
+  playbackSelect.append(optLoop, optOnce);
+  playbackSelect.addEventListener('change', () => {
+    options.onUpdateAnimation(anim.id, {
+      playback: playbackSelect.value as AnimationPlayback,
+    });
+  });
+  playbackLabelElem.append(playbackText, playbackSelect);
+
+  // Default Duration with "Apply to all frames" button
+  const durationContainer = document.createElement('div');
+  durationContainer.className = 'animation-duration-group';
+  const durationField = numberInput(
+    t('animationDefaultDurationLabel'),
+    anim.defaultDuration,
+    1,
+    255,
+    (defaultDuration) => {
+      options.onUpdateAnimation(anim.id, { defaultDuration });
+    },
+  );
+  const applyAllBtn = document.createElement('button');
+  applyAllBtn.type = 'button';
+  applyAllBtn.className = 'button secondary-button animation-apply-all-btn';
+  applyAllBtn.textContent = t('animationApplyDurationToAll');
+  applyAllBtn.addEventListener('click', () => {
+    options.onApplyDefaultDurationToAll(anim.id);
+  });
+  durationContainer.append(durationField, applyAllBtn);
+
+  // Mirroring variants
+  const mirrorFieldset = document.createElement('fieldset');
+  mirrorFieldset.className = 'animation-mirror-variants';
+  const mirrorLegend = document.createElement('legend');
+  mirrorLegend.textContent = t('animationMirrorVariantsTitle');
+
+  const flipHLabel = document.createElement('label');
+  flipHLabel.className = 'checkbox-control';
+  const flipHInput = document.createElement('input');
+  flipHInput.type = 'checkbox';
+  flipHInput.checked = anim.allowHorizontalFlip;
+  flipHInput.addEventListener('change', () => {
+    options.onUpdateAnimation(anim.id, {
+      allowHorizontalFlip: flipHInput.checked,
+      flipH: flipHInput.checked,
+    });
+  });
+  flipHLabel.append(flipHInput, t('animationAllowHorizontalFlip'));
+
+  const flipVLabel = document.createElement('label');
+  flipVLabel.className = 'checkbox-control';
+  const flipVInput = document.createElement('input');
+  flipVInput.type = 'checkbox';
+  flipVInput.checked = anim.allowVerticalFlip;
+  flipVInput.addEventListener('change', () => {
+    options.onUpdateAnimation(anim.id, {
+      allowVerticalFlip: flipVInput.checked,
+      flipV: flipVInput.checked,
+    });
+  });
+  flipVLabel.append(flipVInput, t('animationAllowVerticalFlip'));
+  mirrorFieldset.append(mirrorLegend, flipHLabel, flipVLabel);
+
+  fields.append(
+    entityLabel,
+    nameLabel,
+    sourceContainer,
+    ...quantElements,
+    paletteField,
+    widthField,
+    heightField,
+    ...detectionElements,
+    originXField,
+    originYField,
+    playbackLabelElem,
+    durationContainer,
+    mirrorFieldset,
+  );
+
+  return fields;
+}
+
+function createSelectedAnimationMapping(
+  options: AnimationEditorOptions,
+  anim: AnimationItemSetting,
+): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'animation-selected-mapping';
+
+  if (options.model === null) {
+    const message = document.createElement('p');
+    message.className =
+      options.modelError === null ? 'empty-message' : 'error-message';
+    message.textContent =
+      options.modelError === null
+        ? t('animationMappingEmpty')
+        : t(errorTranslation(options.modelError));
+    container.append(message);
+    return container;
+  }
+
+  const model = options.model;
+  const animModel = model.animations.find((a) => a.id === anim.id);
+
+  if (!animModel || animModel.frames.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-message';
+    empty.textContent = t('animationMappingEmpty');
+    container.append(empty);
+    return container;
+  }
+
+  animModel.frames.forEach((frame, frameOrder) => {
+    const article = document.createElement('article');
+    article.className = 'animation-frame-mapping';
+    const frameTitle = document.createElement('h4');
+    frameTitle.textContent = `${t('animationFrameLabel', {
+      index: frame.sourceIndex,
+    })} · #${String(frameOrder + 1)} · ${String(frame.duration)} ${t(
+      'animationDurationUnit',
+    )} · ${t('nesPaletteName', { index: frame.effectivePalette })}`;
+
+    const grid = document.createElement('div');
+    grid.className = 'animation-tile-map';
+    grid.style.gridTemplateColumns = `repeat(${String(animModel.widthTiles)}, minmax(5.5rem, 1fr))`;
+    const mapping = createAnimationFrameMapping(model, animModel, frame);
+    mapping.forEach((mappingCell) => {
+      const cell = document.createElement('div');
+      cell.className = 'animation-tile-cell';
+      if (mappingCell.tile !== null) {
+        cell.append(
+          cropCanvas(
+            renderAnimationTileToRawImageData(
+              mappingCell.tile,
+              options.paletteSet,
+              frame.effectivePalette,
+            ),
+            0,
+            0,
+            8,
+            8,
+          ),
+        );
+      }
+      const sprite = mappingCell.sprite;
+      const details = document.createElement('span');
+      if (sprite === null) {
+        cell.classList.add('is-omitted');
+        details.textContent = t('animationTileOmitted');
+      } else {
+        const reuseKey: TranslationKey =
+          sprite.reuse === 'destination'
+            ? 'animationReuseDestination'
+            : sprite.reuse === 'imported'
+              ? 'animationReuseImported'
+              : 'animationReuseNew';
+        const spriteOrder = mappingCell.spriteOrder ?? 0;
+        details.textContent = `#${String(spriteOrder + 1)} · X=${String(sprite.x)} Y=${String(sprite.y)} · T${String(model.patternTable)} · P$${sprite.physicalTileIndex
+          .toString(16)
+          .padStart(3, '0')
+          .toUpperCase()} · $${sprite.tile
+          .toString(16)
+          .padStart(2, '0')
+          .toUpperCase()} · ${flipLabel(sprite)} · ${t(reuseKey)} · A=$${sprite.attributes
+          .toString(16)
+          .padStart(2, '0')
+          .toUpperCase()}`;
+      }
+      cell.append(details);
+      grid.append(cell);
+    });
+    article.append(frameTitle, grid);
+    container.append(article);
+  });
+
+  return container;
+}
+
+function createStickyAnimationPreview(
+  options: AnimationEditorOptions,
+  anim: AnimationItemSetting,
+): HTMLElement {
+  const container = document.createElement('aside');
+  container.className = 'animation-sticky-preview';
+
+  const heading = document.createElement('h3');
+  heading.className = 'animation-sticky-preview-title';
+  heading.textContent = t('animationPreviewSectionTitle');
+
+  const preview = createSingleAnimationPreview(options, anim);
 
   const summary = document.createElement('div');
-  summary.className = 'animation-card-summary';
-  const title = document.createElement('strong');
-  title.textContent = `${anim.entity ?? 'entity'}_${anim.name}`;
-  const details = document.createElement('span');
-  details.className = 'animation-card-details';
-  const playbackLabel =
-    anim.playback === 'once'
-      ? t('animationPlaybackOnce')
-      : t('animationPlaybackLoop');
+  summary.className = 'animation-sticky-summary';
+
+  const dl = document.createElement('dl');
+  dl.className = 'animation-sticky-stats';
+
   const flips: string[] = [];
-  if (anim.allowHorizontalFlip) {
-    flips.push(t('animationFlipHLabel'));
-  }
-  if (anim.allowVerticalFlip) {
-    flips.push(t('animationFlipVLabel'));
-  }
-  const flipSummary = flips.length > 0 ? ` · ${flips.join(', ')}` : '';
-  const sourceName = anim.source ? anim.source.fileName : 'no source';
-  details.textContent = `${sourceName} · ${String(anim.frameIndices.length)} frames · ${playbackLabel}${flipSummary}`;
-  summary.append(title, details);
-  summary.addEventListener('click', () => {
-    options.onToggleAnimationCollapse(anim.id);
-  });
+  if (anim.allowHorizontalFlip) flips.push(t('animationFlipHLabel'));
+  if (anim.allowVerticalFlip) flips.push(t('animationFlipVLabel'));
+  const flipText =
+    flips.length > 0 ? flips.join(', ') : t('animationTileNormal');
 
-  const actions = document.createElement('div');
-  actions.className = 'animation-card-actions';
-
-  const dupBtn = document.createElement('button');
-  dupBtn.type = 'button';
-  dupBtn.className = 'button secondary-button';
-  dupBtn.textContent = t('animationDuplicate');
-  dupBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    options.onDuplicateAnimation(anim.id);
-  });
-
-  const removeBtn = document.createElement('button');
-  removeBtn.type = 'button';
-  removeBtn.className = 'button secondary-button';
-  removeBtn.textContent = t('animationRemove');
-  removeBtn.disabled = options.settings.animations.length <= 1;
-  removeBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    options.onRemoveAnimation(anim.id);
-  });
-
-  actions.append(dupBtn, removeBtn);
-  header.append(toggleBtn, summary, actions);
-  card.append(header);
-
-  // Card Body
-  if (!isCollapsed) {
-    const body = document.createElement('div');
-    body.className = 'animation-card-body';
-
-    const fields = document.createElement('div');
-    fields.className = 'animation-card-fields';
-
-    // Entity input
-    const entityLabel = document.createElement('label');
-    entityLabel.className = 'animation-field';
-    const entityText = document.createElement('span');
-    entityText.textContent = t('animationEntityLabel');
-    const entityInput = document.createElement('input');
-    entityInput.type = 'text';
-    entityInput.value = anim.entity ?? 'entity';
-    entityInput.placeholder = 'entity';
-    entityInput.addEventListener('change', () => {
-      const trimmed = entityInput.value.trim();
-      options.onUpdateAnimation(anim.id, {
-        entity: trimmed !== '' ? trimmed : 'entity',
-      });
-    });
-    entityLabel.append(entityText, entityInput);
-
-    // Name input
-    const nameLabel = document.createElement('label');
-    nameLabel.className = 'animation-field';
-    const nameText = document.createElement('span');
-    nameText.textContent = t('animationItemNameLabel');
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.value = anim.name;
-    nameInput.addEventListener('change', () => {
-      options.onUpdateAnimation(anim.id, { name: nameInput.value });
-    });
-    nameLabel.append(nameText, nameInput);
-
-    // Source PNG picker
-    const sourceContainer = document.createElement('div');
-    sourceContainer.className = 'animation-field animation-source-field';
-    const sourceText = document.createElement('span');
-    sourceText.textContent = t('animationSourceFileLabel');
-    const sourceControls = document.createElement('div');
-    sourceControls.className = 'animation-source-controls';
-
-    const sourceInput = document.createElement('input');
-    sourceInput.type = 'file';
-    sourceInput.accept = '.png,image/png';
-    sourceInput.id = `anim-file-${anim.id}`;
-    sourceInput.className = 'visually-hidden';
-    sourceInput.addEventListener('change', () => {
-      const file = sourceInput.files?.[0];
-      if (file !== undefined) {
-        options.onAnimationSourceFile(anim.id, file);
-      }
-    });
-
-    const sourceBtn = document.createElement('label');
-    sourceBtn.htmlFor = sourceInput.id;
-    sourceBtn.className = 'button secondary-button';
-    sourceBtn.textContent = anim.source
-      ? t('animationChangeSource')
-      : t('animationChooseSource');
-
-    const sourceBadge = document.createElement('span');
-    sourceBadge.className = 'animation-source-badge';
-    sourceBadge.textContent = anim.source ? anim.source.fileName : '—';
-
-    sourceControls.append(sourceInput, sourceBtn, sourceBadge);
-    sourceContainer.append(sourceText, sourceControls);
-
-    // Per-animation quantization selector & preview
-    const quantElements: HTMLElement[] = [];
-    if (anim.source !== null) {
-      const animSource = anim.source;
-      const quantContainer = document.createElement('div');
-      quantContainer.className =
-        'animation-field animation-quantization-item-field';
-
-      const quantHeader = document.createElement('div');
-      quantHeader.className = 'animation-quantization-item-header';
-      const quantTitle = document.createElement('span');
-      quantTitle.textContent = t('animationColorReductionTitle');
-      quantHeader.append(quantTitle);
-
-      const quantCards = document.createElement('div');
-      quantCards.className = 'animation-reduction-cards';
-
-      const currentQuantMode = anim.quantizationMode ?? 'median-cut';
-      const currentDithMode = anim.ditheringMode ?? 'none';
-      const activePaletteIndex =
-        anim.paletteIndex ?? options.settings.defaultPaletteIndex;
-
-      QUANTIZATION_MODES.forEach((mode) => {
-        const active = currentQuantMode === mode;
-        const cardBtn = document.createElement('button');
-        cardBtn.type = 'button';
-        cardBtn.className =
-          'quantization-preview-card animation-reduction-card';
-        cardBtn.classList.toggle('is-active', active);
-        cardBtn.setAttribute('aria-pressed', String(active));
-
-        const cardTitle = document.createElement('strong');
-        cardTitle.textContent = t(QUANTIZATION_LABELS[mode]);
-
-        const reduced = quantizeImageToNes(
-          animSource.sourceImage,
-          NES_MASTER_PALETTE,
-          imageHasTransparency(animSource.sourceImage) ? 3 : 4,
-          {
-            quantizationMode: mode,
-            ditheringMode: currentDithMode,
-            colorDistanceMode: options.colorDistanceMode ?? 'perceptual',
-          },
-        );
-        const reducedIndexed = analyzeImage(reduced.image);
-        const nesRaw = renderAnimationToRawImageData(
-          reducedIndexed,
-          options.paletteSet,
-          activePaletteIndex,
-        );
-        const canvas = cropCanvas(nesRaw, 0, 0, nesRaw.width, nesRaw.height);
-        canvas.className = 'animation-reduction-preview-canvas';
-
-        cardBtn.append(cardTitle, canvas);
-        cardBtn.addEventListener('click', () => {
-          if (mode !== currentQuantMode) {
-            options.onUpdateAnimation(anim.id, { quantizationMode: mode });
-          }
-        });
-        quantCards.append(cardBtn);
-      });
-
-      quantContainer.append(quantHeader, quantCards);
-      quantElements.push(quantContainer);
-    }
-
-    // Animation Palette Selector
-    const paletteField = document.createElement('label');
-    paletteField.className = 'animation-field';
-    const paletteFieldText = document.createElement('span');
-    paletteFieldText.textContent = t('animationPaletteLabel');
-    const paletteSelect = document.createElement('select');
-
-    if (options.palettes && options.palettes.length > 0) {
-      options.palettes.forEach((pal) => {
-        const slotRes = resolveSpritePaletteSlot(
-          pal.id,
-          options.activeSpritePaletteSlots,
-          options.palettes,
-        );
-        const opt = document.createElement('option');
-        opt.value = pal.id;
-        const slotInfo = slotRes.isActive
-          ? ` (Slot ${String(slotRes.slotIndex)})`
-          : ` (${t('paletteManagerSlotInactive')})`;
-        opt.textContent = `${pal.name}${slotInfo}`;
-        paletteSelect.append(opt);
-      });
-
-      let effectiveSelectedId = anim.paletteId;
-      if (
-        !effectiveSelectedId ||
-        !options.palettes.some((p) => p.id === effectiveSelectedId)
-      ) {
-        if (
-          typeof anim.paletteIndex === 'number' &&
-          anim.paletteIndex >= 0 &&
-          anim.paletteIndex < options.palettes.length
-        ) {
-          effectiveSelectedId =
-            options.palettes[anim.paletteIndex]?.id ??
-            options.palettes[0]?.id ??
-            '';
-        } else {
-          effectiveSelectedId = options.palettes[0]?.id ?? '';
-        }
-      }
-
-      paletteSelect.value = effectiveSelectedId;
-      paletteSelect.addEventListener('change', () => {
-        const selId =
-          paletteSelect.value.trim() !== '' ? paletteSelect.value.trim() : null;
-        options.onUpdateAnimation(anim.id, {
-          paletteId: selId,
-        });
-      });
-    } else {
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = t('animationPaletteInherit', {
-        palette: t('nesPaletteName', {
-          index: options.settings.defaultPaletteIndex,
-        }),
-      });
-      paletteSelect.append(defaultOpt);
-      for (let p = 0; p < 4; p += 1) {
-        const opt = document.createElement('option');
-        opt.value = String(p);
-        opt.textContent = t('nesPaletteName', { index: p });
-        paletteSelect.append(opt);
-      }
-      paletteSelect.value =
-        anim.paletteIndex === null || anim.paletteIndex === undefined
-          ? ''
-          : String(anim.paletteIndex);
-      paletteSelect.addEventListener('change', () => {
-        options.onUpdateAnimation(anim.id, {
-          paletteIndex:
-            paletteSelect.value === '' ? null : Number(paletteSelect.value),
-        });
-      });
-    }
-    paletteField.append(paletteFieldText, paletteSelect);
-
-    // Frame width / height
-    const widthField = numberInput(
+  dl.append(
+    stat(t('animationEntityLabel'), anim.entity ?? 'entity'),
+    stat(t('animationItemNameLabel'), anim.name),
+    stat(
       t('animationFrameWidthLabel'),
-      anim.frameWidth,
-      8,
-      128,
-      (frameWidth) => {
-        options.onUpdateAnimation(anim.id, { frameWidth });
-      },
-    );
+      `${String(anim.frameWidth)} × ${String(anim.frameHeight)} px`,
+    ),
+    stat(t('animationSelectedFramesTitle'), String(anim.frameIndices.length)),
+    stat(
+      t('animationPlaybackLabel'),
+      anim.playback === 'once'
+        ? t('animationPlaybackOnce')
+        : t('animationPlaybackLoop'),
+    ),
+    stat(t('animationOriginX'), String(anim.originX)),
+    stat(t('animationOriginY'), String(anim.originY)),
+    stat(t('animationMirrorVariantsTitle'), flipText),
+  );
 
-    const heightField = numberInput(
-      t('animationFrameHeightLabel'),
-      anim.frameHeight,
-      8,
-      128,
-      (frameHeight) => {
-        options.onUpdateAnimation(anim.id, { frameHeight });
-      },
-    );
+  summary.append(dl);
+  container.append(heading, preview, summary);
+  return container;
+}
 
-    // Frame grid detection
-    const detectionElements: HTMLElement[] = [];
-    if (anim.source !== null) {
-      const detectionBlock = document.createElement('div');
-      detectionBlock.className = 'animation-detection';
-      const detectBtn = document.createElement('button');
-      detectBtn.type = 'button';
-      detectBtn.className = 'button secondary-button animation-detect-btn';
-      detectBtn.textContent = t('frameDetectionRetry');
-      detectBtn.addEventListener('click', () => {
-        options.onFrameDetection(anim.id);
-      });
+function createSelectedAnimationEditorPanel(
+  options: AnimationEditorOptions,
+  anim: AnimationItemSetting | null,
+): HTMLElement {
+  const panel = document.createElement('section');
+  panel.className = 'panel animation-selected-editor-panel';
+  panel.id = 'section-animation-editor';
 
-      const detection = anim.frameDetection ?? null;
-      if (detection !== null) {
-        const status = document.createElement('span');
-        status.className = 'animation-detection-status';
-        status.textContent = t('frameDetectionApplied', {
-          width: detection.recommendedWidth,
-          height: detection.recommendedHeight,
-        });
-        const confidence = document.createElement('span');
-        confidence.className =
-          detection.confidence === 'high'
-            ? 'animation-detection-confidence animation-detection-confidence-high'
-            : detection.confidence === 'medium'
-              ? 'animation-detection-confidence animation-detection-confidence-medium'
-              : 'animation-detection-confidence animation-detection-confidence-low';
-        confidence.textContent = t(
-          detection.confidence === 'high'
-            ? 'frameDetectionRecommended'
-            : detection.confidence === 'medium'
-              ? 'frameDetectionAmbiguous'
-              : 'frameDetectionLow',
-        );
-        detectionBlock.append(status, confidence, detectBtn);
-      } else {
-        detectionBlock.append(detectBtn);
+  if (!anim) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-message';
+    empty.textContent = t('animationNoSelected');
+    panel.append(empty);
+    return panel;
+  }
+
+  const activeTab = options.activeTab ?? 'frames';
+
+  const header = document.createElement('div');
+  header.className = 'animation-selected-header';
+
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'animation-selected-title-group';
+  const heading = document.createElement('h2');
+  heading.textContent = `${t('animationSelectedEditorTitle')}: ${anim.entity ?? 'entity'}_${anim.name}`;
+  titleGroup.append(heading);
+
+  const tabsBar = document.createElement('div');
+  tabsBar.className = 'animation-tabs-bar';
+  tabsBar.setAttribute('role', 'tablist');
+
+  const tabs: readonly ['frames' | 'pixels' | 'mapping', TranslationKey][] = [
+    ['frames', 'animationTabFrames'],
+    ['pixels', 'animationTabPixels'],
+    ['mapping', 'animationTabMapping'],
+  ];
+
+  tabs.forEach(([tabKey, labelKey]) => {
+    const isTabActive = activeTab === tabKey;
+    const tabBtn = document.createElement('button');
+    tabBtn.type = 'button';
+    tabBtn.className = `animation-tab-btn${isTabActive ? ' is-active' : ''}`;
+    tabBtn.setAttribute('role', 'tab');
+    tabBtn.setAttribute('aria-selected', String(isTabActive));
+    tabBtn.textContent = t(labelKey);
+    tabBtn.addEventListener('click', () => {
+      if (options.onSelectTab) {
+        options.onSelectTab(tabKey);
       }
-      detectionElements.push(detectionBlock);
-    }
-
-    // Origin X / Y
-    const originXField = numberInput(
-      t('animationOriginX'),
-      anim.originX,
-      -128,
-      127,
-      (originX) => {
-        options.onUpdateAnimation(anim.id, { originX });
-      },
-    );
-
-    const originYField = numberInput(
-      t('animationOriginY'),
-      anim.originY,
-      -128,
-      127,
-      (originY) => {
-        options.onUpdateAnimation(anim.id, { originY });
-      },
-    );
-
-    // Playback selector
-    const playbackLabelElem = document.createElement('label');
-    playbackLabelElem.className = 'animation-field';
-    const playbackText = document.createElement('span');
-    playbackText.textContent = t('animationPlaybackLabel');
-    const playbackSelect = document.createElement('select');
-    const optLoop = document.createElement('option');
-    optLoop.value = 'loop';
-    optLoop.textContent = t('animationPlaybackLoop');
-    optLoop.selected = anim.playback === 'loop';
-    const optOnce = document.createElement('option');
-    optOnce.value = 'once';
-    optOnce.textContent = t('animationPlaybackOnce');
-    optOnce.selected = anim.playback === 'once';
-    playbackSelect.append(optLoop, optOnce);
-    playbackSelect.addEventListener('change', () => {
-      options.onUpdateAnimation(anim.id, {
-        playback: playbackSelect.value as AnimationPlayback,
-      });
     });
-    playbackLabelElem.append(playbackText, playbackSelect);
+    tabsBar.append(tabBtn);
+  });
 
-    // Default Duration with "Apply to all frames" button
-    const durationContainer = document.createElement('div');
-    durationContainer.className = 'animation-duration-group';
-    const durationField = numberInput(
-      t('animationDefaultDurationLabel'),
-      anim.defaultDuration,
-      1,
-      255,
-      (defaultDuration) => {
-        options.onUpdateAnimation(anim.id, { defaultDuration });
-      },
-    );
-    const applyAllBtn = document.createElement('button');
-    applyAllBtn.type = 'button';
-    applyAllBtn.className = 'button secondary-button animation-apply-all-btn';
-    applyAllBtn.textContent = t('animationApplyDurationToAll');
-    applyAllBtn.addEventListener('click', () => {
-      options.onApplyDefaultDurationToAll(anim.id);
-    });
-    durationContainer.append(durationField, applyAllBtn);
+  header.append(titleGroup, tabsBar);
+  panel.append(header);
 
-    // Mirroring variants
-    const mirrorFieldset = document.createElement('fieldset');
-    mirrorFieldset.className = 'animation-mirror-variants';
-    const mirrorLegend = document.createElement('legend');
-    mirrorLegend.textContent = t('animationMirrorVariantsTitle');
+  const layout = document.createElement('div');
+  layout.className = 'animation-selected-layout';
 
-    const flipHLabel = document.createElement('label');
-    flipHLabel.className = 'checkbox-control';
-    const flipHInput = document.createElement('input');
-    flipHInput.type = 'checkbox';
-    flipHInput.checked = anim.allowHorizontalFlip;
-    flipHInput.addEventListener('change', () => {
-      options.onUpdateAnimation(anim.id, {
-        allowHorizontalFlip: flipHInput.checked,
-        flipH: flipHInput.checked,
-      });
-    });
-    flipHLabel.append(flipHInput, t('animationAllowHorizontalFlip'));
+  const mainColumn = document.createElement('div');
+  mainColumn.className = 'animation-selected-main';
 
-    const flipVLabel = document.createElement('label');
-    flipVLabel.className = 'checkbox-control';
-    const flipVInput = document.createElement('input');
-    flipVInput.type = 'checkbox';
-    flipVInput.checked = anim.allowVerticalFlip;
-    flipVInput.addEventListener('change', () => {
-      options.onUpdateAnimation(anim.id, {
-        allowVerticalFlip: flipVInput.checked,
-        flipV: flipVInput.checked,
-      });
-    });
-    flipVLabel.append(flipVInput, t('animationAllowVerticalFlip'));
-    mirrorFieldset.append(mirrorLegend, flipHLabel, flipVLabel);
-
-    fields.append(
-      entityLabel,
-      nameLabel,
-      sourceContainer,
-      ...quantElements,
-      paletteField,
-      widthField,
-      heightField,
-      ...detectionElements,
-      originXField,
-      originYField,
-      playbackLabelElem,
-      durationContainer,
-      mirrorFieldset,
-    );
-
-    const mainColumn = document.createElement('div');
-    mainColumn.className = 'animation-card-main';
+  if (activeTab === 'frames') {
     mainColumn.append(
-      fields,
+      createAnimationPropertiesFields(options, anim),
       createAnimationCardFrameGrid(options, anim),
       createFrameOrderList(options, anim),
-      createAnimationTilePixelSection(options, anim),
     );
-
-    const previewColumn = document.createElement('div');
-    previewColumn.className = 'animation-card-preview';
-    previewColumn.append(createSingleAnimationPreview(options, anim));
-
-    body.append(mainColumn, previewColumn);
-
-    card.append(body);
+  } else if (activeTab === 'pixels') {
+    mainColumn.append(createAnimationTilePixelSection(options, anim));
+  } else {
+    mainColumn.append(createSelectedAnimationMapping(options, anim));
   }
 
-  return card;
+  const previewColumn = document.createElement('div');
+  previewColumn.className = 'animation-selected-preview-col';
+  previewColumn.append(createStickyAnimationPreview(options, anim));
+
+  layout.append(mainColumn, previewColumn);
+  panel.append(layout);
+
+  return panel;
 }
 
 function createAnimationListPanel(
@@ -1847,13 +1986,99 @@ function createAnimationListPanel(
   header.append(titleGroup, addBtn);
   section.append(header);
 
-  const cardsContainer = document.createElement('div');
-  cardsContainer.className = 'animation-cards-list';
-  options.settings.animations.forEach((anim) => {
-    cardsContainer.append(createAnimationCard(options, anim));
-  });
-  section.append(cardsContainer);
+  const effectiveSelectedId =
+    options.selectedAnimationId ?? options.settings.animations[0]?.id ?? null;
 
+  const cardsContainer = document.createElement('div');
+  cardsContainer.className = 'animation-list-grid';
+
+  options.settings.animations.forEach((anim) => {
+    const isSelected = anim.id === effectiveSelectedId;
+    const card = document.createElement('article');
+    card.className = `animation-list-card${isSelected ? ' is-selected' : ''}`;
+    card.setAttribute('data-animation-id', anim.id);
+
+    const cardHeader = document.createElement('div');
+    cardHeader.className = 'animation-list-card-header';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'animation-list-card-title-group';
+
+    const title = document.createElement('strong');
+    title.className = 'animation-list-card-title';
+    title.textContent = `${anim.entity ?? 'entity'}_${anim.name}`;
+
+    titleWrap.append(title);
+    if (isSelected) {
+      const badge = document.createElement('span');
+      badge.className = 'animation-selected-badge';
+      badge.textContent = t('animationSelectedBadge');
+      titleWrap.append(badge);
+    }
+
+    const details = document.createElement('span');
+    details.className = 'animation-list-card-details';
+    const playbackLabel =
+      anim.playback === 'once'
+        ? t('animationPlaybackOnce')
+        : t('animationPlaybackLoop');
+    const flips: string[] = [];
+    if (anim.allowHorizontalFlip) flips.push(t('animationFlipHLabel'));
+    if (anim.allowVerticalFlip) flips.push(t('animationFlipVLabel'));
+    const flipSummary = flips.length > 0 ? ` · ${flips.join(', ')}` : '';
+    const sourceName = anim.source ? anim.source.fileName : 'no source';
+    details.textContent = `${sourceName} · ${String(anim.frameIndices.length)} frames · ${playbackLabel}${flipSummary}`;
+
+    cardHeader.append(titleWrap, details);
+
+    const actions = document.createElement('div');
+    actions.className = 'animation-list-card-actions';
+
+    if (!isSelected) {
+      const selectBtn = document.createElement('button');
+      selectBtn.type = 'button';
+      selectBtn.className = 'button secondary-button animation-select-btn';
+      selectBtn.textContent = t('animationSelectAction');
+      selectBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.onSelectAnimation?.(anim.id);
+      });
+      actions.append(selectBtn);
+    }
+
+    const dupBtn = document.createElement('button');
+    dupBtn.type = 'button';
+    dupBtn.className = 'button secondary-button';
+    dupBtn.textContent = t('animationDuplicate');
+    dupBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      options.onDuplicateAnimation(anim.id);
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'button secondary-button';
+    removeBtn.textContent = t('animationRemove');
+    removeBtn.disabled = options.settings.animations.length <= 1;
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      options.onRemoveAnimation(anim.id);
+    });
+
+    actions.append(dupBtn, removeBtn);
+
+    card.append(cardHeader, actions);
+
+    card.addEventListener('click', () => {
+      if (!isSelected && options.onSelectAnimation) {
+        options.onSelectAnimation(anim.id);
+      }
+    });
+
+    cardsContainer.append(card);
+  });
+
+  section.append(cardsContainer);
   return section;
 }
 
@@ -2168,6 +2393,20 @@ export function createAnimationEditor(
   palettePanel.id = 'section-palettes';
   const listPanel = createAnimationListPanel(options);
   listPanel.id = 'section-animations';
+
+  const effectiveSelectedId =
+    options.selectedAnimationId ?? options.settings.animations[0]?.id ?? null;
+  const selectedAnim =
+    options.settings.animations.find((a) => a.id === effectiveSelectedId) ??
+    options.settings.animations[0] ??
+    null;
+
+  const selectedEditorPanel = createSelectedAnimationEditorPanel(
+    options,
+    selectedAnim,
+  );
+  selectedEditorPanel.id = 'section-animation-editor';
+
   const scenePreviewPanel = createScenePreviewPanel({
     instances: options.scenePreview?.instances ?? [],
     animations: options.settings.animations,
@@ -2188,6 +2427,7 @@ export function createAnimationEditor(
     configPanel,
     palettePanel,
     listPanel,
+    selectedEditorPanel,
     scenePreviewPanel,
     mappingPanel,
     exportsPanel,
