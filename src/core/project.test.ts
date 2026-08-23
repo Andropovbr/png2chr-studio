@@ -87,7 +87,7 @@ describe('StudioProject core infrastructure', () => {
     }
   });
 
-  it('performs lossless round-trip save -> load', () => {
+  it('performs lossless round-trip save -> load for animation mode projects', () => {
     const original = createDefaultProject('Full Adventure', 'animation');
     const baseAnimation =
       original.animation ?? createDefaultProject().animation;
@@ -149,6 +149,197 @@ describe('StudioProject core infrastructure', () => {
     expect(loaded.success).toBe(true);
     if (loaded.success) {
       expect(loaded.project).toEqual(enriched);
+    }
+  });
+
+  it('performs lossless round-trip save -> load for tileset mode projects', () => {
+    const tilesetProject: StudioProject = {
+      formatVersion: 1,
+      name: 'Dungeon Tileset',
+      mode: 'tileset',
+      settings: {
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        quantization: {
+          quantizationMode: 'k-means',
+          ditheringMode: 'floyd-steinberg',
+          colorDistanceMode: 'rgb',
+        },
+      },
+      palette: {
+        paletteSet: [
+          [0x0f, 0x00, 0x10, 0x30],
+          [0x0f, 0x06, 0x16, 0x26],
+          [0x0f, 0x09, 0x19, 0x29],
+          [0x0f, 0x0c, 0x1c, 0x2c],
+        ],
+        activePaletteIndex: 1,
+        activeColorIndex: 2,
+        palettes: [
+          {
+            id: 'pal_gray',
+            name: 'Stone Gray',
+            colors: [0x0f, 0x00, 0x10, 0x30],
+          },
+          {
+            id: 'pal_red',
+            name: 'Lava Red',
+            colors: [0x0f, 0x06, 0x16, 0x26],
+          },
+        ],
+        activeSpritePaletteSlots: ['pal_gray', 'pal_red', null, null],
+      },
+      tileset: {
+        asset: {
+          path: 'assets/tiles/dungeon.png',
+          name: 'dungeon.png',
+          sourceKind: 'png',
+          dataUrl:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAADUlEQVR4nGNgGAWDCQAAB4ABAXb6Z9YAAAAASUVORK5CYII=',
+        },
+        paletteAssignments: [0, 1, 2, 3, 0, 1, 2, 3],
+        pixelOverrides: [0, 1, 2, 3, 0, 0, 1, 2],
+      },
+    };
+
+    const serialized = serializeProject(tilesetProject);
+    const loaded = deserializeProject(serialized);
+
+    expect(loaded.success).toBe(true);
+    if (loaded.success) {
+      expect(loaded.project.name).toBe('Dungeon Tileset');
+      expect(loaded.project.mode).toBe('tileset');
+      expect(loaded.project.settings.deduplicationEnabled).toBe(true);
+      expect(loaded.project.settings.flipDeduplicationEnabled).toBe(false);
+      expect(loaded.project.settings.quantization).toEqual({
+        quantizationMode: 'k-means',
+        ditheringMode: 'floyd-steinberg',
+        colorDistanceMode: 'rgb',
+      });
+      expect(loaded.project.tileset?.asset).toEqual({
+        path: 'assets/tiles/dungeon.png',
+        name: 'dungeon.png',
+        sourceKind: 'png',
+        dataUrl:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAADUlEQVR4nGNgGAWDCQAAB4ABAXb6Z9YAAAAASUVORK5CYII=',
+      });
+      expect(loaded.project.tileset?.paletteAssignments).toEqual([
+        0, 1, 2, 3, 0, 1, 2, 3,
+      ]);
+      expect(loaded.project.tileset?.pixelOverrides).toEqual([
+        0, 1, 2, 3, 0, 0, 1, 2,
+      ]);
+      expect(loaded.project.palette.palettes).toEqual([
+        {
+          id: 'pal_gray',
+          name: 'Stone Gray',
+          colors: [0x0f, 0x00, 0x10, 0x30],
+        },
+        {
+          id: 'pal_red',
+          name: 'Lava Red',
+          colors: [0x0f, 0x06, 0x16, 0x26],
+        },
+      ]);
+      expect(loaded.project.palette.activeSpritePaletteSlots).toEqual([
+        'pal_gray',
+        'pal_red',
+        null,
+        null,
+      ]);
+      expect(loaded.project).toEqual(tilesetProject);
+    }
+  });
+
+  it('performs lossless round-trip save -> load for playfield mode projects', () => {
+    const dummyCollisionCells = Array.from({ length: 960 }, (_, i) => i % 11);
+    const dummyPaletteAssignments = Array.from({ length: 64 }, (_, i) => i % 4);
+    const dummyPixelOverrides = Array.from({ length: 128 }, (_, i) => i % 4);
+
+    const playfieldProject: StudioProject = {
+      formatVersion: 1,
+      name: 'Stage 1 Overworld',
+      mode: 'playfield',
+      settings: {
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: true,
+        quantization: {
+          quantizationMode: 'median-cut',
+          ditheringMode: 'none',
+          colorDistanceMode: 'perceptual',
+        },
+      },
+      palette: {
+        paletteSet: [
+          [0x0f, 0x01, 0x11, 0x21],
+          [0x0f, 0x05, 0x15, 0x25],
+          [0x0f, 0x18, 0x28, 0x38],
+          [0x0f, 0x0a, 0x1a, 0x2a],
+        ],
+        activePaletteIndex: 2,
+        activeColorIndex: 3,
+        palettes: [
+          {
+            id: 'pal_sky',
+            name: 'Sky Blue',
+            colors: [0x0f, 0x01, 0x11, 0x21],
+          },
+          {
+            id: 'pal_grass',
+            name: 'Grass Green',
+            colors: [0x0f, 0x0a, 0x1a, 0x2a],
+          },
+        ],
+        activeSpritePaletteSlots: ['pal_sky', 'pal_grass', null, null],
+      },
+      playfield: {
+        asset: {
+          path: 'stages/overworld_level1.png',
+          name: 'overworld_level1.png',
+          sourceKind: 'png',
+          dataUrl:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAADUlEQVR4nGNgGAWDCQAAB4ABAXb6Z9YAAAAASUVORK5CYII=',
+        },
+        collisionCells: dummyCollisionCells,
+        activeCollisionType: 1,
+        randomPlayfieldFeatures: ['walls', 'platforms', 'clouds'],
+        paletteAssignments: dummyPaletteAssignments,
+        pixelOverrides: dummyPixelOverrides,
+      },
+    };
+
+    const serialized = serializeProject(playfieldProject);
+    const loaded = deserializeProject(serialized);
+
+    expect(loaded.success).toBe(true);
+    if (loaded.success) {
+      expect(loaded.project.name).toBe('Stage 1 Overworld');
+      expect(loaded.project.mode).toBe('playfield');
+      expect(loaded.project.settings.deduplicationEnabled).toBe(true);
+      expect(loaded.project.settings.flipDeduplicationEnabled).toBe(true);
+      expect(loaded.project.playfield?.asset).toEqual({
+        path: 'stages/overworld_level1.png',
+        name: 'overworld_level1.png',
+        sourceKind: 'png',
+        dataUrl:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAADUlEQVR4nGNgGAWDCQAAB4ABAXb6Z9YAAAAASUVORK5CYII=',
+      });
+      expect(loaded.project.playfield?.collisionCells).toEqual(
+        dummyCollisionCells,
+      );
+      expect(loaded.project.playfield?.activeCollisionType).toBe(1);
+      expect(loaded.project.playfield?.randomPlayfieldFeatures).toEqual([
+        'walls',
+        'platforms',
+        'clouds',
+      ]);
+      expect(loaded.project.playfield?.paletteAssignments).toEqual(
+        dummyPaletteAssignments,
+      );
+      expect(loaded.project.playfield?.pixelOverrides).toEqual(
+        dummyPixelOverrides,
+      );
+      expect(loaded.project).toEqual(playfieldProject);
     }
   });
 

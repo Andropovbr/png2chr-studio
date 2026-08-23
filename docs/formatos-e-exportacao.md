@@ -131,14 +131,140 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
 
 - **Extensões reconhecidas:** `.p2c`, `.p2c.json`, `.json`.
 - **Versão atual do schema:** `1` (`CURRENT_PROJECT_FORMAT_VERSION = 1`).
-- **Recursos persistidos:**
-  - Identificação: `name`, `version`, `mode` (`tileset`, `playfield`, `animation`).
-  - Fonte primária: `source` contendo `path`, `sourceKind` e `dataUrl` embutido em Base64 (permitindo reabertura offline sem perda do asset original).
-  - Paletas: Definições nomeadas (`PaletteDefinition`), slots de sprite ativos (`activeSpritePaletteSlots`), paleta selecionada e conjunto de 4 paletas clássicas.
-  - Tileset / Playfield: Atribuições de paleta por tile/região, overrides de pixels 8×8, células de colisão, flags de deduplicação e flip.
-  - Animação: Lista de animações com dimensões de frame, âncoras de origem (X, Y), durações, modos de reprodução, frames selecionados, referências a spritesheets independentes, paletas por frame e pattern table selecionada (PT0 ou PT1).
-  - Scene Preview: Instâncias multi-entidade com posicionamento (X, Y), animação ativa e visibilidade.
-  - Base CHR: Referência ao arquivo de base CHR de até 8 KiB para preservação de ocupação de slots.
+
+### Estrutura do Schema `StudioProject` (`formatVersion: 1`)
+
+```json
+{
+  "formatVersion": 1,
+  "name": "Nome do Projeto",
+  "mode": "tileset | playfield | animation",
+  "settings": {
+    "deduplicationEnabled": true,
+    "flipDeduplicationEnabled": true,
+    "quantization": {
+      "quantizationMode": "nearest | median-cut | k-means",
+      "ditheringMode": "none | floyd-steinberg",
+      "colorDistanceMode": "perceptual | rgb | yuv"
+    }
+  },
+  "palette": {
+    "paletteSet": [
+      [15, 0, 16, 48],
+      [15, 6, 22, 38],
+      [15, 9, 25, 41],
+      [15, 12, 28, 44]
+    ],
+    "activePaletteIndex": 0,
+    "activeColorIndex": 1,
+    "palettes": [
+      {
+        "id": "pal_hero_blue",
+        "name": "Hero Blue",
+        "colors": [15, 1, 17, 33]
+      }
+    ],
+    "activeSpritePaletteSlots": ["pal_hero_blue", null, null, null]
+  },
+  "tileset": {
+    "asset": {
+      "path": "assets/tiles.png",
+      "name": "tiles.png",
+      "sourceKind": "png",
+      "dataUrl": "data:image/png;base64,..."
+    },
+    "paletteAssignments": [0, 1, 2, 3],
+    "pixelOverrides": [0, 0, 1, 2]
+  },
+  "playfield": {
+    "asset": {
+      "path": "stages/stage1.png",
+      "name": "stage1.png",
+      "sourceKind": "png",
+      "dataUrl": "data:image/png;base64,..."
+    },
+    "collisionCells": [1, 0, 2],
+    "activeCollisionType": 1,
+    "randomPlayfieldFeatures": ["walls", "platforms", "clouds"],
+    "paletteAssignments": [0, 1, 2, 3],
+    "pixelOverrides": [0, 0, 1, 2]
+  },
+  "animation": {
+    "name": "hero",
+    "symbolPrefix": "hero",
+    "defaultPaletteIndex": 0,
+    "quantizationMode": "median-cut",
+    "ditheringMode": "none",
+    "flipDeduplication": true,
+    "spritePalette": 0,
+    "spriteColorIndex": 1,
+    "patternTable": 0,
+    "destinationPatternTable": 0,
+    "destinationChr": {
+      "path": "chr/base.chr",
+      "name": "base.chr",
+      "sourceKind": "chr",
+      "dataUrl": "data:application/octet-stream;base64,..."
+    },
+    "animations": [
+      {
+        "id": "anim_1",
+        "name": "walk",
+        "entity": "hero",
+        "asset": {
+          "path": "sprites/hero_walk.png",
+          "name": "hero_walk.png",
+          "sourceKind": "png",
+          "dataUrl": "data:image/png;base64,..."
+        },
+        "paletteId": "pal_hero_blue",
+        "paletteIndex": 0,
+        "framePaletteIds": ["pal_hero_blue", "pal_hero_blue"],
+        "quantizationMode": "median-cut",
+        "ditheringMode": "none",
+        "frameWidth": 16,
+        "frameHeight": 32,
+        "originX": 8,
+        "originY": 32,
+        "playback": "loop",
+        "allowHorizontalFlip": true,
+        "allowVerticalFlip": false,
+        "flipH": false,
+        "flipV": false,
+        "defaultDuration": 6,
+        "frameIndices": [0, 1, 2, 3],
+        "frameDurations": [6, 6, 8, 6],
+        "framePalettes": [0, 0, 0, 0],
+        "pixelOverrides": {
+          "0_0": { "0": 3, "1": 2 }
+        }
+      }
+    ]
+  },
+  "scenePreview": {
+    "instances": [
+      {
+        "id": "inst-1",
+        "entityId": "hero",
+        "animationName": "walk",
+        "x": 120,
+        "y": 100,
+        "visible": true,
+        "name": "Player 1"
+      }
+    ]
+  }
+}
+```
+
+### Detalhamento dos Campos
+
+- **Portabilidade de Assets (`ProjectAssetReference`):** Cada referência a arquivo (`asset` ou `destinationChr`) armazena tanto o caminho relativo normalizado (`path`) quanto os dados embutidos codificados em Base64 (`dataUrl`). Isso garante que arquivos de projeto salvos sejam 100% portáveis e funcionem offline de forma auto-suficiente, sem depender da existência do arquivo original no disco.
+- **Gerenciador de Paletas (`palette`):** Armazena a matriz clássica 4×4 (`paletteSet`), a lista de definições nomeadas (`PaletteDefinition`), os 4 slots de paleta de hardware de sprites (`activeSpritePaletteSlots`), e os índices da paleta/cor de edição ativas.
+- **Tileset & Playfield:** Persiste caminhos/dados de imagem, atribuições de paleta por tile/metatile, substituições de pixels 8×8 (`pixelOverrides`), mapa de colisão de 480 bytes (`collisionCells` com 11 tipos), tipo de colisão ativo e parâmetros de geração procedural.
+- **Animações e Metasprites (`animation`):** Múltiplas animações com identificadores estáveis (`id`), dimensões e âncoras de origem por animação, sequenciamento e temporização por frame, paletas atribuídas por frame ou globais (`paletteId` / `framePaletteIds`), mapa de substituições de pixel 8×8 (`pixelOverrides`) e alocação de Base CHR com isolamento de Pattern Table (PT0/PT1).
+- **Scene Preview (`scenePreview`):** Instâncias multi-entidade com coordenadas no canvas (X, Y), animação associada, visibilidade e identificador único (`id`).
+- **Fronteiras de Estado:** Estados transitórios de UI (como subworkspace ativo na sidebar, abas do editor, níveis de zoom e recolhimento de painéis) são gerenciados no `WorkspaceState` e deliberadamente **não** são serializados no arquivo de projeto, evitando marcação indevida de modificação (_dirty state_).
 
 ---
 
