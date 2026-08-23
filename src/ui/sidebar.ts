@@ -86,6 +86,7 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
       : options.activeWorkspace === 'chr'
         ? [
             ['#section-chr-intro', t('chrWorkspaceIntroTitle')],
+            ['#section-chr-viewer', t('chrWorkspaceViewerTitle')],
             ['#section-chr-occupancy', t('chrWorkspaceOccupancyTitle')],
             [
               '#section-chr-sprite-context',

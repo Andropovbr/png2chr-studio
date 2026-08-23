@@ -272,6 +272,7 @@ describe('Sidebar component', () => {
 
     expect(hrefs).toEqual([
       '#section-chr-intro',
+      '#section-chr-viewer',
       '#section-chr-occupancy',
       '#section-chr-sprite-context',
       '#section-chr-tiles-reuse',

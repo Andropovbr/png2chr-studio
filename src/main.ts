@@ -2806,6 +2806,14 @@ function renderChrWorkspace(): void {
     tiles: project.tiles,
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    zoom: workspace.chr.zoom,
+    onZoomChange: (zoom) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, zoom },
+      });
+      render();
+    },
     loading: derivedStatus.loading,
     error: derivedStatus.error,
     onNavigateToWorkspace: (view) => {

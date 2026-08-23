@@ -101,7 +101,8 @@ class MockElement {
     const results: MockElement[] = [];
     const match = (el: MockElement): boolean => {
       if (selector.startsWith('.')) {
-        return el.classList.contains(selector.slice(1));
+        const classes = selector.split('.').filter(Boolean);
+        return classes.every((cls) => el.classList.contains(cls));
       }
       if (selector.startsWith('#')) {
         return el.id === selector.slice(1);
@@ -117,6 +118,40 @@ class MockElement {
     };
     traverse(this);
     return results;
+  }
+
+  getContext(type: string) {
+    if (type === '2d') {
+      const noop = (): void => {
+        /* no-op */
+      };
+      return {
+        createImageData: (w: number, h: number) => ({
+          data: new Uint8ClampedArray(w * h * 4),
+          width: w,
+          height: h,
+        }),
+        putImageData: noop,
+        drawImage: noop,
+        fillRect: noop,
+        strokeRect: noop,
+        clearRect: noop,
+        fillText: noop,
+        strokeText: noop,
+        beginPath: noop,
+        stroke: noop,
+        fill: noop,
+        arc: noop,
+        moveTo: noop,
+        lineTo: noop,
+        closePath: noop,
+        save: noop,
+        restore: noop,
+        scale: noop,
+        translate: noop,
+      };
+    }
+    return null;
   }
 }
 
@@ -370,5 +405,219 @@ describe('ChrWorkspace component', () => {
     // 3. Go to Palette Workspace button
     buttons[2]?.click();
     expect(onNavigateToWorkspace).toHaveBeenCalledWith('palette');
+  });
+
+  it('renders visual pattern tables panel (#section-chr-viewer) with PT0 and PT1 cards', () => {
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const viewerPanel = mockWs.querySelector('#section-chr-viewer');
+    expect(viewerPanel).not.toBeNull();
+    expect(viewerPanel?.classList.contains('chr-viewer-panel')).toBe(true);
+
+    const ptViewCards =
+      viewerPanel?.querySelectorAll('.chr-pt-view-card') ?? [];
+    expect(ptViewCards.length).toBe(2);
+
+    // PT0 Header & Subtitle
+    const pt0Card = ptViewCards[0];
+    expect(pt0Card?.getAttribute('data-pattern-table')).toBe('0');
+    expect(pt0Card?.textContent).toContain('$0000..$0FFF');
+    expect(pt0Card?.textContent).toContain('256 tiles');
+
+    // PT1 Header & Subtitle
+    const pt1Card = ptViewCards[1];
+    expect(pt1Card?.getAttribute('data-pattern-table')).toBe('1');
+    expect(pt1Card?.textContent).toContain('$1000..$1FFF');
+    expect(pt1Card?.textContent).toContain('256 tiles');
+  });
+
+  it('renders exactly 256 slots in PT0 (0..255) and 256 slots in PT1 (256..511) totaling 512 physical slots', () => {
+    const workspace = createChrWorkspace({
+      mode: 'tileset',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const ptViewCards = mockWs.querySelectorAll('.chr-pt-view-card');
+    expect(ptViewCards.length).toBe(2);
+
+    const pt0Slots = ptViewCards[0]?.querySelectorAll('.chr-tile-slot') ?? [];
+    const pt1Slots = ptViewCards[1]?.querySelectorAll('.chr-tile-slot') ?? [];
+
+    expect(pt0Slots.length).toBe(256);
+    expect(pt1Slots.length).toBe(256);
+
+    const allSlots = mockWs.querySelectorAll('.chr-tile-slot');
+    expect(allSlots.length).toBe(512);
+
+    // PT0 bounds
+    expect(pt0Slots[0]?.getAttribute('data-physical-index')).toBe('0');
+    expect(pt0Slots[0]?.getAttribute('data-local-index')).toBe('0');
+    expect(pt0Slots[0]?.getAttribute('data-pattern-table')).toBe('0');
+    expect(pt0Slots[0]?.getAttribute('data-row')).toBe('0');
+    expect(pt0Slots[0]?.getAttribute('data-col')).toBe('0');
+
+    expect(pt0Slots[255]?.getAttribute('data-physical-index')).toBe('255');
+    expect(pt0Slots[255]?.getAttribute('data-local-index')).toBe('255');
+    expect(pt0Slots[255]?.getAttribute('data-row')).toBe('15');
+    expect(pt0Slots[255]?.getAttribute('data-col')).toBe('15');
+
+    // PT1 bounds
+    expect(pt1Slots[0]?.getAttribute('data-physical-index')).toBe('256');
+    expect(pt1Slots[0]?.getAttribute('data-local-index')).toBe('0');
+    expect(pt1Slots[0]?.getAttribute('data-pattern-table')).toBe('1');
+    expect(pt1Slots[0]?.getAttribute('data-row')).toBe('0');
+    expect(pt1Slots[0]?.getAttribute('data-col')).toBe('0');
+
+    expect(pt1Slots[255]?.getAttribute('data-physical-index')).toBe('511');
+    expect(pt1Slots[255]?.getAttribute('data-local-index')).toBe('255');
+    expect(pt1Slots[255]?.getAttribute('data-row')).toBe('15');
+    expect(pt1Slots[255]?.getAttribute('data-col')).toBe('15');
+  });
+
+  it('verifies 16x16 grid coordinate and addressing math for all slots', () => {
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const pt0Card = mockWs.querySelectorAll('.chr-pt-view-card')[0];
+    const pt0Slots = pt0Card?.querySelectorAll('.chr-tile-slot') ?? [];
+
+    // Check slot index 16 (row 1, col 0)
+    const slot16 = pt0Slots[16];
+    expect(slot16?.getAttribute('data-physical-index')).toBe('16');
+    expect(slot16?.getAttribute('data-local-index')).toBe('16');
+    expect(slot16?.getAttribute('data-row')).toBe('1');
+    expect(slot16?.getAttribute('data-col')).toBe('0');
+    expect(slot16?.getAttribute('role')).toBe('gridcell');
+    expect(slot16?.title).toContain('$0100');
+
+    // Check slot index 31 (row 1, col 15)
+    const slot31 = pt0Slots[31];
+    expect(slot31?.getAttribute('data-physical-index')).toBe('31');
+    expect(slot31?.getAttribute('data-local-index')).toBe('31');
+    expect(slot31?.getAttribute('data-row')).toBe('1');
+    expect(slot31?.getAttribute('data-col')).toBe('15');
+  });
+
+  it('renders 128x128 canvases for PT0 and PT1 and executes 2bpp decoding', () => {
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const canvases = mockWs.querySelectorAll('.chr-pt-canvas');
+    expect(canvases.length).toBe(2);
+
+    canvases.forEach((canvas) => {
+      expect(
+        canvas.attributes.get('width') ??
+          (canvas as unknown as { width: number }).width,
+      ).toBe(128);
+      expect(
+        canvas.attributes.get('height') ??
+          (canvas as unknown as { height: number }).height,
+      ).toBe(128);
+    });
+  });
+
+  it('renders zoom controls, scales canvas container, and responds to zoom changes', () => {
+    const onZoomChange = vi.fn();
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+      zoom: 3,
+      onZoomChange,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const zoomControls = mockWs.querySelector('.chr-zoom-controls');
+    expect(zoomControls).not.toBeNull();
+
+    const zoomButtons =
+      zoomControls?.querySelectorAll('.segmented-button') ?? [];
+    expect(zoomButtons.length).toBe(5); // 1x, 2x, 3x, 4x, 8x
+
+    // 3x button should be active
+    const activeBtn = zoomControls?.querySelector(
+      '.segmented-button.is-active',
+    );
+    expect(activeBtn?.textContent).toBe('3×');
+    expect(activeBtn?.getAttribute('aria-pressed')).toBe('true');
+
+    // Canvas container style should be 128 * 3 = 384px
+    const containers = mockWs.querySelectorAll('.chr-pt-canvas-container');
+    expect(containers.length).toBe(2);
+    expect(containers[0]?.style.width).toBe('384px');
+    expect(containers[0]?.style.height).toBe('384px');
+
+    // Click 4x button (index 3)
+    zoomButtons[3]?.click();
+    expect(onZoomChange).toHaveBeenCalledWith(4);
+  });
+
+  it('handles empty CHR gracefully and renders all 512 slots without error', () => {
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: false,
+      flipDeduplicationEnabled: false,
+      zoom: 1,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const slots = mockWs.querySelectorAll('.chr-tile-slot');
+    expect(slots.length).toBe(512);
+
+    const containers = mockWs.querySelectorAll('.chr-pt-canvas-container');
+    expect(containers[0]?.style.width).toBe('128px');
+    expect(containers[0]?.style.height).toBe('128px');
   });
 });

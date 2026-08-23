@@ -1,6 +1,8 @@
 import type { AnimationProjectModel } from '../core/animation-model';
 import {
   analyzeBaseChrOccupancy,
+  createPatternTableSlots,
+  encodePatternTableSlots,
   NES_CHR_ROM_SIZE,
   NES_CHR_ROM_TILE_COUNT,
   NES_PATTERN_TABLE_SIZE,
@@ -18,6 +20,16 @@ import { t } from '../i18n';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
 
+export const CHR_ZOOM_LEVELS = [1, 2, 3, 4, 8] as const;
+export type ChrZoomLevel = (typeof CHR_ZOOM_LEVELS)[number];
+
+export const NEUTRAL_NES_GRAYSCALE = [
+  { red: 15, green: 22, blue: 32 }, // 0: background tone
+  { red: 116, green: 116, blue: 116 }, // 1: NES $00
+  { red: 188, green: 188, blue: 188 }, // 2: NES $10
+  { red: 255, green: 255, blue: 255 }, // 3: NES $30
+] as const;
+
 export interface ChrWorkspaceOptions {
   readonly mode: ProjectMode;
   readonly animationModel: AnimationProjectModel | null;
@@ -28,6 +40,8 @@ export interface ChrWorkspaceOptions {
   readonly tiles: readonly Tile[];
   readonly deduplicationEnabled: boolean;
   readonly flipDeduplicationEnabled: boolean;
+  readonly zoom?: number;
+  readonly onZoomChange?: (zoom: number) => void;
   readonly loading?: boolean;
   readonly error?: DisplayError | null;
   readonly onNavigateToWorkspace?: (workspace: WorkspaceView) => void;
@@ -129,6 +143,31 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
   );
   const savings = Math.max(0, options.tiles.length - deduplicated.length);
 
+  let finalChrBytes: Uint8Array;
+  if (options.baseChr && options.baseChr.length > 0) {
+    const slots = createPatternTableSlots(
+      options.baseChr,
+      options.destinationPatternTable,
+    );
+    let insertIndex = 0;
+    for (const tile of deduplicated) {
+      while (insertIndex < slots.length && slots[insertIndex]?.tile !== null) {
+        insertIndex += 1;
+      }
+      if (insertIndex < slots.length) {
+        slots[insertIndex] = {
+          physicalTileIndex: insertIndex,
+          tile,
+          source: 'imported',
+        };
+        insertIndex += 1;
+      }
+    }
+    finalChrBytes = encodePatternTableSlots(slots);
+  } else {
+    finalChrBytes = padChrRom(encodeChr(deduplicated));
+  }
+
   return {
     physicalCapacityTiles: NES_CHR_ROM_TILE_COUNT,
     totalOccupiedTiles: totalOccupied,
@@ -144,9 +183,257 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
     reusedImportedTiles: savings,
     newTileCount: deduplicated.length,
     deduplicationSavings: savings,
-    finalChrBytes: padChrRom(encodeChr(deduplicated)),
+    finalChrBytes,
     outputFileName: 'output.chr',
   };
+}
+
+export function renderPatternTableToCanvas(
+  canvas: HTMLCanvasElement,
+  chrBytes: Uint8Array,
+  patternTable: SpritePatternTable,
+  colors: readonly {
+    readonly red: number;
+    readonly green: number;
+    readonly blue: number;
+  }[] = NEUTRAL_NES_GRAYSCALE,
+): void {
+  const context = canvas.getContext('2d');
+  if (context === null) {
+    return;
+  }
+
+  const imageData = context.createImageData(128, 128);
+  const data = imageData.data;
+  const startByte = patternTable * NES_PATTERN_TABLE_SIZE;
+
+  for (
+    let localIndex = 0;
+    localIndex < NES_PATTERN_TABLE_TILE_COUNT;
+    localIndex += 1
+  ) {
+    const tileByteOffset = startByte + localIndex * 16;
+    const tileBytes =
+      chrBytes.length >= tileByteOffset + 16
+        ? chrBytes.subarray(tileByteOffset, tileByteOffset + 16)
+        : new Uint8Array(16);
+
+    const tileCol = localIndex % 16;
+    const tileRow = Math.floor(localIndex / 16);
+    const startX = tileCol * 8;
+    const startY = tileRow * 8;
+
+    for (let py = 0; py < 8; py += 1) {
+      const plane0 = tileBytes[py] ?? 0;
+      const plane1 = tileBytes[py + 8] ?? 0;
+
+      for (let px = 0; px < 8; px += 1) {
+        const bit = 7 - px;
+        const colorVal = ((plane0 >> bit) & 1) | (((plane1 >> bit) & 1) << 1);
+        const fallbackColor = colors[0] ?? { red: 0, green: 0, blue: 0 };
+        const color = colors[colorVal] ?? fallbackColor;
+
+        const pixelOffset = ((startY + py) * 128 + (startX + px)) * 4;
+        data[pixelOffset] = color.red;
+        data[pixelOffset + 1] = color.green;
+        data[pixelOffset + 2] = color.blue;
+        data[pixelOffset + 3] = 255;
+      }
+    }
+  }
+
+  context.putImageData(imageData, 0, 0);
+}
+
+function createPatternTableView(
+  patternTable: SpritePatternTable,
+  finalChrBytes: Uint8Array,
+  activeSpritePt: SpritePatternTable,
+  zoom: number,
+): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'chr-pt-view-card';
+  card.setAttribute('data-pattern-table', String(patternTable));
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'chr-pt-view-header';
+
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'chr-pt-view-title-group';
+
+  const title = document.createElement('h4');
+  title.textContent =
+    patternTable === 0 ? t('chrWorkspacePt0Title') : t('chrWorkspacePt1Title');
+
+  const subtitle = document.createElement('span');
+  subtitle.className = 'chr-pt-view-subtitle';
+  subtitle.textContent =
+    patternTable === 0
+      ? t('chrWorkspacePt0Subtitle')
+      : t('chrWorkspacePt1Subtitle');
+
+  titleGroup.append(title, subtitle);
+
+  const role = document.createElement('span');
+  const isSprite = activeSpritePt === patternTable;
+  role.className = `chr-pt-role-badge${isSprite ? ' is-sprite-pt' : ''}`;
+  role.textContent = isSprite
+    ? t('chrWorkspacePtRoleSprite')
+    : t('chrWorkspacePtRoleBackground');
+
+  header.append(titleGroup, role);
+
+  // Canvas and Overlay
+  const canvasWrapper = document.createElement('div');
+  canvasWrapper.className = 'chr-pt-canvas-wrapper';
+
+  const canvasContainer = document.createElement('div');
+  canvasContainer.className = 'chr-pt-canvas-container';
+  canvasContainer.style.width = `${String(128 * zoom)}px`;
+  canvasContainer.style.height = `${String(128 * zoom)}px`;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  canvas.className = 'chr-pt-canvas';
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute(
+    'aria-label',
+    patternTable === 0 ? t('chrWorkspacePt0Title') : t('chrWorkspacePt1Title'),
+  );
+
+  renderPatternTableToCanvas(canvas, finalChrBytes, patternTable);
+
+  const gridOverlay = document.createElement('div');
+  gridOverlay.className = 'chr-pt-grid-overlay';
+  gridOverlay.setAttribute('role', 'grid');
+  gridOverlay.setAttribute(
+    'aria-label',
+    patternTable === 0 ? t('chrWorkspacePt0Title') : t('chrWorkspacePt1Title'),
+  );
+
+  const startPhysical = patternTable * NES_PATTERN_TABLE_TILE_COUNT;
+  for (
+    let localIndex = 0;
+    localIndex < NES_PATTERN_TABLE_TILE_COUNT;
+    localIndex += 1
+  ) {
+    const physicalIndex = startPhysical + localIndex;
+    const row = Math.floor(localIndex / 16);
+    const col = localIndex % 16;
+    const hexLocal = localIndex.toString(16).toUpperCase().padStart(2, '0');
+    const addrHex = (patternTable * 0x1000 + localIndex * 16)
+      .toString(16)
+      .toUpperCase()
+      .padStart(4, '0');
+
+    const slot = document.createElement('div');
+    slot.className = 'chr-tile-slot';
+    slot.setAttribute('data-physical-index', String(physicalIndex));
+    slot.setAttribute('data-local-index', String(localIndex));
+    slot.setAttribute('data-pattern-table', String(patternTable));
+    slot.setAttribute('data-row', String(row));
+    slot.setAttribute('data-col', String(col));
+    slot.setAttribute('role', 'gridcell');
+    slot.setAttribute(
+      'aria-label',
+      t('chrWorkspaceTileAriaLabel', {
+        pt: patternTable,
+        hex: hexLocal,
+        id: physicalIndex,
+      }),
+    );
+    slot.title = t('chrWorkspaceTileTooltip', {
+      pt: patternTable,
+      hex: hexLocal,
+      id: physicalIndex,
+      addr: addrHex,
+    });
+
+    gridOverlay.append(slot);
+  }
+
+  canvasContainer.append(canvas, gridOverlay);
+  canvasWrapper.append(canvasContainer);
+  card.append(header, canvasWrapper);
+  return card;
+}
+
+function createViewerPanel(
+  options: ChrWorkspaceOptions,
+  metrics: ComputedChrMetrics,
+  zoom: number,
+): HTMLElement {
+  const viewerPanel = document.createElement('section');
+  viewerPanel.className = 'panel chr-viewer-panel';
+  viewerPanel.id = 'section-chr-viewer';
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'chr-viewer-toolbar';
+
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'chr-viewer-title-group';
+
+  const heading = document.createElement('h3');
+  heading.textContent = t('chrWorkspaceViewerTitle');
+
+  const hint = document.createElement('p');
+  hint.className = 'muted';
+  hint.textContent = t('chrWorkspaceViewerHint');
+
+  titleGroup.append(heading, hint);
+
+  // Zoom controls
+  const zoomControls = document.createElement('div');
+  zoomControls.className = 'chr-zoom-controls';
+
+  const zoomLabel = document.createElement('span');
+  zoomLabel.className = 'chr-zoom-label';
+  zoomLabel.textContent = t('chrWorkspaceZoomLabel');
+
+  const segmented = document.createElement('div');
+  segmented.className = 'segmented-control chr-zoom-segmented';
+  segmented.setAttribute('role', 'group');
+  segmented.setAttribute('aria-label', t('chrWorkspaceZoomLabel'));
+
+  CHR_ZOOM_LEVELS.forEach((level) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `segmented-button${zoom === level ? ' is-active' : ''}`;
+    btn.setAttribute('aria-pressed', String(zoom === level));
+    btn.textContent = `${String(level)}×`;
+    btn.addEventListener('click', () => {
+      if (options.onZoomChange) {
+        options.onZoomChange(level);
+      }
+    });
+    segmented.append(btn);
+  });
+
+  zoomControls.append(zoomLabel, segmented);
+  toolbar.append(titleGroup, zoomControls);
+
+  const ptContainer = document.createElement('div');
+  ptContainer.className = 'chr-pattern-tables-container';
+
+  const pt0Card = createPatternTableView(
+    0,
+    metrics.finalChrBytes,
+    metrics.activeSpritePatternTable,
+    zoom,
+  );
+  const pt1Card = createPatternTableView(
+    1,
+    metrics.finalChrBytes,
+    metrics.activeSpritePatternTable,
+    zoom,
+  );
+
+  ptContainer.append(pt0Card, pt1Card);
+  viewerPanel.append(toolbar, ptContainer);
+
+  return viewerPanel;
 }
 
 function createProgressBar(
@@ -199,6 +486,7 @@ export function createChrWorkspace(
   }
 
   const metrics = computeMetrics(options);
+  const zoom = options.zoom ?? 2;
 
   // 1. Overview Panel (#section-chr-intro)
   const introPanel = document.createElement('section');
@@ -230,7 +518,10 @@ export function createChrWorkspace(
 
   introPanel.append(headerGroup, baseStatus);
 
-  // 2. Physical Occupancy & Pattern Tables Panel (#section-chr-occupancy)
+  // 2. Pattern Tables Viewer Panel (#section-chr-viewer)
+  const viewerPanel = createViewerPanel(options, metrics, zoom);
+
+  // 3. Physical Occupancy & Pattern Tables Panel (#section-chr-occupancy)
   const occupancyPanel = document.createElement('section');
   occupancyPanel.className = 'panel chr-occupancy-panel';
   occupancyPanel.id = 'section-chr-occupancy';
@@ -341,7 +632,7 @@ export function createChrWorkspace(
   ptGrid.append(pt0Card, pt1Card);
   occupancyPanel.append(occupancyTitle, totalStats, ptGrid);
 
-  // 3. Sprite Capacity & OAM Indexes Panel (#section-chr-sprite-context)
+  // 4. Sprite Capacity & OAM Indexes Panel (#section-chr-sprite-context)
   const spriteContextPanel = document.createElement('section');
   spriteContextPanel.className = 'panel chr-sprite-context-panel';
   spriteContextPanel.id = 'section-chr-sprite-context';
@@ -381,7 +672,7 @@ export function createChrWorkspace(
     spriteBar,
   );
 
-  // 4. Tiles & Reuse Breakdown Panel (#section-chr-tiles-reuse)
+  // 5. Tiles & Reuse Breakdown Panel (#section-chr-tiles-reuse)
   const reusePanel = document.createElement('section');
   reusePanel.className = 'panel chr-reuse-panel';
   reusePanel.id = 'section-chr-tiles-reuse';
@@ -418,7 +709,7 @@ export function createChrWorkspace(
 
   reusePanel.append(reuseTitle, metricList);
 
-  // 5. CHR Export & Links Panel (#section-chr-export)
+  // 6. CHR Export & Links Panel (#section-chr-export)
   const exportPanel = document.createElement('section');
   exportPanel.className = 'panel chr-export-panel';
   exportPanel.id = 'section-chr-export';
@@ -469,6 +760,7 @@ export function createChrWorkspace(
 
   workspace.append(
     introPanel,
+    viewerPanel,
     occupancyPanel,
     spriteContextPanel,
     reusePanel,

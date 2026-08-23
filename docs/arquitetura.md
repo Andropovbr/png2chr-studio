@@ -220,7 +220,9 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 
 ### 6.5 Workspace de Memória CHR e Tabelas de Padrões (`src/ui/chr-workspace.ts`)
 
-- Espaço projetado de leitura do modelo canônico de memória CHR-ROM (8 KiB / 512 slots de tiles):
+- Espaço visual e projetado de inspeção do modelo canônico de memória CHR-ROM (8 KiB / 512 slots de tiles):
+  - **Visualização Completa das Pattern Tables (PT0 e PT1):** Renderização pixel-perfect das duas tabelas de padrões em grades 16×16 de 256 tiles cada (PT0: `$0000..$0FFF`, índices físicos 0..255; PT1: `$1000..$1FFF`, índices físicos 256..511), totalizando os 512 slots da CHR-ROM física em escala neutral/grayscale (2bpp NES).
+  - **Controles de Zoom Pixel-Perfect:** Controles de ampliação (1×, 2×, 3×, 4×, 8×) com renderização nearest-neighbor (`image-rendering: pixelated`), gerenciados como estado transiente em `WorkspaceState` sem mutação do projeto.
   - **Ocupação Física Total e Isolamento de Tabelas:** Exibe o total ocupado (`Total = PT0 + PT1`), detalhando a ocupação física das tabelas PT0 ($0000..$0FFF, 4 KiB, 256 tiles) e PT1 ($1000..$1FFF, 4 KiB, 256 tiles).
   - **Diferenciação Hardware (Índice Físico vs. Índice Local OAM):** Esclarece a distinção entre a posição física na ROM (0..511) e o índice de 8 bits gravado na OAM (0..255), determinado pelo registrador PPUCTRL (`$2000` bit 3).
   - **Capacidade Local de Sprites:** Exibe a capacidade da tabela de padrões ativa de sprites (256 tiles) e a contagem de tiles restantes para entidades.
