@@ -202,6 +202,7 @@ class MockElement {
         strokeStyle: '',
         lineWidth: 1,
         imageSmoothingEnabled: false,
+        setLineDash: noop,
       };
     }
     return null;
@@ -526,12 +527,13 @@ describe('Animation Editor Split Architecture', () => {
     const mockEditor = editorPanel as unknown as MockElement;
 
     const tabButtons = mockEditor.querySelectorAll('.animation-tab-btn');
-    expect(tabButtons.length).toBe(3);
+    expect(tabButtons.length).toBe(4);
 
     // Active tab button has is-active class
     expect(tabButtons[0]?.classList.contains('is-active')).toBe(true);
     expect(tabButtons[1]?.classList.contains('is-active')).toBe(false);
     expect(tabButtons[2]?.classList.contains('is-active')).toBe(false);
+    expect(tabButtons[3]?.classList.contains('is-active')).toBe(false);
 
     // Clicking pixels tab triggers onSelectTab('pixels')
     tabButtons[1]?.click();
@@ -540,6 +542,10 @@ describe('Animation Editor Split Architecture', () => {
     // Clicking mapping tab triggers onSelectTab('mapping')
     tabButtons[2]?.click();
     expect(onSelectTab).toHaveBeenCalledWith('mapping');
+
+    // Clicking scene tab triggers onSelectTab('scene')
+    tabButtons[3]?.click();
+    expect(onSelectTab).toHaveBeenCalledWith('scene');
   });
 
   it('renders frame grid and order list when activeTab is frames', () => {
@@ -782,5 +788,85 @@ describe('Animation Editor Split Architecture', () => {
     expect(detectBtn).not.toBeNull();
     detectBtn?.click();
     expect(onFrameDetection).toHaveBeenCalledWith('anim-1');
+  });
+
+  it('renders Scene Preview subworkspace with persistent canvas, instance list, and contextual inspector when activeTab is scene', () => {
+    const onSelectSceneInstance = vi.fn();
+    const onUpdateSceneInstance = vi.fn();
+    const onDuplicateSceneInstance = vi.fn();
+    const onRemoveSceneInstance = vi.fn();
+
+    const options = createOptions({
+      activeTab: 'scene',
+      selectedSceneInstanceId: 'inst-1',
+      scenePreview: {
+        instances: [
+          {
+            id: 'inst-1',
+            entityId: 'hero',
+            animationName: 'idle',
+            x: 100,
+            y: 120,
+            visible: true,
+            name: 'Hero Player',
+          },
+          {
+            id: 'inst-2',
+            entityId: 'hero',
+            animationName: 'walk',
+            x: 150,
+            y: 120,
+            visible: false,
+            name: 'Hero Ghost',
+          },
+        ],
+      },
+      onSelectSceneInstance,
+      onUpdateSceneInstance,
+      onDuplicateSceneInstance,
+      onRemoveSceneInstance,
+    });
+
+    const panels = createAnimationEditor(options);
+    const editorPanel = panels.find((p) => p.id === 'section-animation-editor');
+    expect(editorPanel).toBeDefined();
+    const mockEditor = editorPanel as unknown as MockElement;
+
+    // Canvas is rendered
+    const canvas = mockEditor.querySelector('.scene-preview-canvas');
+    expect(canvas).not.toBeNull();
+
+    // Instances list is rendered with 2 cards
+    const instanceCards = mockEditor.querySelectorAll(
+      '.scene-preview-instance-card',
+    );
+    expect(instanceCards.length).toBe(2);
+    expect(instanceCards[0]?.classList.contains('is-selected')).toBe(true);
+    expect(instanceCards[1]?.classList.contains('is-selected')).toBe(false);
+
+    // Inspector is rendered for inst-1
+    const inspector = mockEditor.querySelector(
+      '.scene-preview-inspector-wrapper',
+    );
+    expect(inspector).not.toBeNull();
+    expect(inspector?.querySelector('input')?.value).toBe('Hero Player');
+
+    // Clicking second card selects inst-2
+    instanceCards[1]?.click();
+    expect(onSelectSceneInstance).toHaveBeenCalledWith('inst-2');
+
+    // Toggle visibility on card 1
+    const visBtn = instanceCards[0]?.querySelector('.scene-preview-vis-btn');
+    visBtn?.click();
+    expect(onUpdateSceneInstance).toHaveBeenCalledWith('inst-1', {
+      visible: false,
+    });
+
+    // Inspector duplicate button (now operating on inst-2)
+    const duplicateBtn = mockEditor.querySelector(
+      '.scene-preview-inspector-actions button',
+    );
+    duplicateBtn?.click();
+    expect(onDuplicateSceneInstance).toHaveBeenCalledWith('inst-2');
   });
 });

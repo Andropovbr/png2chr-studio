@@ -66,6 +66,7 @@ import {
   type ScenePreviewInstance,
   type StudioProject,
 } from './core/project';
+import { generateInstanceId } from './core/scene-preview';
 import {
   QUANTIZATION_MODES,
   loadQuantizationSettings,
@@ -1398,7 +1399,9 @@ function selectAnimation(animationId: string): void {
   render();
 }
 
-function selectAnimationTab(tab: 'frames' | 'pixels' | 'mapping'): void {
+function selectAnimationTab(
+  tab: 'frames' | 'pixels' | 'mapping' | 'scene',
+): void {
   updateWorkspace({
     ...workspace,
     animation: {
@@ -1539,15 +1542,59 @@ function addSceneInstance(instance: ScenePreviewInstance): void {
       instances: [...currentInstances, instance],
     },
   });
+  updateWorkspace({
+    ...workspace,
+    animation: {
+      ...workspace.animation,
+      selectedSceneInstanceId: instance.id,
+    },
+  });
   render();
 }
 
 function removeSceneInstance(instanceId: string): void {
   const currentInstances = project.scenePreview?.instances ?? [];
+  const remaining = currentInstances.filter((inst) => inst.id !== instanceId);
   updateProject({
     ...project,
     scenePreview: {
-      instances: currentInstances.filter((inst) => inst.id !== instanceId),
+      instances: remaining,
+    },
+  });
+  if (workspace.animation.selectedSceneInstanceId === instanceId) {
+    updateWorkspace({
+      ...workspace,
+      animation: {
+        ...workspace.animation,
+        selectedSceneInstanceId: remaining[0]?.id ?? null,
+      },
+    });
+  }
+  render();
+}
+
+function duplicateSceneInstance(instanceId: string): void {
+  const currentInstances = project.scenePreview?.instances ?? [];
+  const target = currentInstances.find((inst) => inst.id === instanceId);
+  if (!target) return;
+  const clone: ScenePreviewInstance = {
+    ...target,
+    id: generateInstanceId(),
+    name: target.name ? `${target.name} (Copy)` : undefined,
+    x: Math.min(256, target.x + 8),
+    y: Math.min(240, target.y + 8),
+  };
+  updateProject({
+    ...project,
+    scenePreview: {
+      instances: [...currentInstances, clone],
+    },
+  });
+  updateWorkspace({
+    ...workspace,
+    animation: {
+      ...workspace.animation,
+      selectedSceneInstanceId: clone.id,
     },
   });
   render();
@@ -2207,6 +2254,7 @@ function renderAnimationWorkspace(): void {
   const editorOptions: AnimationEditorOptions = {
     settings: animationEditorSettings,
     selectedAnimationId,
+    selectedSceneInstanceId: workspace.animation.selectedSceneInstanceId,
     activeTab: workspace.animation.activeTab ?? 'frames',
     model,
     modelError,
@@ -2217,6 +2265,16 @@ function renderAnimationWorkspace(): void {
     scenePreview: project.scenePreview,
     onSelectAnimation: selectAnimation,
     onSelectTab: selectAnimationTab,
+    onSelectSceneInstance: (id: string | null) => {
+      updateWorkspace({
+        ...workspace,
+        animation: {
+          ...workspace.animation,
+          selectedSceneInstanceId: id,
+        },
+      });
+      render();
+    },
     onSettingsChange: (animation: AnimationSettings) => {
       updateProject({
         ...project,
@@ -2259,6 +2317,7 @@ function renderAnimationWorkspace(): void {
     onTogglePaletteCollapse: toggleAnimationPaletteCollapse,
     onAddSceneInstance: addSceneInstance,
     onRemoveSceneInstance: removeSceneInstance,
+    onDuplicateSceneInstance: duplicateSceneInstance,
     onUpdateSceneInstance: updateSceneInstance,
     onSetTilePixel: setTilePixel,
     onResetTileOverride: resetTile,

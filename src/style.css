@@ -2453,10 +2453,56 @@ input:focus-visible + label {
 }
 
 .scene-preview-coord-row {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
+}
+
+.scene-preview-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.scene-preview-inspector-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.scene-preview-inspector-title {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.scene-preview-inspector-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.scene-preview-inspector-empty {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.scene-preview-inspector-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.scene-preview-vis-checkbox {
+  font-size: 0.85rem;
+}
+
+.animation-selected-main.is-scene-tab {
+  grid-column: 1 / -1;
+  width: 100%;
 }
 
 /* ---- Tile Pixel Editor ---- */

@@ -226,4 +226,33 @@ describe('Scene Preview Domain Logic', () => {
 
     expect(states.get('i1')?.currentFrameIndex).toBe(0);
   });
+
+  it('updates instance animation and reflects new animation frame durations during playback', () => {
+    let instance = createSceneInstance('Soldier', allAnimations, {
+      animationName: 'idle',
+      x: 20,
+      y: 30,
+    });
+    expect(resolveInstanceAnimation(instance, allAnimations)?.name).toBe(
+      'idle',
+    );
+
+    // Change animation to walk
+    instance = {
+      ...instance,
+      animationName: 'walk',
+    };
+    const resolved = resolveInstanceAnimation(instance, allAnimations);
+    expect(resolved?.name).toBe('walk');
+    expect(resolved?.frameIndices).toEqual([2, 3, 4]);
+  });
+
+  it('clamps coordinates to NES screen bounds', () => {
+    const instOutOfBound = createSceneInstance('Bat', allAnimations, {
+      x: 300,
+      y: -50,
+    });
+    expect(instOutOfBound.x).toBeLessThanOrEqual(256);
+    expect(instOutOfBound.y).toBeGreaterThanOrEqual(0);
+  });
 });

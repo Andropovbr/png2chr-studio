@@ -26,13 +26,16 @@ import { cropCanvas } from './animation-editor';
 
 export interface ScenePreviewPanelOptions {
   readonly instances: readonly ScenePreviewInstance[];
+  readonly selectedInstanceId?: string | null;
   readonly animations: readonly AnimationItemSetting[];
   readonly paletteSet: NesPaletteSet;
   readonly palettes?: readonly PaletteDefinition[];
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly defaultPaletteIndex: number;
+  readonly onSelectInstance?: (instanceId: string | null) => void;
   readonly onAddInstance: (instance: ScenePreviewInstance) => void;
   readonly onRemoveInstance: (instanceId: string) => void;
+  readonly onDuplicateInstance?: (instanceId: string) => void;
   readonly onUpdateInstance: (
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
@@ -91,7 +94,10 @@ export function createScenePreviewPanel(
   toolbar.className = 'scene-preview-toolbar';
 
   let playing = true;
-  let selectedInstanceId: string | null = options.instances[0]?.id ?? null;
+  let currentSelectedInstanceId: string | null =
+    options.selectedInstanceId !== undefined
+      ? options.selectedInstanceId
+      : (options.instances[0]?.id ?? null);
   let playbackStates: Map<string, InstancePlaybackState> =
     initializePlaybackStates(options.instances);
 
@@ -135,7 +141,10 @@ export function createScenePreviewPanel(
         : (availableEntities[0] ?? 'entity');
     const newInst = createSceneInstance(targetEntity, options.animations);
     options.onAddInstance(newInst);
-    selectedInstanceId = newInst.id;
+    currentSelectedInstanceId = newInst.id;
+    if (options.onSelectInstance) {
+      options.onSelectInstance(newInst.id);
+    }
   });
 
   if (availableEntities.length > 1) {
@@ -169,7 +178,11 @@ export function createScenePreviewPanel(
 
   canvasWrapper.append(canvas, canvasOverlay);
 
-  // Instances list container
+  // Side column container (Instances list + Contextual Inspector)
+  const sideCol = document.createElement('div');
+  sideCol.className = 'scene-preview-side-col';
+
+  // 1. Instances list container
   const listWrapper = document.createElement('div');
   listWrapper.className = 'scene-preview-instances-wrapper';
 
@@ -188,8 +201,9 @@ export function createScenePreviewPanel(
     list.className = 'scene-preview-instances-list';
 
     options.instances.forEach((inst, index) => {
+      const isSelected = currentSelectedInstanceId === inst.id;
       const card = document.createElement('div');
-      card.className = `scene-preview-instance-card${selectedInstanceId === inst.id ? ' is-selected' : ''}`;
+      card.className = `scene-preview-instance-card${isSelected ? ' is-selected' : ''}`;
 
       const cardHeader = document.createElement('div');
       cardHeader.className = 'scene-preview-card-header';
@@ -248,124 +262,20 @@ export function createScenePreviewPanel(
 
       cardActions.append(btnVisible, btnRemove);
       cardHeader.append(cardTitle, cardActions);
+      card.append(cardHeader);
 
-      // Card Fields
-      const fields = document.createElement('div');
-      fields.className = 'scene-preview-card-fields';
-
-      // Entity select
-      const entityLabel = document.createElement('label');
-      entityLabel.className = 'scene-preview-field';
-      const entityText = document.createElement('span');
-      entityText.textContent = t('scenePreviewEntityLabel');
-      const entitySelect = document.createElement('select');
-      availableEntities.forEach((ent) => {
-        const opt = document.createElement('option');
-        opt.value = ent;
-        opt.textContent = ent;
-        opt.selected = ent.toLowerCase() === inst.entityId.toLowerCase();
-        entitySelect.append(opt);
-      });
-      entitySelect.addEventListener('change', () => {
-        const newEntity = entitySelect.value;
-        const entityAnims = getAnimationsForEntity(
-          options.animations,
-          newEntity,
-        );
-        const defaultAnim =
-          entityAnims.find((a) => a.name.toLowerCase().includes('idle')) ??
-          entityAnims[0];
-        options.onUpdateInstance(inst.id, {
-          entityId: newEntity,
-          animationName: defaultAnim?.name ?? 'idle',
-        });
-      });
-      entityLabel.append(entityText, entitySelect);
-
-      // Animation select
-      const animLabel = document.createElement('label');
-      animLabel.className = 'scene-preview-field';
-      const animText = document.createElement('span');
-      animText.textContent = t('scenePreviewAnimationLabel');
-      const animSelect = document.createElement('select');
-      const entityAnims = getAnimationsForEntity(
-        options.animations,
-        inst.entityId,
-      );
-      if (entityAnims.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = inst.animationName;
-        opt.textContent = inst.animationName;
-        animSelect.append(opt);
-        animSelect.disabled = true;
-      } else {
-        entityAnims.forEach((a) => {
-          const opt = document.createElement('option');
-          opt.value = a.name;
-          opt.textContent = a.name;
-          opt.selected = a.name === inst.animationName;
-          animSelect.append(opt);
-        });
-      }
-      animSelect.addEventListener('change', () => {
-        options.onUpdateInstance(inst.id, {
-          animationName: animSelect.value,
-        });
-      });
-      animLabel.append(animText, animSelect);
-
-      // Coordinates X and Y
-      const coordRow = document.createElement('div');
-      coordRow.className = 'scene-preview-coord-row';
-
-      const xLabel = document.createElement('label');
-      xLabel.className = 'scene-preview-field scene-preview-coord-field';
-      const xText = document.createElement('span');
-      xText.textContent = t('scenePreviewPosX');
-      const xInput = document.createElement('input');
-      xInput.type = 'number';
-      xInput.min = '0';
-      xInput.max = String(NES_SCREEN_WIDTH);
-      xInput.value = String(inst.x);
-      xInput.addEventListener('change', () => {
-        const val = Math.max(
-          0,
-          Math.min(NES_SCREEN_WIDTH, parseInt(xInput.value, 10) || 0),
-        );
-        options.onUpdateInstance(inst.id, { x: val });
-      });
-      xLabel.append(xText, xInput);
-
-      const yLabel = document.createElement('label');
-      yLabel.className = 'scene-preview-field scene-preview-coord-field';
-      const yText = document.createElement('span');
-      yText.textContent = t('scenePreviewPosY');
-      const yInput = document.createElement('input');
-      yInput.type = 'number';
-      yInput.min = '0';
-      yInput.max = String(NES_SCREEN_HEIGHT);
-      yInput.value = String(inst.y);
-      yInput.addEventListener('change', () => {
-        const val = Math.max(
-          0,
-          Math.min(NES_SCREEN_HEIGHT, parseInt(yInput.value, 10) || 0),
-        );
-        options.onUpdateInstance(inst.id, { y: val });
-      });
-      yLabel.append(yText, yInput);
-
-      coordRow.append(xLabel, yLabel);
-      fields.append(entityLabel, animLabel, coordRow);
-
-      card.append(cardHeader, fields);
       card.addEventListener('click', () => {
-        selectedInstanceId = inst.id;
-        document
+        currentSelectedInstanceId = inst.id;
+        if (options.onSelectInstance) {
+          options.onSelectInstance(inst.id);
+        }
+        section
           .querySelectorAll('.scene-preview-instance-card')
           .forEach((c) => {
             c.classList.remove('is-selected');
           });
         card.classList.add('is-selected');
+        renderInspector();
         drawScene();
       });
 
@@ -375,7 +285,202 @@ export function createScenePreviewPanel(
     listWrapper.append(list);
   }
 
-  layout.append(canvasWrapper, listWrapper);
+  // 2. Contextual Inspector Container
+  const inspectorWrapper = document.createElement('div');
+  inspectorWrapper.className = 'scene-preview-inspector-wrapper';
+
+  const renderInspector = (): void => {
+    inspectorWrapper.replaceChildren();
+
+    const inspectorHeading = document.createElement('h3');
+    inspectorHeading.className = 'scene-preview-inspector-title';
+    inspectorHeading.textContent = t('scenePreviewInspectorTitle');
+    inspectorWrapper.append(inspectorHeading);
+
+    const selectedInst = options.instances.find(
+      (inst) => inst.id === currentSelectedInstanceId,
+    );
+
+    if (!selectedInst) {
+      const emptyPrompt = document.createElement('p');
+      emptyPrompt.className = 'empty-message scene-preview-inspector-empty';
+      emptyPrompt.textContent = t('scenePreviewNoSelectedInstance');
+      inspectorWrapper.append(emptyPrompt);
+      return;
+    }
+
+    const inspectorCard = document.createElement('div');
+    inspectorCard.className = 'scene-preview-inspector-card';
+
+    // Name field
+    const nameLabel = document.createElement('label');
+    nameLabel.className = 'scene-preview-field';
+    const nameText = document.createElement('span');
+    nameText.textContent = t('scenePreviewInstanceName');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = selectedInst.name ?? '';
+    nameInput.placeholder = `${selectedInst.entityId} instance`;
+    nameInput.addEventListener('change', () => {
+      options.onUpdateInstance(selectedInst.id, {
+        name: nameInput.value.trim() || undefined,
+      });
+    });
+    nameLabel.append(nameText, nameInput);
+
+    // Entity select
+    const entityLabel = document.createElement('label');
+    entityLabel.className = 'scene-preview-field';
+    const entityText = document.createElement('span');
+    entityText.textContent = t('scenePreviewEntityLabel');
+    const entitySelect = document.createElement('select');
+    availableEntities.forEach((ent) => {
+      const opt = document.createElement('option');
+      opt.value = ent;
+      opt.textContent = ent;
+      opt.selected = ent.toLowerCase() === selectedInst.entityId.toLowerCase();
+      entitySelect.append(opt);
+    });
+    entitySelect.addEventListener('change', () => {
+      const newEntity = entitySelect.value;
+      const entityAnims = getAnimationsForEntity(options.animations, newEntity);
+      const defaultAnim =
+        entityAnims.find((a) => a.name.toLowerCase().includes('idle')) ??
+        entityAnims[0];
+      options.onUpdateInstance(selectedInst.id, {
+        entityId: newEntity,
+        animationName: defaultAnim?.name ?? 'idle',
+      });
+    });
+    entityLabel.append(entityText, entitySelect);
+
+    // Animation select
+    const animLabel = document.createElement('label');
+    animLabel.className = 'scene-preview-field';
+    const animText = document.createElement('span');
+    animText.textContent = t('scenePreviewAnimationLabel');
+    const animSelect = document.createElement('select');
+    const entityAnims = getAnimationsForEntity(
+      options.animations,
+      selectedInst.entityId,
+    );
+    if (entityAnims.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = selectedInst.animationName;
+      opt.textContent = selectedInst.animationName;
+      animSelect.append(opt);
+      animSelect.disabled = true;
+    } else {
+      entityAnims.forEach((a) => {
+        const opt = document.createElement('option');
+        opt.value = a.name;
+        opt.textContent = a.name;
+        opt.selected = a.name === selectedInst.animationName;
+        animSelect.append(opt);
+      });
+    }
+    animSelect.addEventListener('change', () => {
+      options.onUpdateInstance(selectedInst.id, {
+        animationName: animSelect.value,
+      });
+    });
+    animLabel.append(animText, animSelect);
+
+    // Coordinates X & Y
+    const coordRow = document.createElement('div');
+    coordRow.className = 'scene-preview-coord-row';
+
+    const xLabel = document.createElement('label');
+    xLabel.className = 'scene-preview-field scene-preview-coord-field';
+    const xText = document.createElement('span');
+    xText.textContent = t('scenePreviewPosX');
+    const xInput = document.createElement('input');
+    xInput.type = 'number';
+    xInput.min = '0';
+    xInput.max = String(NES_SCREEN_WIDTH);
+    xInput.value = String(selectedInst.x);
+    xInput.addEventListener('change', () => {
+      const val = Math.max(
+        0,
+        Math.min(NES_SCREEN_WIDTH, parseInt(xInput.value, 10) || 0),
+      );
+      options.onUpdateInstance(selectedInst.id, { x: val });
+    });
+    xLabel.append(xText, xInput);
+
+    const yLabel = document.createElement('label');
+    yLabel.className = 'scene-preview-field scene-preview-coord-field';
+    const yText = document.createElement('span');
+    yText.textContent = t('scenePreviewPosY');
+    const yInput = document.createElement('input');
+    yInput.type = 'number';
+    yInput.min = '0';
+    yInput.max = String(NES_SCREEN_HEIGHT);
+    yInput.value = String(selectedInst.y);
+    yInput.addEventListener('change', () => {
+      const val = Math.max(
+        0,
+        Math.min(NES_SCREEN_HEIGHT, parseInt(yInput.value, 10) || 0),
+      );
+      options.onUpdateInstance(selectedInst.id, { y: val });
+    });
+    yLabel.append(yText, yInput);
+
+    coordRow.append(xLabel, yLabel);
+
+    // Visibility Checkbox
+    const visCheckboxLabel = document.createElement('label');
+    visCheckboxLabel.className = 'checkbox-control scene-preview-vis-checkbox';
+    const visCheckbox = document.createElement('input');
+    visCheckbox.type = 'checkbox';
+    visCheckbox.checked = selectedInst.visible;
+    visCheckbox.addEventListener('change', () => {
+      options.onUpdateInstance(selectedInst.id, {
+        visible: visCheckbox.checked,
+      });
+    });
+    visCheckboxLabel.append(visCheckbox, t('scenePreviewVisible'));
+
+    // Inspector Action Buttons (Duplicate / Remove)
+    const inspectorActions = document.createElement('div');
+    inspectorActions.className = 'scene-preview-inspector-actions';
+
+    if (options.onDuplicateInstance) {
+      const onDuplicate = options.onDuplicateInstance;
+      const btnDuplicate = document.createElement('button');
+      btnDuplicate.type = 'button';
+      btnDuplicate.className = 'button secondary-button';
+      btnDuplicate.textContent = t('scenePreviewDuplicate');
+      btnDuplicate.addEventListener('click', () => {
+        onDuplicate(selectedInst.id);
+      });
+      inspectorActions.append(btnDuplicate);
+    }
+
+    const btnDelete = document.createElement('button');
+    btnDelete.type = 'button';
+    btnDelete.className = 'button secondary-button button-danger';
+    btnDelete.textContent = t('scenePreviewRemove');
+    btnDelete.addEventListener('click', () => {
+      options.onRemoveInstance(selectedInst.id);
+    });
+    inspectorActions.append(btnDelete);
+
+    inspectorCard.append(
+      nameLabel,
+      entityLabel,
+      animLabel,
+      coordRow,
+      visCheckboxLabel,
+      inspectorActions,
+    );
+    inspectorWrapper.append(inspectorCard);
+  };
+
+  renderInspector();
+
+  sideCol.append(listWrapper, inspectorWrapper);
+  layout.append(canvasWrapper, sideCol);
   section.append(layout);
 
   // Rendering & Animation Engine
@@ -475,7 +580,7 @@ export function createScenePreviewPanel(
       ctx.restore();
 
       // Bounding box if selected
-      if (inst.id === selectedInstanceId) {
+      if (inst.id === currentSelectedInstanceId) {
         ctx.strokeStyle = '#4da6ff';
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 2]);
@@ -567,16 +672,20 @@ export function createScenePreviewPanel(
       if (x >= inst.x && x < inst.x + w && y >= inst.y && y < inst.y + h) {
         dragging = true;
         dragInstanceId = inst.id;
-        selectedInstanceId = inst.id;
+        currentSelectedInstanceId = inst.id;
+        if (options.onSelectInstance) {
+          options.onSelectInstance(inst.id);
+        }
         dragOffsetX = x - inst.x;
         dragOffsetY = y - inst.y;
 
-        document
+        section
           .querySelectorAll('.scene-preview-instance-card')
           .forEach((c, cIdx) => {
             c.classList.toggle('is-selected', cIdx === i);
           });
 
+        renderInspector();
         drawScene();
         break;
       }
