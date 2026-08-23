@@ -84,6 +84,7 @@ import type { QuantizationPreview } from './ui/quantization-panel';
 import { createSidebar } from './ui/sidebar';
 import { createTilesetWorkspace } from './ui/tileset-workspace';
 import { createPlayfieldWorkspace } from './ui/playfield-workspace';
+import { createPaletteWorkspace } from './ui/palette-workspace';
 import {
   applyDerivedStatusUpdate,
   applyProjectUpdate,
@@ -1992,6 +1993,134 @@ async function loadAnimationDestination(file: File): Promise<void> {
   render();
 }
 
+function createNewProjectPalette(name?: string): void {
+  const currentPalettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const newDef: PaletteDefinition = {
+    id: generatePaletteId(),
+    name: name ?? `Palette ${String(currentPalettes.length + 1)}`,
+    colors: [0x0f, 0x00, 0x10, 0x30],
+  };
+  updateProject({
+    ...project,
+    palettes: [...currentPalettes, newDef],
+  });
+  render();
+}
+
+function updateProjectPaletteName(paletteId: string, name: string): void {
+  const currentPalettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  updateProject({
+    ...project,
+    palettes: currentPalettes.map((p) =>
+      p.id === paletteId ? { ...p, name } : p,
+    ),
+  });
+  render();
+}
+
+function updateProjectPaletteColor(
+  paletteId: string,
+  colorSlotIndex: number,
+  nesColor: number,
+): void {
+  const currentPalettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const updatedPalettes = currentPalettes.map((p) => {
+    if (p.id !== paletteId) return p;
+    const newColors: [number, number, number, number] = [...p.colors];
+    newColors[colorSlotIndex] = nesColor & 0x3f;
+    return { ...p, colors: newColors };
+  });
+  const slots =
+    project.activeSpritePaletteSlots ??
+    updatedPalettes.slice(0, 4).map((p) => p.id);
+  updateProject({
+    ...project,
+    palettes: updatedPalettes,
+    paletteSet: resolveActivePaletteSet(
+      updatedPalettes,
+      slots,
+      project.paletteSet,
+    ),
+  });
+  render();
+}
+
+function duplicateProjectPalette(paletteId: string): void {
+  const currentPalettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const source = currentPalettes.find((p) => p.id === paletteId);
+  if (source) {
+    const dup = duplicatePaletteDefinition(source);
+    updateProject({
+      ...project,
+      palettes: [...currentPalettes, dup],
+    });
+    render();
+  }
+}
+
+function deleteProjectPalette(paletteId: string): void {
+  const currentPalettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const currentSlots =
+    project.activeSpritePaletteSlots ??
+    currentPalettes.slice(0, 4).map((p) => p.id);
+  const newSlots = currentSlots.map((id) => (id === paletteId ? null : id));
+  const updatedPalettes = currentPalettes.filter((p) => p.id !== paletteId);
+  const updatedAnimations = project.animation.animations.map((anim) => {
+    const nextPaletteId = anim.paletteId === paletteId ? null : anim.paletteId;
+    const nextFramePaletteIds = anim.framePaletteIds?.map((id) =>
+      id === paletteId ? null : id,
+    );
+    return {
+      ...anim,
+      paletteId: nextPaletteId,
+      ...(nextFramePaletteIds ? { framePaletteIds: nextFramePaletteIds } : {}),
+    };
+  });
+  updateProject({
+    ...project,
+    palettes: updatedPalettes,
+    activeSpritePaletteSlots: newSlots,
+    paletteSet: resolveActivePaletteSet(
+      updatedPalettes,
+      newSlots,
+      project.paletteSet,
+    ),
+    animation: {
+      ...project.animation,
+      animations: updatedAnimations,
+    },
+  });
+  render();
+}
+
+function updateActiveSpritePaletteSlot(
+  slotIndex: 0 | 1 | 2 | 3,
+  paletteId: string | null,
+): void {
+  const currentPalettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const currentSlots = [
+    ...(project.activeSpritePaletteSlots ??
+      currentPalettes.slice(0, 4).map((p) => p.id)),
+  ];
+  currentSlots[slotIndex] = paletteId;
+  updateProject({
+    ...project,
+    activeSpritePaletteSlots: currentSlots,
+    paletteSet: resolveActivePaletteSet(
+      currentPalettes,
+      currentSlots,
+      project.paletteSet,
+    ),
+  });
+  render();
+}
+
 function renderAnimationWorkspace(): void {
   const workspaceElement = document.createElement('div');
   workspaceElement.className = 'workspace animation-workspace';
@@ -2143,106 +2272,12 @@ function renderAnimationWorkspace(): void {
     onFramePaletteChange: setAnimationFramePalette,
     onApplyDefaultDurationToAll: applyDefaultDurationToAll,
     onFrameRemoveFromAnimation: removeFrameFromAnimation,
-    onCreatePalette: (name) => {
-      const currentPalettes =
-        project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-      const newDef: PaletteDefinition = {
-        id: generatePaletteId(),
-        name: name ?? `Palette ${String(currentPalettes.length + 1)}`,
-        colors: [0x0f, 0x00, 0x10, 0x30],
-      };
-      updateProject({
-        ...project,
-        palettes: [...currentPalettes, newDef],
-      });
-      render();
-    },
-    onUpdatePaletteName: (paletteId, name) => {
-      const currentPalettes =
-        project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-      updateProject({
-        ...project,
-        palettes: currentPalettes.map((p) =>
-          p.id === paletteId ? { ...p, name } : p,
-        ),
-      });
-      render();
-    },
-    onUpdatePaletteColorDef: (paletteId, colorSlotIndex, nesColor) => {
-      const currentPalettes =
-        project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-      const updatedPalettes = currentPalettes.map((p) => {
-        if (p.id !== paletteId) return p;
-        const newColors: [number, number, number, number] = [...p.colors];
-        newColors[colorSlotIndex] = nesColor & 0x3f;
-        return { ...p, colors: newColors };
-      });
-      const slots =
-        project.activeSpritePaletteSlots ??
-        updatedPalettes.slice(0, 4).map((p) => p.id);
-      updateProject({
-        ...project,
-        palettes: updatedPalettes,
-        paletteSet: resolveActivePaletteSet(
-          updatedPalettes,
-          slots,
-          project.paletteSet,
-        ),
-      });
-      render();
-    },
-    onDuplicatePalette: (paletteId) => {
-      const currentPalettes =
-        project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-      const source = currentPalettes.find((p) => p.id === paletteId);
-      if (source) {
-        const dup = duplicatePaletteDefinition(source);
-        updateProject({
-          ...project,
-          palettes: [...currentPalettes, dup],
-        });
-        render();
-      }
-    },
-    onDeletePalette: (paletteId) => {
-      const currentPalettes =
-        project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-      const currentSlots =
-        project.activeSpritePaletteSlots ??
-        currentPalettes.slice(0, 4).map((p) => p.id);
-      const newSlots = currentSlots.map((id) => (id === paletteId ? null : id));
-      const updatedPalettes = currentPalettes.filter((p) => p.id !== paletteId);
-      updateProject({
-        ...project,
-        palettes: updatedPalettes,
-        activeSpritePaletteSlots: newSlots,
-        paletteSet: resolveActivePaletteSet(
-          updatedPalettes,
-          newSlots,
-          project.paletteSet,
-        ),
-      });
-      render();
-    },
-    onUpdateActiveSlot: (slotIndex, paletteId) => {
-      const currentPalettes =
-        project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-      const currentSlots = [
-        ...(project.activeSpritePaletteSlots ??
-          currentPalettes.slice(0, 4).map((p) => p.id)),
-      ];
-      currentSlots[slotIndex] = paletteId;
-      updateProject({
-        ...project,
-        activeSpritePaletteSlots: currentSlots,
-        paletteSet: resolveActivePaletteSet(
-          currentPalettes,
-          currentSlots,
-          project.paletteSet,
-        ),
-      });
-      render();
-    },
+    onCreatePalette: createNewProjectPalette,
+    onUpdatePaletteName: updateProjectPaletteName,
+    onUpdatePaletteColorDef: updateProjectPaletteColor,
+    onDuplicatePalette: duplicateProjectPalette,
+    onDeletePalette: deleteProjectPalette,
+    onUpdateActiveSlot: updateActiveSpritePaletteSlot,
     onSpritePaletteSelectionChange: (
       paletteIndex: number,
       colorIndex: number,
@@ -2317,7 +2352,11 @@ function renderAnimationWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      changeMode(view);
+      if (view !== 'palette') {
+        changeMode(view);
+      } else {
+        render();
+      }
     },
   });
   const inspector = createInspector();
@@ -2442,7 +2481,11 @@ function renderTilesetWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      changeMode(view);
+      if (view !== 'palette') {
+        changeMode(view);
+      } else {
+        render();
+      }
     },
   });
   const inspector = createInspector();
@@ -2579,7 +2622,56 @@ function renderPlayfieldWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      changeMode(view);
+      if (view !== 'palette') {
+        changeMode(view);
+      } else {
+        render();
+      }
+    },
+  });
+  const inspector = createInspector();
+  const shell = createAppShell({
+    header: createProjectHeader(),
+    sidebar,
+    workspace: workspaceElement,
+    inspector,
+    diagnostics: workspaceElement.diagnosticsElement,
+  });
+  app.replaceChildren(shell);
+}
+
+function renderPaletteWorkspace(): void {
+  const palettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const activeSpritePaletteSlots =
+    project.activeSpritePaletteSlots ?? palettes.slice(0, 4).map((p) => p.id);
+
+  const workspaceElement = createPaletteWorkspace({
+    palettes,
+    activeSpritePaletteSlots,
+    animations: project.animation.animations,
+    paletteSet: project.paletteSet,
+    loading: derivedStatus.loading,
+    error: derivedStatus.error,
+    onCreatePalette: createNewProjectPalette,
+    onUpdatePaletteName: updateProjectPaletteName,
+    onUpdatePaletteColor: updateProjectPaletteColor,
+    onDuplicatePalette: duplicateProjectPalette,
+    onDeletePalette: deleteProjectPalette,
+    onUpdateActiveSlot: updateActiveSpritePaletteSlot,
+    onDownloadBytes: downloadBytes,
+  });
+
+  const sidebar = createSidebar({
+    activeWorkspace: 'palette',
+    fileName: project.fileName,
+    onWorkspaceChange: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      if (view !== 'palette') {
+        changeMode(view);
+      } else {
+        render();
+      }
     },
   });
   const inspector = createInspector();
@@ -2596,7 +2688,9 @@ function renderPlayfieldWorkspace(): void {
 function render(): void {
   document.documentElement.lang = getLocale();
   document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
-  if (project.mode === 'animation') {
+  if (workspace.activeWorkspace === 'palette') {
+    renderPaletteWorkspace();
+  } else if (project.mode === 'animation') {
     renderAnimationWorkspace();
   } else if (project.mode === 'playfield') {
     renderPlayfieldWorkspace();

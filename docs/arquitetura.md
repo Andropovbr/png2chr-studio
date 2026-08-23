@@ -203,6 +203,14 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 - **Projeção de Mapeamento (`src/core/animation-mapping.ts`):** Painel que inspeciona detalhadamente o índice local OAM, índice físico CHR, paleta efetiva e atributos de cada tile de cada frame.
 - **Scene Preview Multi-Entidade (`src/core/scene-preview.ts`):** Permite instanciar múltiplas entidades em uma cena 256×240 com reprodução independente para verificar alinhamentos de âncoras e paletas em contexto de jogo.
 
+### 6.4 Workspace de Paletas do Projeto (`src/ui/palette-workspace.ts`)
+
+- Espaço dedicado para o gerenciamento de alto nível das definições de paleta do projeto e configuração dos slots ativos de hardware:
+  - **Definições de Paleta Reutilizáveis:** Criação, renomeação, ajuste individual das 4 cores NES via seletor mestre, duplicação e exclusão segura com checagem de referências ativas em entidades/animações.
+  - **Slots Ativos de Sprite (0..3):** Associação direta de qualquer paleta definida aos 4 slots de hardware da PPU com pré-visualização ao vivo.
+  - **Atribuições Contextuais Preservadas:** A seleção de paletas por frame ou animação, o pincel de subpaletas em tiles/metatiles e a edição de pixel overrides permanecem estritamente contextuais nos seus respectivos editores (Tileset, Playfield e Animação).
+  - **Exportação de Paleta:** Painel de resumo de métricas e exportação de binário `.pal` (16 bytes).
+
 ---
 
 ## 7. Sistema de Paletas
