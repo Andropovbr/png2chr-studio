@@ -54,6 +54,32 @@ class MockElement {
     if (this === element) return true;
     return this.children.some((child) => child.contains(element));
   }
+
+  querySelector(selector: string): MockElement | null {
+    return this.querySelectorAll(selector)[0] ?? null;
+  }
+
+  querySelectorAll(selector: string): MockElement[] {
+    const results: MockElement[] = [];
+    const match = (el: MockElement): boolean => {
+      if (selector.startsWith('.')) {
+        return el.classList.contains(selector.slice(1));
+      }
+      if (selector.startsWith('#')) {
+        return el.id === selector.slice(1);
+      }
+      return el.tagName.toLowerCase() === selector.toLowerCase();
+    };
+
+    const traverse = (el: MockElement) => {
+      for (const child of el.children) {
+        if (match(child)) results.push(child);
+        traverse(child);
+      }
+    };
+    traverse(this);
+    return results;
+  }
 }
 
 describe('AppShell layout and accessibility', () => {
@@ -135,5 +161,44 @@ describe('AppShell layout and accessibility', () => {
     expect(shell.workspaceHost.contains(workspace)).toBe(true);
     expect(shell.diagnosticsHost.children.length).toBe(0);
     expect(shell.inspectorHost.children.length).toBe(0);
+  });
+
+  it('does not add has-inspector class when inspector is empty so workspace reclaims space', () => {
+    const header = document.createElement('div');
+    const sidebar = document.createElement('div');
+    const workspace = document.createElement('div');
+    const emptyInspector = createInspector(); // empty without content
+
+    const shell = createAppShell({
+      header,
+      sidebar,
+      workspace,
+      inspector: emptyInspector,
+    });
+
+    const layout = shell.querySelector('.app-shell-layout');
+    expect(layout?.classList.contains('has-inspector')).toBe(false);
+  });
+
+  it('adds has-inspector class when inspector has populated content', () => {
+    const header = document.createElement('div');
+    const sidebar = document.createElement('div');
+    const workspace = document.createElement('div');
+    const content = document.createElement('div');
+    content.textContent = 'Active properties';
+    const populatedInspector = createInspector({
+      title: 'Contextual Inspector',
+      content,
+    });
+
+    const shell = createAppShell({
+      header,
+      sidebar,
+      workspace,
+      inspector: populatedInspector,
+    });
+
+    const layout = shell.querySelector('.app-shell-layout');
+    expect(layout?.classList.contains('has-inspector')).toBe(true);
   });
 });

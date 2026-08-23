@@ -105,10 +105,16 @@ Conforme documentado em [`docs/project-state-boundaries.md`](./project-state-bou
 A interface é orquestrada por um `AppShell` persistente que hospeda os principais marcos de interação:
 
 - **Project Header (`headerHost`):** Metadados do projeto, nome editável, indicador de dirty, botões de ação (Novo, Abrir, Salvar, Salvar Como) e seletor de idioma.
-- **Sidebar (`sidebarHost`):** Navegação entre workspaces (Tileset, Playfield, Animação), âncoras de seção, arquivo ativo e seletor rápido de quantização.
-- **Workspace Host (`workspaceHost`):** Hospeda os editores e painéis ativos do modo de trabalho atual.
-- **Inspector Host (`inspectorHost`):** Região lateral complementar para propriedades contextuais e inspetores.
+- **Sidebar (`sidebarHost`):** Navegação entre workspaces (Tileset, Playfield, Animação, Paletas, Memória CHR, Exportação e Diagnósticos), âncoras de seção, arquivo ativo e seletor rápido de quantização.
+- **Workspace Host (`workspaceHost`):** Hospeda os editores e painéis ativos do modo de trabalho atual. O layout principal reivindica toda a largura horizontal disponível quando o inspetor não possui conteúdo contextual ativo.
+- **Inspector Host (`inspectorHost`):** Região lateral complementar para propriedades contextuais. Quando vazio, não reserva coluna vazia desnecessária no desktop; quando ativo, exibe controles contextuais e botão de fechar.
 - **Diagnostics/Status Host (`diagnosticsHost`):** Painel de métricas, diagnósticos NES, erros de validação e status.
+
+### Densidade Visual e Layout Responsivo
+
+- **Sprite Palettes:** Slots ativos dispostos em grade responsiva de 4 colunas em telas largas (2 em médias, 1 em mobile). Definições de paletas organizadas em cartões multi-coluna auto-ajustáveis.
+- **Animation Preview Dedicado e Colapsável:** A pré-visualização de animações permanece fixa (`sticky`) exclusivamente dentro de sua coluna dedicada na grade do editor selecionado (sem sobrepor ou cobrir controles de edição), oferecendo alternância de recolhimento `[-]` / `[+]` armazenada em `WorkspaceState` sem marcar o projeto como dirty.
+- **Ações de Exportação:** Download do CHR final em destaque com grade responsiva (3 colunas no desktop) para as exportações secundárias (.pal, .json, .h, .c, .inc, .s).
 
 ---
 

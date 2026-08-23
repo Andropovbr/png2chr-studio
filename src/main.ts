@@ -1460,6 +1460,17 @@ function toggleAnimationPaletteCollapse(): void {
   render();
 }
 
+function toggleAnimationPreviewCollapse(): void {
+  updateWorkspace({
+    ...workspace,
+    animation: {
+      ...workspace.animation,
+      previewCollapsed: !workspace.animation.previewCollapsed,
+    },
+  });
+  render();
+}
+
 function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
@@ -2278,6 +2289,9 @@ function renderAnimationWorkspace(): void {
     selectedAnimationId,
     selectedSceneInstanceId: workspace.animation.selectedSceneInstanceId,
     activeTab: workspace.animation.activeTab ?? 'frames',
+    previewCollapsed: workspace.animation.previewCollapsed,
+    configCollapsed: workspace.animation.configCollapsed,
+    paletteCollapsed: workspace.animation.paletteCollapsed,
     model,
     modelError,
     paletteSet: project.paletteSet,
@@ -2325,6 +2339,7 @@ function renderAnimationWorkspace(): void {
     onDuplicateAnimation: duplicateAnimation,
     onRemoveAnimation: removeAnimation,
     onToggleAnimationCollapse: toggleAnimationCollapse,
+    onTogglePreviewCollapse: toggleAnimationPreviewCollapse,
     onToggleMappingCollapse: () => {
       updateWorkspace({
         ...workspace,

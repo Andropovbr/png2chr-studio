@@ -268,6 +268,8 @@ const en = {
   animationColorReductionTitle: 'Color reduction',
   animationColorReductionSelected: 'Selected: {mode}',
   animationMappingCollapseToggle: 'Toggle tile mapping collapse',
+  animationPreviewCollapse: 'Collapse preview',
+  animationPreviewExpand: 'Expand preview',
   animationPreviewVariantOriginal: 'Original',
   animationPreviewVariantFlipH: 'Flip H',
   animationPreviewVariantFlipV: 'Flip V',
@@ -894,6 +896,8 @@ const ptBr = {
   animationColorReductionSelected: 'Selecionado: {mode}',
   animationMappingCollapseToggle:
     'Alternar recolhimento do mapeamento de tiles',
+  animationPreviewCollapse: 'Recolher pré-visualização',
+  animationPreviewExpand: 'Expandir pré-visualização',
   animationPreviewVariantOriginal: 'Original',
   animationPreviewVariantFlipH: 'Flip H',
   animationPreviewVariantFlipV: 'Flip V',

@@ -71,7 +71,9 @@ export function createAppShell(options: AppShellOptions): AppShellElement {
   inspectorHost.setAttribute('aria-label', t('inspectorLabel'));
   if (options.inspector) {
     inspectorHost.append(options.inspector);
-    layout.classList.add('has-inspector');
+    if (!options.inspector.classList.contains('is-empty')) {
+      layout.classList.add('has-inspector');
+    }
   }
 
   layout.append(sidebarHost, mainArea, inspectorHost);

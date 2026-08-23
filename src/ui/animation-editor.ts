@@ -65,6 +65,9 @@ export interface AnimationEditorOptions {
   readonly selectedAnimationId?: string | null;
   readonly selectedSceneInstanceId?: string | null;
   readonly activeTab?: 'frames' | 'pixels' | 'mapping' | 'scene';
+  readonly previewCollapsed?: boolean;
+  readonly configCollapsed?: boolean;
+  readonly paletteCollapsed?: boolean;
   readonly model: AnimationProjectModel | null;
   readonly modelError: AnimationModelError | null;
   readonly paletteSet: NesPaletteSet;
@@ -83,6 +86,7 @@ export interface AnimationEditorOptions {
   readonly onDuplicateAnimation: (animationId: string) => void;
   readonly onRemoveAnimation: (animationId: string) => void;
   readonly onToggleAnimationCollapse?: (animationId: string) => void;
+  readonly onTogglePreviewCollapse?: () => void;
   readonly onToggleMappingCollapse: () => void;
   readonly onToggleConfigCollapse: () => void;
   readonly onTogglePaletteCollapse: () => void;
@@ -587,7 +591,8 @@ function createConfiguration(options: AnimationEditorOptions): HTMLElement {
   return createCollapsiblePanel({
     panelClassName: 'animation-config-panel',
     title: t('animationEditorTitle'),
-    isCollapsed: options.settings.configCollapsed ?? false,
+    isCollapsed:
+      options.configCollapsed ?? options.settings.configCollapsed ?? false,
     onToggle: options.onToggleConfigCollapse,
     children: [content],
   });
@@ -1920,45 +1925,42 @@ function createStickyAnimationPreview(
   const container = document.createElement('aside');
   container.className = 'animation-sticky-preview';
 
+  const isCollapsed = options.previewCollapsed ?? false;
+
+  const header = document.createElement('div');
+  header.className = 'animation-sticky-preview-header';
+
   const heading = document.createElement('h3');
   heading.className = 'animation-sticky-preview-title';
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'preview-collapse-toggle';
+  toggleBtn.setAttribute(
+    'aria-label',
+    isCollapsed ? t('animationPreviewExpand') : t('animationPreviewCollapse'),
+  );
+  toggleBtn.textContent = isCollapsed ? '[+]' : '[-]';
+  toggleBtn.addEventListener('click', () => {
+    if (options.onTogglePreviewCollapse) {
+      options.onTogglePreviewCollapse();
+    }
+  });
+
+  if (isCollapsed) {
+    container.classList.add('is-collapsed');
+    heading.textContent = `Preview: ${anim.entity ?? 'entity'}_${anim.name} (${String(anim.frameIndices.length)} frames)`;
+    header.append(heading, toggleBtn);
+    container.append(header);
+    return container;
+  }
+
   heading.textContent = t('animationPreviewSectionTitle');
+  header.append(heading, toggleBtn);
 
   const preview = createSingleAnimationPreview(options, anim);
 
-  const summary = document.createElement('div');
-  summary.className = 'animation-sticky-summary';
-
-  const dl = document.createElement('dl');
-  dl.className = 'animation-sticky-stats';
-
-  const flips: string[] = [];
-  if (anim.allowHorizontalFlip) flips.push(t('animationFlipHLabel'));
-  if (anim.allowVerticalFlip) flips.push(t('animationFlipVLabel'));
-  const flipText =
-    flips.length > 0 ? flips.join(', ') : t('animationTileNormal');
-
-  dl.append(
-    stat(t('animationEntityLabel'), anim.entity ?? 'entity'),
-    stat(t('animationItemNameLabel'), anim.name),
-    stat(
-      t('animationFrameWidthLabel'),
-      `${String(anim.frameWidth)} × ${String(anim.frameHeight)} px`,
-    ),
-    stat(t('animationSelectedFramesTitle'), String(anim.frameIndices.length)),
-    stat(
-      t('animationPlaybackLabel'),
-      anim.playback === 'once'
-        ? t('animationPlaybackOnce')
-        : t('animationPlaybackLoop'),
-    ),
-    stat(t('animationOriginX'), String(anim.originX)),
-    stat(t('animationOriginY'), String(anim.originY)),
-    stat(t('animationMirrorVariantsTitle'), flipText),
-  );
-
-  summary.append(dl);
-  container.append(heading, preview, summary);
+  container.append(header, preview);
   return container;
 }
 
@@ -2430,7 +2432,10 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
   const asm = generateCa65AnimationExport(model);
   const actions = document.createElement('div');
   actions.className = 'export-actions';
-  actions.append(
+
+  const primaryGroup = document.createElement('div');
+  primaryGroup.className = 'export-actions-primary';
+  primaryGroup.append(
     downloadButton(
       t('animationDownloadChr'),
       () => {
@@ -2438,6 +2443,11 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
       },
       true,
     ),
+  );
+
+  const secondaryGrid = document.createElement('div');
+  secondaryGrid.className = 'export-actions-secondary-grid';
+  secondaryGrid.append(
     downloadButton(
       t('animationDownloadPalette'),
       () => {
@@ -2484,6 +2494,8 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
       false,
     ),
   );
+
+  actions.append(primaryGroup, secondaryGrid);
   const estimate = document.createElement('small');
   estimate.textContent = t('animationEstimatedRom', {
     bytes: c.estimatedRomBytes,
