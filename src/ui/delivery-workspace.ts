@@ -1,0 +1,575 @@
+import {
+  generateCAnimationExport,
+  generateCa65AnimationExport,
+  serializeAnimationMetadata,
+} from '../core/animation-exporters';
+import {
+  type AnimationModelError,
+  type AnimationProjectModel,
+} from '../core/animation-model';
+import { padChrRom } from '../core/chr-rom';
+import {
+  encodeNesBackgroundPalettes,
+  type NesPaletteSet,
+} from '../core/nes-palette';
+import { type PaletteDefinition } from '../core/palette-manager';
+import type { IndexedImage } from '../core/types';
+import { t, type TranslationKey } from '../i18n';
+import type { DisplayError, ProjectMode } from './types';
+import type { WorkspaceView } from './workspace-state';
+
+export interface DeliveryArtifact {
+  readonly id: string;
+  readonly name: string;
+  readonly category: string;
+  readonly description: string;
+  readonly sizeBytes: number;
+  readonly isPrimary: boolean;
+  readonly onDownload: () => void;
+}
+
+export interface DeliveryDiagnosticItem {
+  readonly level: 'error' | 'warning' | 'info';
+  readonly message: string;
+  readonly targetWorkspace?: WorkspaceView;
+  readonly actionLabel?: string;
+}
+
+export interface DeliveryWorkspaceOptions {
+  readonly mode: ProjectMode;
+  readonly projectName: string;
+  readonly fileName: string | null;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly indexedImage: IndexedImage | null;
+  readonly tileCount: number;
+  readonly originalTileCount: number;
+  readonly deduplicationEnabled: boolean;
+  readonly flipDeduplicationEnabled: boolean;
+  readonly chr: Uint8Array | null;
+  readonly nametable: Uint8Array | null;
+  readonly attributeTable: Uint8Array | null;
+  readonly collisionMap: Uint8Array | null;
+  readonly paletteSet: NesPaletteSet;
+  readonly palettes?: readonly PaletteDefinition[];
+  readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly animationModel: AnimationProjectModel | null;
+  readonly animationModelError: AnimationModelError | null;
+  readonly error: DisplayError | null;
+  readonly onDownloadBytes: (bytes: Uint8Array, fileName: string) => void;
+  readonly onDownloadText: (text: string, fileName: string) => void;
+  readonly onNavigateWorkspace?: (view: WorkspaceView) => void;
+}
+
+function errorTranslation(error: AnimationModelError): TranslationKey {
+  switch (error.code) {
+    case 'no-selected-frames':
+      return 'animationMappingEmpty';
+    case 'duplicate-animation-name':
+      return 'animationErrorDuplicateName';
+    case 'duplicate-animation-identifier':
+      return 'animationErrorDuplicateIdentifier';
+    case 'invalid-playback':
+      return 'animationErrorInvalidPlayback';
+    default:
+      return 'animationErrorGeneric';
+  }
+}
+
+export function createDeliveryWorkspace(
+  options: DeliveryWorkspaceOptions,
+): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'workspace delivery-workspace';
+
+  // 1. Header
+  const headerPanel = document.createElement('section');
+  headerPanel.className = 'panel delivery-intro-panel';
+  headerPanel.id = 'section-delivery-intro';
+
+  const heading = document.createElement('h2');
+  heading.textContent = t('deliveryWorkspaceTitle');
+
+  const hint = document.createElement('p');
+  hint.className = 'panel-hint';
+  hint.textContent = t('deliveryWorkspaceHint');
+
+  const modeBadge = document.createElement('span');
+  modeBadge.className = 'status-badge delivery-mode-badge';
+  modeBadge.textContent = t(
+    options.mode === 'animation'
+      ? 'animationMode'
+      : options.mode === 'playfield'
+        ? 'playfieldMode'
+        : 'tilesetMode',
+  );
+
+  headerPanel.append(heading, hint, modeBadge);
+  container.append(headerPanel);
+
+  // Collect Diagnostics & Readiness
+  const diagnostics: DeliveryDiagnosticItem[] = [];
+
+  if (options.error !== null) {
+    diagnostics.push({
+      level: 'error',
+      message: t(options.error.key, options.error.variables),
+      targetWorkspace: options.mode === 'playfield' ? 'playfield' : 'tileset',
+      actionLabel:
+        options.mode === 'playfield'
+          ? t('deliveryLinkPlayfield')
+          : t('deliveryLinkTileset'),
+    });
+  }
+
+  if (options.mode === 'animation') {
+    if (options.animationModelError !== null) {
+      diagnostics.push({
+        level: 'error',
+        message: t(errorTranslation(options.animationModelError)),
+        targetWorkspace: 'animation',
+        actionLabel: t('deliveryLinkAnimation'),
+      });
+    } else if (options.animationModel === null) {
+      diagnostics.push({
+        level: 'info',
+        message: t('animationPreviewEmpty'),
+        targetWorkspace: 'animation',
+        actionLabel: t('deliveryLinkAnimation'),
+      });
+    } else {
+      const model = options.animationModel;
+      if (model.chr.remainingTiles < 16) {
+        diagnostics.push({
+          level: 'warning',
+          message: t('chrWorkspaceSpriteCapacity', {
+            remaining: model.chr.remainingTiles,
+            capacity: model.chr.patternTableCapacityTiles,
+          }),
+          targetWorkspace: 'chr',
+          actionLabel: t('deliveryLinkChr'),
+        });
+      }
+
+      if (options.palettes && options.activeSpritePaletteSlots) {
+        const unassignedSlots = options.activeSpritePaletteSlots.filter(
+          (id) => id === null || !options.palettes?.some((p) => p.id === id),
+        ).length;
+        if (unassignedSlots > 0) {
+          diagnostics.push({
+            level: 'warning',
+            message: t('scenePreviewSlotWarning', {
+              count: unassignedSlots,
+            }),
+            targetWorkspace: 'palette',
+            actionLabel: t('deliveryLinkPalettes'),
+          });
+        }
+      }
+    }
+  } else if (options.mode === 'playfield') {
+    if (options.nametable === null && options.error === null) {
+      diagnostics.push({
+        level: 'warning',
+        message: t('playfieldExportIncomplete'),
+        targetWorkspace: 'playfield',
+        actionLabel: t('deliveryLinkPlayfield'),
+      });
+    }
+  } else {
+    // Tileset mode
+    if (options.chr === null && options.error === null) {
+      diagnostics.push({
+        level: 'warning',
+        message: t('exportUnavailable'),
+        targetWorkspace: 'tileset',
+        actionLabel: t('deliveryLinkTileset'),
+      });
+    }
+  }
+
+  const errorCount = diagnostics.filter((d) => d.level === 'error').length;
+  const warnCount = diagnostics.filter((d) => d.level === 'warning').length;
+  const isReady = errorCount === 0;
+
+  // 2. Readiness & Diagnostics Section
+  const readinessPanel = document.createElement('section');
+  readinessPanel.className = 'panel delivery-readiness-panel';
+  readinessPanel.id = 'section-delivery-readiness';
+
+  const readinessHeading = document.createElement('h3');
+  readinessHeading.textContent = t('deliveryReadinessTitle');
+
+  const statusCard = document.createElement('div');
+  statusCard.className = `delivery-status-card ${
+    !isReady
+      ? 'status-error'
+      : warnCount > 0
+        ? 'status-warning'
+        : 'status-ready'
+  }`;
+
+  const statusTitle = document.createElement('strong');
+  statusTitle.className = 'delivery-status-title';
+  statusTitle.textContent = !isReady
+    ? t('deliveryStatusError')
+    : warnCount > 0
+      ? t('deliveryStatusWarning')
+      : t('deliveryStatusReady');
+
+  const statusDetails = document.createElement('p');
+  statusDetails.className = 'delivery-status-details';
+  statusDetails.textContent = t('deliveryStatusDetails', {
+    readyCount: isReady ? 1 : 0,
+    warnCount,
+    errorCount,
+  });
+
+  statusCard.append(statusTitle, statusDetails);
+  readinessPanel.append(readinessHeading, statusCard);
+
+  if (diagnostics.length > 0) {
+    const diagList = document.createElement('div');
+    diagList.className = 'delivery-diagnostics-list';
+
+    diagnostics.forEach((diag) => {
+      const item = document.createElement('div');
+      item.className = `delivery-diag-item is-${diag.level}`;
+
+      const icon = document.createElement('span');
+      icon.className = 'delivery-diag-icon';
+      icon.textContent =
+        diag.level === 'error' ? '❌' : diag.level === 'warning' ? '⚠️' : 'ℹ️';
+
+      const text = document.createElement('span');
+      text.className = 'delivery-diag-text';
+      text.textContent = diag.message;
+
+      item.append(icon, text);
+
+      if (diag.targetWorkspace && options.onNavigateWorkspace) {
+        const onNav = options.onNavigateWorkspace;
+        const target = diag.targetWorkspace;
+        const actionBtn = document.createElement('button');
+        actionBtn.type = 'button';
+        actionBtn.className = 'button secondary-button delivery-diag-action';
+        actionBtn.textContent = diag.actionLabel ?? 'Fix';
+        actionBtn.addEventListener('click', () => {
+          onNav(target);
+        });
+        item.append(actionBtn);
+      }
+
+      diagList.append(item);
+    });
+
+    readinessPanel.append(diagList);
+  }
+
+  container.append(readinessPanel);
+
+  // 3. Artifacts Collection
+  const artifacts: DeliveryArtifact[] = [];
+  const baseName = options.fileName
+    ? options.fileName.replace(/\.[^/.]+$/, '')
+    : 'graphics';
+
+  if (options.mode === 'animation' && options.animationModel !== null) {
+    const model = options.animationModel;
+    const exportedChr = padChrRom(model.finalChr);
+    const id = model.symbolBase;
+    const c = generateCAnimationExport(model);
+    const asm = generateCa65AnimationExport(model);
+
+    artifacts.push(
+      {
+        id: 'anim-chr',
+        name: model.chr.output || `${id}.chr`,
+        category: 'CHR-ROM',
+        description: t('deliveryArtifactChr'),
+        sizeBytes: exportedChr.length,
+        isPrimary: true,
+        onDownload: () => {
+          options.onDownloadBytes(exportedChr, model.chr.output || `${id}.chr`);
+        },
+      },
+      {
+        id: 'anim-pal',
+        name: `${id}.pal`,
+        category: 'Palette',
+        description: t('deliveryArtifactPalette'),
+        sizeBytes: 16,
+        isPrimary: false,
+        onDownload: () => {
+          options.onDownloadBytes(
+            encodeNesBackgroundPalettes(options.paletteSet),
+            `${id}.pal`,
+          );
+        },
+      },
+      {
+        id: 'anim-json',
+        name: `${id}.json`,
+        category: 'Metadata',
+        description: t('deliveryArtifactJson'),
+        sizeBytes: new Blob([serializeAnimationMetadata(model)]).size,
+        isPrimary: false,
+        onDownload: () => {
+          options.onDownloadText(
+            serializeAnimationMetadata(model),
+            `${id}.json`,
+          );
+        },
+      },
+      {
+        id: 'anim-c-header',
+        name: c.headerFileName,
+        category: 'C Header',
+        description: t('deliveryArtifactCHeader'),
+        sizeBytes: new Blob([c.header]).size,
+        isPrimary: false,
+        onDownload: () => {
+          options.onDownloadText(c.header, c.headerFileName);
+        },
+      },
+      {
+        id: 'anim-c-source',
+        name: c.sourceFileName,
+        category: 'C Source',
+        description: t('deliveryArtifactCSource'),
+        sizeBytes: new Blob([c.source]).size,
+        isPrimary: false,
+        onDownload: () => {
+          options.onDownloadText(c.source, c.sourceFileName);
+        },
+      },
+      {
+        id: 'anim-asm-include',
+        name: asm.includeFileName,
+        category: 'ASM Include',
+        description: t('deliveryArtifactAsmInclude'),
+        sizeBytes: new Blob([asm.include]).size,
+        isPrimary: false,
+        onDownload: () => {
+          options.onDownloadText(asm.include, asm.includeFileName);
+        },
+      },
+      {
+        id: 'anim-asm-source',
+        name: asm.sourceFileName,
+        category: 'ASM Source',
+        description: t('deliveryArtifactAsmSource'),
+        sizeBytes: new Blob([asm.source]).size,
+        isPrimary: false,
+        onDownload: () => {
+          options.onDownloadText(asm.source, asm.sourceFileName);
+        },
+      },
+    );
+  } else if (options.mode === 'playfield') {
+    const palBytes = encodeNesBackgroundPalettes(options.paletteSet);
+    if (options.chr !== null) {
+      artifacts.push({
+        id: 'pf-chr',
+        name: `${baseName}.chr`,
+        category: 'CHR-ROM',
+        description: t('deliveryArtifactChr'),
+        sizeBytes: options.chr.length,
+        isPrimary: true,
+        onDownload: () => {
+          if (options.chr)
+            options.onDownloadBytes(options.chr, `${baseName}.chr`);
+        },
+      });
+    }
+
+    artifacts.push({
+      id: 'pf-pal',
+      name: `${baseName}.pal`,
+      category: 'Palette',
+      description: t('deliveryArtifactPalette'),
+      sizeBytes: palBytes.length,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadBytes(palBytes, `${baseName}.pal`);
+      },
+    });
+
+    if (options.nametable !== null) {
+      artifacts.push({
+        id: 'pf-nam',
+        name: `${baseName}.nam`,
+        category: 'Nametable',
+        description: t('deliveryArtifactNametable'),
+        sizeBytes: options.nametable.length,
+        isPrimary: false,
+        onDownload: () => {
+          if (options.nametable) {
+            options.onDownloadBytes(options.nametable, `${baseName}.nam`);
+          }
+        },
+      });
+    }
+
+    if (options.attributeTable !== null) {
+      artifacts.push({
+        id: 'pf-atr',
+        name: `${baseName}.atr`,
+        category: 'Attribute Table',
+        description: t('deliveryArtifactAttributeTable'),
+        sizeBytes: options.attributeTable.length,
+        isPrimary: false,
+        onDownload: () => {
+          if (options.attributeTable) {
+            options.onDownloadBytes(options.attributeTable, `${baseName}.atr`);
+          }
+        },
+      });
+    }
+
+    if (options.collisionMap !== null) {
+      artifacts.push({
+        id: 'pf-col',
+        name: `${baseName}.col`,
+        category: 'Collision Map',
+        description: t('deliveryArtifactCollision'),
+        sizeBytes: options.collisionMap.length,
+        isPrimary: false,
+        onDownload: () => {
+          if (options.collisionMap) {
+            options.onDownloadBytes(options.collisionMap, `${baseName}.col`);
+          }
+        },
+      });
+    }
+  } else {
+    // Tileset mode
+    const palBytes = encodeNesBackgroundPalettes(options.paletteSet);
+    if (options.chr !== null) {
+      artifacts.push({
+        id: 'ts-chr',
+        name: `${baseName}.chr`,
+        category: 'CHR-ROM',
+        description: t('deliveryArtifactChr'),
+        sizeBytes: options.chr.length,
+        isPrimary: true,
+        onDownload: () => {
+          if (options.chr)
+            options.onDownloadBytes(options.chr, `${baseName}.chr`);
+        },
+      });
+    }
+
+    artifacts.push({
+      id: 'ts-pal',
+      name: `${baseName}.pal`,
+      category: 'Palette',
+      description: t('deliveryArtifactPalette'),
+      sizeBytes: palBytes.length,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadBytes(palBytes, `${baseName}.pal`);
+      },
+    });
+  }
+
+  // 4. Artifacts Panel
+  const artifactsPanel = document.createElement('section');
+  artifactsPanel.className = 'panel delivery-artifacts-panel';
+  artifactsPanel.id = 'section-delivery-artifacts';
+
+  const artifactsHeading = document.createElement('h3');
+  artifactsHeading.textContent = t('deliveryArtifactsTitle');
+
+  const artifactsHint = document.createElement('p');
+  artifactsHint.className = 'panel-hint';
+  artifactsHint.textContent = t('deliveryArtifactsHint');
+
+  artifactsPanel.append(artifactsHeading, artifactsHint);
+
+  if (artifacts.length === 0) {
+    const emptyMsg = document.createElement('p');
+    emptyMsg.className = 'empty-message delivery-empty-artifacts';
+    emptyMsg.textContent = t('deliveryNoArtifacts');
+    artifactsPanel.append(emptyMsg);
+  } else {
+    const artifactsGrid = document.createElement('div');
+    artifactsGrid.className = 'delivery-artifacts-grid';
+
+    artifacts.forEach((art) => {
+      const card = document.createElement('article');
+      card.className = `delivery-artifact-card${art.isPrimary ? ' is-primary' : ''}`;
+
+      const cardHeader = document.createElement('div');
+      cardHeader.className = 'delivery-artifact-header';
+
+      const catBadge = document.createElement('span');
+      catBadge.className = 'delivery-artifact-cat';
+      catBadge.textContent = art.category;
+
+      const sizeLabel = document.createElement('span');
+      sizeLabel.className = 'delivery-artifact-size';
+      sizeLabel.textContent = `${String(art.sizeBytes)} B`;
+
+      cardHeader.append(catBadge, sizeLabel);
+
+      const nameHeading = document.createElement('h4');
+      nameHeading.className = 'delivery-artifact-name';
+      nameHeading.textContent = art.name;
+
+      const desc = document.createElement('p');
+      desc.className = 'delivery-artifact-desc';
+      desc.textContent = art.description;
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `button ${art.isPrimary ? 'primary-button' : 'secondary-button'} delivery-download-btn`;
+      btn.textContent = `Download ${art.name}`;
+      btn.addEventListener('click', art.onDownload);
+
+      card.append(cardHeader, nameHeading, desc, btn);
+      artifactsGrid.append(card);
+    });
+
+    artifactsPanel.append(artifactsGrid);
+  }
+
+  container.append(artifactsPanel);
+
+  // 5. Editing Shortcuts & Links
+  const linksPanel = document.createElement('section');
+  linksPanel.className = 'panel delivery-links-panel';
+  linksPanel.id = 'section-delivery-links';
+
+  const linksHeading = document.createElement('h3');
+  linksHeading.textContent = t('deliveryLinksTitle');
+
+  const linksGrid = document.createElement('div');
+  linksGrid.className = 'delivery-links-grid';
+
+  const shortcuts: readonly [WorkspaceView, TranslationKey][] = [
+    ['tileset', 'deliveryLinkTileset'],
+    ['playfield', 'deliveryLinkPlayfield'],
+    ['animation', 'deliveryLinkAnimation'],
+    ['palette', 'deliveryLinkPalettes'],
+    ['chr', 'deliveryLinkChr'],
+  ];
+
+  shortcuts.forEach(([view, labelKey]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'button secondary-button delivery-link-btn';
+    btn.textContent = t(labelKey);
+    btn.addEventListener('click', () => {
+      if (options.onNavigateWorkspace) {
+        options.onNavigateWorkspace(view);
+      }
+    });
+    linksGrid.append(btn);
+  });
+
+  linksPanel.append(linksHeading, linksGrid);
+  container.append(linksPanel);
+
+  return container;
+}

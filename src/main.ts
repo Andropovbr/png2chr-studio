@@ -18,6 +18,7 @@ import {
 import {
   COLLISION_TYPES,
   createEmptyCollisionMap,
+  encodeCollisionMap,
 } from './core/collision-encoder';
 import {
   decideFrameDimensions,
@@ -82,11 +83,19 @@ import {
 import { createHeader } from './ui/header';
 import { createInspector } from './ui/inspector';
 import type { QuantizationPreview } from './ui/quantization-panel';
+import { encodeChr } from './core/chr-encoder';
+import { padChrRom } from './core/chr-rom';
+import { encodePlayfield } from './core/playfield-encoder';
+import {
+  deduplicateTiles,
+  deduplicateTilesConsideringFlips,
+} from './core/tile-deduplication';
 import { createSidebar } from './ui/sidebar';
 import { createTilesetWorkspace } from './ui/tileset-workspace';
 import { createPlayfieldWorkspace } from './ui/playfield-workspace';
 import { createPaletteWorkspace } from './ui/palette-workspace';
 import { createChrWorkspace } from './ui/chr-workspace';
+import { createDeliveryWorkspace } from './ui/delivery-workspace';
 import {
   applyDerivedStatusUpdate,
   applyProjectUpdate,
@@ -2169,15 +2178,20 @@ function updateActiveSpritePaletteSlot(
   render();
 }
 
-function renderAnimationWorkspace(): void {
-  const workspaceElement = document.createElement('div');
-  workspaceElement.className = 'workspace animation-workspace';
+function resolveAnimationProjectModel(prj: ProjectView): {
+  model: AnimationProjectModel | null;
+  modelError: AnimationModelError | null;
+} {
   let model: AnimationProjectModel | null = null;
   let modelError: AnimationModelError | null = null;
 
+  if (prj.mode !== 'animation') {
+    return { model: null, modelError: null };
+  }
+
   try {
     const definitions: AnimationDefinitionInput[] = [];
-    for (const anim of project.animation.animations) {
+    for (const anim of prj.animation.animations) {
       if (anim.source !== null && anim.frameIndices.length > 0) {
         const entityName =
           anim.entity?.trim() !== '' && anim.entity
@@ -2211,24 +2225,32 @@ function renderAnimationWorkspace(): void {
 
     if (definitions.length > 0) {
       const primaryEntity =
-        project.animation.animations[0]?.entity ?? project.animation.name;
+        prj.animation.animations[0]?.entity ?? prj.animation.name;
       model = buildAnimationProjectModel({
         name: primaryEntity,
         symbolPrefix: primaryEntity,
         animations: definitions,
-        defaultPaletteIndex: project.animation.defaultPaletteIndex,
-        quantizationMode: project.animation.quantizationMode,
-        baseChr: project.animation.destinationChr,
-        patternTable: project.animation.patternTable,
-        destinationPatternTable: project.animation.destinationPatternTable,
-        flipDeduplication: project.animation.flipDeduplication,
-        spritePalette: project.animation.spritePalette,
+        defaultPaletteIndex: prj.animation.defaultPaletteIndex,
+        quantizationMode: prj.animation.quantizationMode,
+        baseChr: prj.animation.destinationChr,
+        patternTable: prj.animation.patternTable,
+        destinationPatternTable: prj.animation.destinationPatternTable,
+        flipDeduplication: prj.animation.flipDeduplication,
+        spritePalette: prj.animation.spritePalette,
       });
     }
   } catch (error: unknown) {
     if (error instanceof AnimationModelError) modelError = error;
     else throw error;
   }
+
+  return { model, modelError };
+}
+
+function renderAnimationWorkspace(): void {
+  const workspaceElement = document.createElement('div');
+  workspaceElement.className = 'workspace animation-workspace';
+  const { model, modelError } = resolveAnimationProjectModel(project);
 
   const selectedAnimationId =
     workspace.animation.selectedAnimationId !== undefined &&
@@ -2412,7 +2434,7 @@ function renderAnimationWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr') {
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
         changeMode(view);
       } else {
         render();
@@ -2541,7 +2563,7 @@ function renderTilesetWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr') {
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
         changeMode(view);
       } else {
         render();
@@ -2682,7 +2704,7 @@ function renderPlayfieldWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr') {
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
         changeMode(view);
       } else {
         render();
@@ -2727,7 +2749,7 @@ function renderPaletteWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr') {
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
         changeMode(view);
       } else {
         render();
@@ -2746,61 +2768,7 @@ function renderPaletteWorkspace(): void {
 }
 
 function renderChrWorkspace(): void {
-  let animModel: AnimationProjectModel | null = null;
-  if (project.mode === 'animation') {
-    try {
-      const definitions: AnimationDefinitionInput[] = [];
-      for (const anim of project.animation.animations) {
-        if (anim.source !== null && anim.frameIndices.length > 0) {
-          const entityName =
-            anim.entity?.trim() !== '' && anim.entity
-              ? anim.entity.trim()
-              : 'entity';
-          const compositeName = `${entityName}_${anim.name}`;
-          definitions.push({
-            id: anim.id,
-            name: compositeName,
-            sourceImageName: anim.source.fileName,
-            image: anim.source.indexedImage,
-            paletteIndex: anim.paletteIndex ?? null,
-            quantizationMode: anim.quantizationMode ?? 'median-cut',
-            frameWidth: anim.frameWidth,
-            frameHeight: anim.frameHeight,
-            originX: anim.originX,
-            originY: anim.originY,
-            playback: anim.playback,
-            allowHorizontalFlip: anim.allowHorizontalFlip,
-            allowVerticalFlip: anim.allowVerticalFlip,
-            flipH: anim.allowHorizontalFlip,
-            flipV: anim.allowVerticalFlip,
-            frameIndices: anim.frameIndices,
-            frameDuration: anim.defaultDuration,
-            frameDurations: anim.frameDurations,
-            framePalettes: anim.framePalettes,
-            pixelOverrides: anim.pixelOverrides,
-          });
-        }
-      }
-      if (definitions.length > 0) {
-        const primaryEntity =
-          project.animation.animations[0]?.entity ?? project.animation.name;
-        animModel = buildAnimationProjectModel({
-          name: primaryEntity,
-          symbolPrefix: primaryEntity,
-          animations: definitions,
-          defaultPaletteIndex: project.animation.defaultPaletteIndex,
-          quantizationMode: project.animation.quantizationMode,
-          baseChr: project.animation.destinationChr,
-          patternTable: project.animation.patternTable,
-          destinationPatternTable: project.animation.destinationPatternTable,
-          flipDeduplication: project.animation.flipDeduplication,
-          spritePalette: project.animation.spritePalette,
-        });
-      }
-    } catch {
-      animModel = null;
-    }
-  }
+  const { model: animModel } = resolveAnimationProjectModel(project);
 
   const workspaceElement = createChrWorkspace({
     mode: project.mode,
@@ -2827,7 +2795,7 @@ function renderChrWorkspace(): void {
     error: derivedStatus.error,
     onNavigateToWorkspace: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr') {
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
         changeMode(view);
       } else {
         render();
@@ -2842,7 +2810,7 @@ function renderChrWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr') {
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
         changeMode(view);
       } else {
         render();
@@ -2860,6 +2828,134 @@ function renderChrWorkspace(): void {
   app.replaceChildren(shell);
 }
 
+function renderDeliveryWorkspace(): void {
+  const { model: animModel, modelError: animModelError } =
+    resolveAnimationProjectModel(project);
+
+  const tiles = project.tiles;
+  const deduplicated = deduplicateTiles(tiles);
+  const flipDeduplicated = deduplicateTilesConsideringFlips(tiles);
+  const activeDeduplicatedTiles = project.flipDeduplicationEnabled
+    ? flipDeduplicated
+    : deduplicated;
+  const tileCount =
+    project.mode === 'playfield' ||
+    project.deduplicationEnabled ||
+    project.flipDeduplicationEnabled
+      ? activeDeduplicatedTiles.length
+      : tiles.length;
+
+  const originalTileCount = tiles.length;
+  let chr: Uint8Array | null = null;
+  let nametable: Uint8Array | null = null;
+  let attributeTable: Uint8Array | null = null;
+  let collisionMap: Uint8Array | null = null;
+
+  if (project.mode !== 'animation' && tiles.length > 0) {
+    const tilesToEncode =
+      project.mode === 'playfield' ||
+      project.deduplicationEnabled ||
+      project.flipDeduplicationEnabled
+        ? activeDeduplicatedTiles
+        : tiles;
+    chr = padChrRom(encodeChr(tilesToEncode));
+
+    if (project.mode === 'playfield' && project.indexedImage !== null) {
+      const regionSize = PLAYFIELD_PALETTE_REGION_SIZE;
+      const mappedImage = mapImageToNesPalettes(
+        project.indexedImage,
+        project.paletteSet,
+        project.paletteAssignments,
+        regionSize,
+        project.pixelOverrides,
+        false,
+        project.quantizationSettings.colorDistanceMode,
+      );
+      const mappedTiles = extractTiles(mappedImage).slice(
+        0,
+        project.tiles.length,
+      );
+      try {
+        const encodedPlayfield = encodePlayfield(
+          mappedImage,
+          mappedTiles,
+          project.deduplicationEnabled,
+          project.paletteAssignments,
+        );
+        nametable = encodedPlayfield.nametable;
+        attributeTable = encodedPlayfield.attributeTable;
+      } catch {
+        nametable = null;
+        attributeTable = null;
+      }
+      try {
+        collisionMap = encodeCollisionMap(project.collisionCells);
+      } catch {
+        collisionMap = null;
+      }
+    }
+  }
+
+  const palettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const activeSpritePaletteSlots =
+    project.activeSpritePaletteSlots ?? palettes.slice(0, 4).map((p) => p.id);
+
+  const workspaceElement = createDeliveryWorkspace({
+    mode: project.mode,
+    projectName,
+    fileName: project.fileName,
+    width: project.width,
+    height: project.height,
+    indexedImage: project.indexedImage,
+    tileCount,
+    originalTileCount,
+    deduplicationEnabled: project.deduplicationEnabled,
+    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    chr,
+    nametable,
+    attributeTable,
+    collisionMap,
+    paletteSet: project.paletteSet,
+    palettes,
+    activeSpritePaletteSlots,
+    animationModel: animModel,
+    animationModelError: animModelError,
+    error: derivedStatus.error,
+    onDownloadBytes: downloadBytes,
+    onDownloadText: downloadText,
+    onNavigateWorkspace: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+        changeMode(view);
+      } else {
+        render();
+      }
+    },
+  });
+
+  const sidebar = createSidebar({
+    activeWorkspace: 'deliver',
+    fileName: project.fileName,
+    onWorkspaceChange: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+        changeMode(view);
+      } else {
+        render();
+      }
+    },
+  });
+  const inspector = createInspector();
+  const shell = createAppShell({
+    header: createProjectHeader(),
+    sidebar,
+    workspace: workspaceElement,
+    inspector,
+  });
+  app.replaceChildren(shell);
+}
+
 function render(): void {
   document.documentElement.lang = getLocale();
   document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
@@ -2867,6 +2963,8 @@ function render(): void {
     renderPaletteWorkspace();
   } else if (workspace.activeWorkspace === 'chr') {
     renderChrWorkspace();
+  } else if (workspace.activeWorkspace === 'deliver') {
+    renderDeliveryWorkspace();
   } else if (project.mode === 'animation') {
     renderAnimationWorkspace();
   } else if (project.mode === 'playfield') {

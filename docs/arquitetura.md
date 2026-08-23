@@ -221,6 +221,16 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
   - **Detalhamento de Reúso e CHR-Base:** Discrimina tiles mantidos de CHR-base (4 KiB / 8 KiB / esparsos), tiles reutilizados por deduplicação/espelhamento e novos tiles alocados.
   - **Links e Ações:** Acesso direto para download da CHR de 8 KiB (`.chr`) e atalhos de navegação para o Mapeamento de Metasprites, Editor de Animação e Workspace de Paletas.
 
+### 6.6 Workspace de Entrega e Exportação (`src/ui/delivery-workspace.ts`)
+
+- Hub consolidado de validação de prontidão, diagnósticos de domínio e geração de artefatos de produção para todos os modos (Tileset, Playfield e Animação):
+  - **Prontidão do Projeto & Diagnósticos:** Avaliação visual unificada do status de exportação (`Pronto para Produção`, `Pronto com Avisos`, `Ação Necessária`), integrando diagnósticos de dimensões, redução de cores, saturação de tabelas de padrões, slots de paleta não configurados e inconsistências de animação sem duplicar regras do hardware NES.
+  - **Links Diretos para Correção:** Cada diagnóstico ou aviso oferece atalho direto de navegação para o workspace correspondente (Tileset, Playfield, Animação, Paletas ou Memória CHR).
+  - **Artefatos de Produção Binários e Código-Fonte:** Disponibilização centralizada e consistente de todos os arquivos exportáveis mantendo 100% de compatibilidade byte-a-byte:
+    - _Tileset:_ CHR de 8 KiB (`.chr`) e paleta binária (`.pal`).
+    - _Playfield:_ CHR de 8 KiB (`.chr`), paleta (`.pal`), Nametable (`.nam`), Attribute Table (`.atr`) e Mapa de Colisões (`.col`).
+    - _Animação:_ CHR de 8 KiB (`.chr`), paletas (`.pal`), metadados JSON (`.json`), cabeçalho e fonte C cc65 (`.h` / `.c`) e includes/fontes Assembly ca65 (`.inc` / `.s`).
+
 ---
 
 ## 7. Sistema de Paletas
