@@ -12,7 +12,7 @@ export interface AnimationWorkspaceState {
   readonly mappingCollapsed: boolean;
 }
 
-export type WorkspaceView = 'tileset' | 'playfield' | 'animation';
+export type WorkspaceView = 'tileset' | 'playfield' | 'animation' | 'palette';
 
 export interface WorkspaceState {
   /** Transient interaction and navigation state. It is intentionally absent from ProjectView. */

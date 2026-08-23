@@ -118,15 +118,17 @@ describe('Sidebar component', () => {
     const buttons = (sidebar as unknown as MockElement).querySelectorAll(
       '.sidebar-nav-item',
     );
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(4);
 
     const btn0 = buttons[0];
     const btn1 = buttons[1];
     const btn2 = buttons[2];
+    const btn3 = buttons[3];
     expect(btn0).toBeDefined();
     expect(btn1).toBeDefined();
     expect(btn2).toBeDefined();
-    if (!btn0 || !btn1 || !btn2) return;
+    expect(btn3).toBeDefined();
+    if (!btn0 || !btn1 || !btn2 || !btn3) return;
 
     // Tileset
     expect(btn0.classList.contains('is-active')).toBe(false);
@@ -140,6 +142,10 @@ describe('Sidebar component', () => {
     expect(btn2.classList.contains('is-active')).toBe(false);
     expect(btn2.getAttribute('aria-pressed')).toBe('false');
 
+    // Palette
+    expect(btn3.classList.contains('is-active')).toBe(false);
+    expect(btn3.getAttribute('aria-pressed')).toBe('false');
+
     // Click tileset button
     btn0.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('tileset');
@@ -147,6 +153,10 @@ describe('Sidebar component', () => {
     // Click animation button
     btn2.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('animation');
+
+    // Click palette button
+    btn3.click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('palette');
   });
 
   it('renders section anchors for tileset / playfield modes', () => {
@@ -186,6 +196,25 @@ describe('Sidebar component', () => {
       '#section-scene-preview',
       '#section-mapping',
       '#section-export',
+    ]);
+  });
+
+  it('renders section anchors for palette mode', () => {
+    const sidebar = createSidebar({
+      activeWorkspace: 'palette',
+      fileName: null,
+    });
+
+    const links = (sidebar as unknown as MockElement).querySelectorAll(
+      '.sidebar-link',
+    );
+    const hrefs = links.map((link) => link.getAttribute('href'));
+
+    expect(hrefs).toEqual([
+      '#section-palettes-intro',
+      '#section-active-slots',
+      '#section-palette-definitions',
+      '#section-palette-export',
     ]);
   });
 

@@ -27,6 +27,22 @@ const en = {
   tilesetMode: 'Tileset / graphics',
   playfieldMode: 'Playfield / game screen',
   animationMode: 'Sprite sheet / animation',
+  palettesMode: 'Palettes',
+  paletteWorkspaceTitle: 'Project Palettes',
+  paletteWorkspaceHint:
+    'Manage reusable NES palette definitions and configure active sprite palette slots for the project.',
+  paletteWorkspaceActiveSlotsTitle: 'Active Sprite Palette Slots (0..3)',
+  paletteWorkspaceActiveSlotsHint:
+    'Hardware slots used by the NES PPU to render sprites on screen.',
+  paletteWorkspaceListTitle: 'Palette Definitions',
+  paletteWorkspaceListHint:
+    'Reusable 4-color palette definitions available across animations and entities.',
+  paletteWorkspaceExportTitle: 'Export Palette',
+  paletteWorkspaceExportHint:
+    'Download the active 16-byte NES palette file (.pal).',
+  paletteWorkspaceDownloadPal: 'Download Palette (.pal)',
+  paletteWorkspaceStats:
+    '{count} palette definitions · {active} active slots · {references} references',
   tilesetModeHint:
     'Use a PNG, a CHR file, or an iNES mapper 0 ROM with 8 KB of CHR-ROM.',
   playfieldModeHint:
@@ -560,6 +576,22 @@ const ptBr = {
   tilesetMode: 'Tileset / gráficos',
   playfieldMode: 'Playfield / tela do jogo',
   animationMode: 'Sprite sheet / animação',
+  palettesMode: 'Paletas',
+  paletteWorkspaceTitle: 'Paletas do Projeto',
+  paletteWorkspaceHint:
+    'Gerencie definições reutilizáveis de paletas NES e configure os slots de paletas de sprites do projeto.',
+  paletteWorkspaceActiveSlotsTitle: 'Slots Ativos de Paletas de Sprite (0..3)',
+  paletteWorkspaceActiveSlotsHint:
+    'Slots de hardware utilizados pela PPU do NES para renderizar sprites na tela.',
+  paletteWorkspaceListTitle: 'Definições de Paleta',
+  paletteWorkspaceListHint:
+    'Definições reutilizáveis de 4 cores disponíveis para entidades e animações.',
+  paletteWorkspaceExportTitle: 'Exportar Paleta',
+  paletteWorkspaceExportHint:
+    'Baixar o arquivo de paleta NES de 16 bytes (.pal).',
+  paletteWorkspaceDownloadPal: 'Baixar Paleta (.pal)',
+  paletteWorkspaceStats:
+    '{count} definições de paleta · {active} slots ativos · {references} referências',
   tilesetModeHint:
     'Use um PNG, um arquivo CHR ou uma ROM iNES mapper 0 com 8 KB de CHR-ROM.',
   playfieldModeHint:

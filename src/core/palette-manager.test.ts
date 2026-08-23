@@ -243,4 +243,27 @@ describe('palette-manager domain module', () => {
     );
     expect(unusedRefs).toHaveLength(0);
   });
+
+  it('tracks frame palette override references accurately', () => {
+    const animations = [
+      {
+        id: 'anim_boss',
+        name: 'phase2',
+        entity: 'Boss',
+        paletteId: 'pal_boss',
+        framePaletteIds: ['pal_boss', 'pal_flash', 'pal_boss'],
+      },
+    ];
+    const activeSlots = ['pal_boss', null, null, null];
+
+    const flashRefs = findPaletteUsageReferences(
+      'pal_flash',
+      animations,
+      activeSlots,
+    );
+    expect(flashRefs).toHaveLength(1);
+    expect(flashRefs[0]?.type).toBe('animation');
+    expect(flashRefs[0]?.name).toBe('Boss_phase2');
+    expect(flashRefs[0]?.detail).toBe('Frame palette override');
+  });
 });
