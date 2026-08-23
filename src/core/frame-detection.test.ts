@@ -99,6 +99,34 @@ describe('frame grid detection', () => {
     });
   });
 
+  it('preserves manual dimensions when confidence is low', () => {
+    const detection: FrameDetectionResult = {
+      recommendedWidth: 32,
+      recommendedHeight: 32,
+      confidence: 'low',
+      candidates: [],
+    };
+
+    expect(decideFrameDimensions(24, 24, detection)).toEqual({
+      width: 24,
+      height: 24,
+    });
+  });
+
+  it('keeps manual override after low confidence detection on irregular sheet', () => {
+    const irregularResult = detectFrameGrid(irregularFixture());
+    expect(irregularResult.confidence).toBe('low');
+
+    const customWidth = 24;
+    const customHeight = 24;
+    const resolved = decideFrameDimensions(
+      customWidth,
+      customHeight,
+      irregularResult,
+    );
+    expect(resolved).toEqual({ width: 24, height: 24 });
+  });
+
   it('re-detects when a new source image replaces the previous one', () => {
     const first = detectFrameGrid(frameGrid16x8Fixture());
     const second = detectFrameGrid(frameGrid8x8Fixture());
@@ -110,5 +138,23 @@ describe('frame grid detection', () => {
 
     const afterReload = decideFrameDimensions(20, 20, second);
     expect(afterReload).toEqual({ width: 8, height: 8 });
+  });
+
+  it('replaces detection correctly when replacing high-confidence source with low-confidence irregular source', () => {
+    const regular = detectFrameGrid(frameGrid16x16Fixture());
+    expect(regular.confidence).toBe('high');
+    const appliedRegular = decideFrameDimensions(8, 8, regular);
+    expect(appliedRegular).toEqual({ width: 16, height: 16 });
+
+    // Source replaced with irregular sheet
+    const irregular = detectFrameGrid(irregularFixture());
+    expect(irregular.confidence).toBe('low');
+    // Manual/current dimensions are preserved because confidence is not high
+    const preserved = decideFrameDimensions(
+      appliedRegular.width,
+      appliedRegular.height,
+      irregular,
+    );
+    expect(preserved).toEqual({ width: 16, height: 16 });
   });
 });

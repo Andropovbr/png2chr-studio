@@ -1578,30 +1578,19 @@ function createAnimationPropertiesFields(
   const detectionElements: HTMLElement[] = [];
   if (anim.source !== null) {
     const detectionBlock = document.createElement('div');
-    detectionBlock.className = 'animation-detection';
-    const detectBtn = document.createElement('button');
-    detectBtn.type = 'button';
-    detectBtn.className = 'button secondary-button animation-detect-btn';
-    detectBtn.textContent = t('frameDetectionRetry');
-    detectBtn.addEventListener('click', () => {
-      options.onFrameDetection(anim.id);
-    });
+    detectionBlock.className = 'animation-detection animation-detection-card';
 
     const detection = anim.frameDetection ?? null;
     if (detection !== null) {
-      const status = document.createElement('span');
-      status.className = 'animation-detection-status';
-      status.textContent = t('frameDetectionApplied', {
-        width: detection.recommendedWidth,
-        height: detection.recommendedHeight,
-      });
+      const header = document.createElement('div');
+      header.className = 'animation-detection-header';
+
+      const title = document.createElement('span');
+      title.className = 'animation-detection-title';
+      title.textContent = t('frameDetectionTitle');
+
       const confidence = document.createElement('span');
-      confidence.className =
-        detection.confidence === 'high'
-          ? 'animation-detection-confidence animation-detection-confidence-high'
-          : detection.confidence === 'medium'
-            ? 'animation-detection-confidence animation-detection-confidence-medium'
-            : 'animation-detection-confidence animation-detection-confidence-low';
+      confidence.className = `animation-detection-confidence animation-detection-badge badge-confidence-${detection.confidence}`;
       confidence.textContent = t(
         detection.confidence === 'high'
           ? 'frameDetectionRecommended'
@@ -1609,8 +1598,99 @@ function createAnimationPropertiesFields(
             ? 'frameDetectionAmbiguous'
             : 'frameDetectionLow',
       );
-      detectionBlock.append(status, confidence, detectBtn);
+      header.append(title, confidence);
+
+      const body = document.createElement('div');
+      body.className = 'animation-detection-body';
+
+      const imgW = anim.source.sourceImage.width;
+      const imgH = anim.source.sourceImage.height;
+      const recW = detection.recommendedWidth;
+      const recH = detection.recommendedHeight;
+      const detCols = recW > 0 ? Math.floor(imgW / recW) : 0;
+      const detRows = recH > 0 ? Math.floor(imgH / recH) : 0;
+      const detFrames = detCols * detRows;
+
+      const curW = anim.frameWidth;
+      const curH = anim.frameHeight;
+      const curCols = curW > 0 ? Math.floor(imgW / curW) : 0;
+      const curRows = curH > 0 ? Math.floor(imgH / curH) : 0;
+      const curFrames = curCols * curRows;
+
+      const isApplied = curW === recW && curH === recH;
+
+      if (isApplied) {
+        const status = document.createElement('p');
+        status.className =
+          'animation-detection-status animation-detection-applied-status';
+        status.textContent = t('frameDetectionApplied', {
+          width: curW,
+          height: curH,
+          cols: curCols,
+          rows: curRows,
+          frames: curFrames,
+        });
+        body.append(status);
+      } else {
+        const customStatus = document.createElement('p');
+        customStatus.className =
+          'animation-detection-status animation-detection-custom-status';
+        customStatus.textContent = t('frameDetectionCustom', {
+          width: curW,
+          height: curH,
+          cols: curCols,
+          rows: curRows,
+          frames: curFrames,
+        });
+
+        const suggestedInfo = document.createElement('p');
+        suggestedInfo.className = 'animation-detection-suggested-info muted';
+        suggestedInfo.textContent = t('frameDetectionSuggested', {
+          width: recW,
+          height: recH,
+          cols: detCols,
+          rows: detRows,
+          frames: detFrames,
+        });
+
+        const applyBtn = document.createElement('button');
+        applyBtn.type = 'button';
+        applyBtn.className =
+          'button secondary-button animation-apply-detection-btn';
+        applyBtn.textContent = t('frameDetectionApplySuggestion', {
+          width: recW,
+          height: recH,
+        });
+        applyBtn.addEventListener('click', () => {
+          options.onUpdateAnimation(anim.id, {
+            frameWidth: recW,
+            frameHeight: recH,
+          });
+        });
+
+        body.append(customStatus, suggestedInfo, applyBtn);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'animation-detection-actions';
+      const detectBtn = document.createElement('button');
+      detectBtn.type = 'button';
+      detectBtn.className = 'button secondary-button animation-detect-btn';
+      detectBtn.textContent = t('frameDetectionRetry');
+      detectBtn.addEventListener('click', () => {
+        options.onFrameDetection(anim.id);
+      });
+      actions.append(detectBtn);
+
+      detectionBlock.append(header, body, actions);
     } else {
+      const detectBtn = document.createElement('button');
+      detectBtn.type = 'button';
+      detectBtn.className = 'button secondary-button animation-detect-btn';
+      detectBtn.textContent = t('frameDetectionRetry');
+      detectBtn.addEventListener('click', () => {
+        options.onFrameDetection(anim.id);
+      });
       detectionBlock.append(detectBtn);
     }
     detectionElements.push(detectionBlock);
