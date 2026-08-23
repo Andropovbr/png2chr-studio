@@ -23,6 +23,7 @@ It is designed for retro game developers and pixel artists who need a transparen
   - Physical 8 KiB CHR-ROM modeling with independent sprite pattern table selection (PT0 / PT1), 8-bit local OAM tile indexes, sparse allocation, and base CHR preservation.
   - Multi-entity scene preview with independent positioning and playback.
 - **Project Palette Workspace:** Dedicated workspace to manage reusable NES palette definitions and configure the 4 hardware sprite palette slots (0..3), while preserving contextual palette assignments, brush tools, and pixel overrides in each editor.
+- **CHR Memory & Pattern Table Workspace:** Projected read-only view of physical 8 KiB CHR-ROM memory (PT0 / PT1 pattern table isolation, base CHR retention, physical vs. 8-bit OAM-local sprite indexing, and deduplication reuse breakdown).
 - **Production Exporters:**
   - Consolidated physical 8 KiB `.chr` or raw deduplicated `.chr`.
   - Versioned JSON animation metadata (`format: png2chr-studio-animation`, `version: 5`).

@@ -85,6 +85,7 @@ import { createSidebar } from './ui/sidebar';
 import { createTilesetWorkspace } from './ui/tileset-workspace';
 import { createPlayfieldWorkspace } from './ui/playfield-workspace';
 import { createPaletteWorkspace } from './ui/palette-workspace';
+import { createChrWorkspace } from './ui/chr-workspace';
 import {
   applyDerivedStatusUpdate,
   applyProjectUpdate,
@@ -2352,7 +2353,7 @@ function renderAnimationWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette') {
+      if (view !== 'palette' && view !== 'chr') {
         changeMode(view);
       } else {
         render();
@@ -2481,7 +2482,7 @@ function renderTilesetWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette') {
+      if (view !== 'palette' && view !== 'chr') {
         changeMode(view);
       } else {
         render();
@@ -2622,7 +2623,7 @@ function renderPlayfieldWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette') {
+      if (view !== 'palette' && view !== 'chr') {
         changeMode(view);
       } else {
         render();
@@ -2667,7 +2668,122 @@ function renderPaletteWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette') {
+      if (view !== 'palette' && view !== 'chr') {
+        changeMode(view);
+      } else {
+        render();
+      }
+    },
+  });
+  const inspector = createInspector();
+  const shell = createAppShell({
+    header: createProjectHeader(),
+    sidebar,
+    workspace: workspaceElement,
+    inspector,
+    diagnostics: workspaceElement.diagnosticsElement,
+  });
+  app.replaceChildren(shell);
+}
+
+function renderChrWorkspace(): void {
+  let animModel: AnimationProjectModel | null = null;
+  if (project.mode === 'animation') {
+    try {
+      const definitions: AnimationDefinitionInput[] = [];
+      for (const anim of project.animation.animations) {
+        if (anim.source !== null && anim.frameIndices.length > 0) {
+          const entityName =
+            anim.entity?.trim() !== '' && anim.entity
+              ? anim.entity.trim()
+              : 'entity';
+          const compositeName = `${entityName}_${anim.name}`;
+          definitions.push({
+            id: anim.id,
+            name: compositeName,
+            sourceImageName: anim.source.fileName,
+            image: anim.source.indexedImage,
+            paletteIndex: anim.paletteIndex ?? null,
+            quantizationMode: anim.quantizationMode ?? 'median-cut',
+            frameWidth: anim.frameWidth,
+            frameHeight: anim.frameHeight,
+            originX: anim.originX,
+            originY: anim.originY,
+            playback: anim.playback,
+            allowHorizontalFlip: anim.allowHorizontalFlip,
+            allowVerticalFlip: anim.allowVerticalFlip,
+            flipH: anim.allowHorizontalFlip,
+            flipV: anim.allowVerticalFlip,
+            frameIndices: anim.frameIndices,
+            frameDuration: anim.defaultDuration,
+            frameDurations: anim.frameDurations,
+            framePalettes: anim.framePalettes,
+            pixelOverrides: anim.pixelOverrides,
+          });
+        }
+      }
+      if (definitions.length > 0) {
+        const primaryEntity =
+          project.animation.animations[0]?.entity ?? project.animation.name;
+        animModel = buildAnimationProjectModel({
+          name: primaryEntity,
+          symbolPrefix: primaryEntity,
+          animations: definitions,
+          defaultPaletteIndex: project.animation.defaultPaletteIndex,
+          quantizationMode: project.animation.quantizationMode,
+          baseChr: project.animation.destinationChr,
+          patternTable: project.animation.patternTable,
+          destinationPatternTable: project.animation.destinationPatternTable,
+          flipDeduplication: project.animation.flipDeduplication,
+          spritePalette: project.animation.spritePalette,
+        });
+      }
+    } catch {
+      animModel = null;
+    }
+  }
+
+  const workspaceElement = createChrWorkspace({
+    mode: project.mode,
+    animationModel: animModel,
+    baseChr:
+      project.mode === 'animation' &&
+      project.animation.destinationChr.length > 0
+        ? project.animation.destinationChr
+        : null,
+    baseChrName:
+      project.mode === 'animation'
+        ? project.animation.destinationChrName
+        : null,
+    patternTable:
+      project.mode === 'animation' ? project.animation.patternTable : 0,
+    destinationPatternTable:
+      project.mode === 'animation'
+        ? project.animation.destinationPatternTable
+        : 0,
+    tiles: project.tiles,
+    deduplicationEnabled: project.deduplicationEnabled,
+    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    loading: derivedStatus.loading,
+    error: derivedStatus.error,
+    onNavigateToWorkspace: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      if (view !== 'palette' && view !== 'chr') {
+        changeMode(view);
+      } else {
+        render();
+      }
+    },
+    onDownloadBytes: downloadBytes,
+    onDownloadText: downloadText,
+  });
+
+  const sidebar = createSidebar({
+    activeWorkspace: 'chr',
+    fileName: project.fileName,
+    onWorkspaceChange: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      if (view !== 'palette' && view !== 'chr') {
         changeMode(view);
       } else {
         render();
@@ -2690,6 +2806,8 @@ function render(): void {
   document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
   if (workspace.activeWorkspace === 'palette') {
     renderPaletteWorkspace();
+  } else if (workspace.activeWorkspace === 'chr') {
+    renderChrWorkspace();
   } else if (project.mode === 'animation') {
     renderAnimationWorkspace();
   } else if (project.mode === 'playfield') {
