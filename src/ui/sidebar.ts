@@ -51,6 +51,9 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
     btn.className = `sidebar-nav-item${isActive ? ' is-active' : ''}`;
     btn.textContent = t(labelKey);
     btn.setAttribute('aria-pressed', String(isActive));
+    if (isActive) {
+      btn.setAttribute('aria-current', 'page');
+    }
     btn.addEventListener('click', () => {
       if (options.onWorkspaceChange) {
         options.onWorkspaceChange(viewKey);
@@ -103,7 +106,10 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
                 ['#section-asset', t('navigationAsset')],
                 ['#section-palettes', t('navigationPalettes')],
                 ['#section-animations', t('navigationAnimations')],
-                ['#section-scene-preview', t('navigationScenePreview')],
+                [
+                  '#section-animation-editor',
+                  t('animationSelectedEditorTitle'),
+                ],
                 ['#section-mapping', t('navigationMapping')],
                 ['#section-export', t('navigationExport')],
               ]
