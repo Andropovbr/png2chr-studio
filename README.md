@@ -15,7 +15,7 @@ It is designed for retro game developers and pixel artists who need a transparen
 - **Tileset Workflow:** 8×8 tile extraction in reading order, per-tile palette assignment, integrated 8×8 pixel editor, and exact or flip-aware (horizontal, vertical, combined) deduplication.
 - **Playfield & Collision Workflow:** 256×240 playfield conversion with 960-byte Nametable (`.nam`), 64-byte Attribute Table (`.atr`), 480-byte 11-type typed collision map (`.col`), 16-byte palette (`.pal`), and procedural test playfield generation.
 - **Sprite Sheet & Animation Workflow:**
-  - Decoupled workspace layout with a compact entity/animation list, single focused animation editor, and sticky live preview column.
+  - Decoupled workspace layout with a compact entity/animation list, single focused animation editor, responsive multi-column palette grids, and a collapsible, sticky live preview column.
   - Contextual subtool tabs: _Frames & Timing_, _Pixel Overrides_, and _Metasprite Mapping_.
   - Multiple animations per asset with independent spritesheets, frame sizes, signed origin anchors, playback modes (Loop / Once), and flip capability flags.
   - Assisted frame-grid detection for sprite sheets.

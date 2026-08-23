@@ -11,6 +11,7 @@ export interface AnimationWorkspaceState {
   readonly configCollapsed: boolean;
   readonly paletteCollapsed: boolean;
   readonly mappingCollapsed: boolean;
+  readonly previewCollapsed: boolean;
 }
 
 export type WorkspaceView =
@@ -55,6 +56,7 @@ export function createWorkspaceState(
       configCollapsed: false,
       paletteCollapsed: false,
       mappingCollapsed: true,
+      previewCollapsed: false,
     },
   };
 }

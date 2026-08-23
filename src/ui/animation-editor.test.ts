@@ -513,9 +513,11 @@ describe('Animation Editor Split Architecture', () => {
     );
     expect(stickyPreviews.length).toBe(1);
 
-    // Summary stats contain the selected animation details
-    const stats = stickyPreviews[0]?.querySelector('.animation-sticky-stats');
-    expect(stats?.textContent).toContain('walk');
+    // Preview canvas is for the selected animation
+    const canvas = stickyPreviews[0]?.querySelector(
+      '.animation-preview-canvas',
+    );
+    expect(canvas?.getAttribute('aria-label')).toContain('walk');
   });
 
   it('renders contextual tabs and triggers onSelectTab when clicked', () => {
@@ -868,5 +870,102 @@ describe('Animation Editor Split Architecture', () => {
     );
     duplicateBtn?.click();
     expect(onDuplicateSceneInstance).toHaveBeenCalledWith('inst-2');
+  });
+
+  it('renders collapsible preview with toggle button and triggers onTogglePreviewCollapse', () => {
+    const onTogglePreviewCollapse = vi.fn();
+
+    // 1. Expanded state
+    const optionsExpanded = createOptions({
+      previewCollapsed: false,
+      onTogglePreviewCollapse,
+    });
+    const panelsExpanded = createAnimationEditor(optionsExpanded);
+    const editorExpanded = panelsExpanded.find(
+      (p) => p.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const previewExpanded = editorExpanded.querySelector(
+      '.animation-sticky-preview',
+    );
+    expect(previewExpanded).not.toBeNull();
+    expect(previewExpanded?.classList.contains('is-collapsed')).toBe(false);
+
+    const toggleBtn = previewExpanded?.querySelector(
+      '.preview-collapse-toggle',
+    );
+    expect(toggleBtn).not.toBeNull();
+    expect(toggleBtn?.textContent).toBe('[-]');
+    toggleBtn?.click();
+    expect(onTogglePreviewCollapse).toHaveBeenCalledTimes(1);
+
+    // 2. Collapsed state
+    const optionsCollapsed = createOptions({
+      previewCollapsed: true,
+      onTogglePreviewCollapse,
+    });
+    const panelsCollapsed = createAnimationEditor(optionsCollapsed);
+    const editorCollapsed = panelsCollapsed.find(
+      (p) => p.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const previewCollapsed = editorCollapsed.querySelector(
+      '.animation-sticky-preview',
+    );
+    expect(previewCollapsed).not.toBeNull();
+    expect(previewCollapsed?.classList.contains('is-collapsed')).toBe(true);
+    expect(previewCollapsed?.textContent).toContain('Preview:');
+
+    const toggleBtnCollapsed = previewCollapsed?.querySelector(
+      '.preview-collapse-toggle',
+    );
+    expect(toggleBtnCollapsed?.textContent).toBe('[+]');
+    toggleBtnCollapsed?.click();
+    expect(onTogglePreviewCollapse).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps preview in a dedicated layout column instead of overlaying editor content', () => {
+    const options = createOptions();
+    const panels = createAnimationEditor(options);
+    const editorPanel = panels.find(
+      (p) => p.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+
+    const layout = editorPanel.querySelector('.animation-selected-layout');
+    expect(layout).not.toBeNull();
+
+    const mainCol = layout?.querySelector('.animation-selected-main');
+    const previewCol = layout?.querySelector('.animation-selected-preview-col');
+    expect(mainCol).not.toBeNull();
+    expect(previewCol).not.toBeNull();
+
+    // Preview element is child of previewCol
+    const preview = previewCol?.querySelector('.animation-sticky-preview');
+    expect(preview).not.toBeNull();
+  });
+
+  it('groups export downloads into primary and responsive secondary grid', () => {
+    const onDownloadBytes = vi.fn();
+    const onDownloadText = vi.fn();
+    const options = createOptions({ onDownloadBytes, onDownloadText });
+    const panels = createAnimationEditor(options);
+    const exportPanel = panels.find(
+      (p) => p.id === 'section-export',
+    ) as unknown as MockElement;
+    expect(exportPanel).not.toBeNull();
+
+    const primaryGroup = exportPanel.querySelector('.export-actions-primary');
+    expect(primaryGroup).not.toBeNull();
+    const primaryBtns = primaryGroup?.querySelectorAll('button') ?? [];
+    expect(primaryBtns.length).toBe(1);
+
+    const secondaryGrid = exportPanel.querySelector(
+      '.export-actions-secondary-grid',
+    );
+    expect(secondaryGrid).not.toBeNull();
+    const secondaryBtns = secondaryGrid?.querySelectorAll('button') ?? [];
+    expect(secondaryBtns.length).toBe(6);
+
+    // Total 7 download buttons
+    const allBtns = exportPanel.querySelectorAll('.export-actions button');
+    expect(allBtns.length).toBe(7);
   });
 });
