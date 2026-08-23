@@ -14,7 +14,7 @@ export interface AnimationWorkspaceState {
 }
 
 export type WorkspaceView =
-  'tileset' | 'playfield' | 'animation' | 'palette' | 'chr';
+  'tileset' | 'playfield' | 'animation' | 'palette' | 'chr' | 'deliver';
 
 export interface WorkspaceState {
   /** Transient interaction and navigation state. It is intentionally absent from ProjectView. */

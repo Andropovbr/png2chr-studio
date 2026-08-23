@@ -118,19 +118,21 @@ describe('Sidebar component', () => {
     const buttons = (sidebar as unknown as MockElement).querySelectorAll(
       '.sidebar-nav-item',
     );
-    expect(buttons.length).toBe(5);
+    expect(buttons.length).toBe(6);
 
     const btn0 = buttons[0];
     const btn1 = buttons[1];
     const btn2 = buttons[2];
     const btn3 = buttons[3];
     const btn4 = buttons[4];
+    const btn5 = buttons[5];
     expect(btn0).toBeDefined();
     expect(btn1).toBeDefined();
     expect(btn2).toBeDefined();
     expect(btn3).toBeDefined();
     expect(btn4).toBeDefined();
-    if (!btn0 || !btn1 || !btn2 || !btn3 || !btn4) return;
+    expect(btn5).toBeDefined();
+    if (!btn0 || !btn1 || !btn2 || !btn3 || !btn4 || !btn5) return;
 
     // Tileset
     expect(btn0.classList.contains('is-active')).toBe(false);
@@ -152,6 +154,10 @@ describe('Sidebar component', () => {
     expect(btn4.classList.contains('is-active')).toBe(false);
     expect(btn4.getAttribute('aria-pressed')).toBe('false');
 
+    // Deliver
+    expect(btn5.classList.contains('is-active')).toBe(false);
+    expect(btn5.getAttribute('aria-pressed')).toBe('false');
+
     // Click tileset button
     btn0.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('tileset');
@@ -167,6 +173,10 @@ describe('Sidebar component', () => {
     // Click CHR button
     btn4.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('chr');
+
+    // Click Deliver button
+    btn5.click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('deliver');
   });
 
   it('renders section anchors for tileset / playfield modes', () => {
@@ -185,6 +195,25 @@ describe('Sidebar component', () => {
       '#section-palettes',
       '#section-tiles',
       '#section-export',
+    ]);
+  });
+
+  it('renders section anchors for deliver mode', () => {
+    const sidebar = createSidebar({
+      activeWorkspace: 'deliver',
+      fileName: 'hero.png',
+    });
+
+    const links = (sidebar as unknown as MockElement).querySelectorAll(
+      '.sidebar-link',
+    );
+    const hrefs = links.map((link) => link.getAttribute('href'));
+
+    expect(hrefs).toEqual([
+      '#section-delivery-readiness',
+      '#section-delivery-diagnostics',
+      '#section-delivery-artifacts',
+      '#section-delivery-links',
     ]);
   });
 

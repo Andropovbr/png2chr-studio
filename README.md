@@ -24,6 +24,7 @@ It is designed for retro game developers and pixel artists who need a transparen
   - Multi-entity Scene Preview subworkspace (Animation > Scene) with persistent NES 256×240 canvas, instance list with selection, and contextual instance inspector.
 - **Project Palette Workspace:** Dedicated workspace to manage reusable NES palette definitions and configure the 4 hardware sprite palette slots (0..3), while preserving contextual palette assignments, brush tools, and pixel overrides in each editor.
 - **CHR Memory & Pattern Table Workspace:** Projected read-only view of physical 8 KiB CHR-ROM memory (PT0 / PT1 pattern table isolation, base CHR retention, physical vs. 8-bit OAM-local sprite indexing, and deduplication reuse breakdown).
+- **Deliver & Export Workspace:** Consolidated delivery hub showing project readiness status, domain validation diagnostics with direct links to relevant editing workspaces, and unified downloads for all production binary and source artifacts across Tileset, Playfield, and Animation modes.
 - **Production Exporters:**
   - Consolidated physical 8 KiB `.chr` or raw deduplicated `.chr`.
   - Versioned JSON animation metadata (`format: png2chr-studio-animation`, `version: 5`).
