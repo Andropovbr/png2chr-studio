@@ -17,6 +17,10 @@ export interface AnimationWorkspaceState {
 export type WorkspaceView =
   'tileset' | 'playfield' | 'animation' | 'palette' | 'chr' | 'deliver';
 
+export interface ChrWorkspaceState {
+  readonly zoom: number;
+}
+
 export interface WorkspaceState {
   /** Transient interaction and navigation state. It is intentionally absent from ProjectView. */
   readonly activeWorkspace: WorkspaceView;
@@ -29,6 +33,7 @@ export interface WorkspaceState {
   };
   readonly quantizationCollapsed: boolean;
   readonly animation: AnimationWorkspaceState;
+  readonly chr: ChrWorkspaceState;
 }
 
 export interface DerivedStatus {
@@ -57,6 +62,9 @@ export function createWorkspaceState(
       paletteCollapsed: false,
       mappingCollapsed: true,
       previewCollapsed: false,
+    },
+    chr: {
+      zoom: 2,
     },
   };
 }

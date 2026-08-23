@@ -79,6 +79,15 @@ const en = {
   chrWorkspaceHint:
     'Projected hardware view of physical 8 KiB CHR-ROM occupancy, pattern tables (PT0 / PT1), base CHR retention, and OAM-local tile indexing.',
   chrWorkspaceIntroTitle: 'Overview',
+  chrWorkspaceViewerTitle: 'Pattern Tables ($0000..$1FFF)',
+  chrWorkspaceViewerHint:
+    'Visual 8 KiB CHR-ROM inspection. Pattern Table 0 ($0000..$0FFF) and Pattern Table 1 ($1000..$1FFF), 256 tiles each.',
+  chrWorkspaceZoomLabel: 'Zoom',
+  chrWorkspacePt0Subtitle: 'PPU Range $0000..$0FFF · 256 tiles (4 KiB)',
+  chrWorkspacePt1Subtitle: 'PPU Range $1000..$1FFF · 256 tiles (4 KiB)',
+  chrWorkspaceTileTooltip:
+    'PT{pt} Tile ${hex} (Physical {id}) · Address ${addr}',
+  chrWorkspaceTileAriaLabel: 'PT{pt} Tile ${hex}, physical index {id}',
   chrWorkspaceOccupancyTitle: 'Physical Occupancy & Pattern Tables',
   chrWorkspaceSpriteContextTitle: 'Sprite Capacity & OAM Indexes',
   chrWorkspaceReuseTitle: 'Tiles & Reuse Breakdown',
@@ -706,6 +715,15 @@ const ptBr = {
   chrWorkspaceHint:
     'Visão de hardware projetada da ocupação física da CHR-ROM de 8 KiB, tabelas de padrões (PT0 / PT1), retenção de CHR-base e indexação local OAM.',
   chrWorkspaceIntroTitle: 'Visão Geral',
+  chrWorkspaceViewerTitle: 'Tabelas de Padrões ($0000..$1FFF)',
+  chrWorkspaceViewerHint:
+    'Inspeção visual da memória CHR-ROM de 8 KiB. Tabela de Padrões 0 ($0000..$0FFF) e Tabela de Padrões 1 ($1000..$1FFF), 256 tiles cada.',
+  chrWorkspaceZoomLabel: 'Zoom',
+  chrWorkspacePt0Subtitle: 'Faixa PPU $0000..$0FFF · 256 tiles (4 KiB)',
+  chrWorkspacePt1Subtitle: 'Faixa PPU $1000..$1FFF · 256 tiles (4 KiB)',
+  chrWorkspaceTileTooltip:
+    'PT{pt} Tile ${hex} (Físico {id}) · Endereço ${addr}',
+  chrWorkspaceTileAriaLabel: 'PT{pt} Tile ${hex}, índice físico {id}',
   chrWorkspaceOccupancyTitle: 'Ocupação Física e Tabelas de Padrões',
   chrWorkspaceSpriteContextTitle: 'Capacidade de Sprites e Índices OAM',
   chrWorkspaceReuseTitle: 'Detalhamento de Tiles e Reúso',
