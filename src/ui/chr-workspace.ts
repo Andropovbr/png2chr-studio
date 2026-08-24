@@ -17,6 +17,7 @@ import { encodeChr } from '../core/chr-encoder';
 import { padChrRom } from '../core/chr-rom';
 import type { Tile } from '../core/types';
 import { t } from '../i18n';
+import { createChrTileInspector } from './chr-tile-inspector';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
 
@@ -42,6 +43,8 @@ export interface ChrWorkspaceOptions {
   readonly flipDeduplicationEnabled: boolean;
   readonly zoom?: number;
   readonly onZoomChange?: (zoom: number) => void;
+  readonly selectedTileIndex?: number | null;
+  readonly onSelectTile?: (tileIndex: number | null) => void;
   readonly loading?: boolean;
   readonly error?: DisplayError | null;
   readonly onNavigateToWorkspace?: (workspace: WorkspaceView) => void;
@@ -51,6 +54,7 @@ export interface ChrWorkspaceOptions {
 
 export type ChrWorkspaceElement = HTMLElement & {
   readonly diagnosticsElement: HTMLElement | null;
+  readonly tileInspectorElement: HTMLElement | null;
 };
 
 interface ComputedChrMetrics {
@@ -250,6 +254,8 @@ function createPatternTableView(
   finalChrBytes: Uint8Array,
   activeSpritePt: SpritePatternTable,
   zoom: number,
+  selectedTileIndex: number | null,
+  onSelectTile?: (tileIndex: number | null) => void,
 ): HTMLElement {
   const card = document.createElement('div');
   card.className = 'chr-pt-view-card';
@@ -320,6 +326,7 @@ function createPatternTableView(
     localIndex += 1
   ) {
     const physicalIndex = startPhysical + localIndex;
+    const isSlotSelected = selectedTileIndex === physicalIndex;
     const row = Math.floor(localIndex / 16);
     const col = localIndex % 16;
     const hexLocal = localIndex.toString(16).toUpperCase().padStart(2, '0');
@@ -329,13 +336,15 @@ function createPatternTableView(
       .padStart(4, '0');
 
     const slot = document.createElement('div');
-    slot.className = 'chr-tile-slot';
+    slot.className = `chr-tile-slot${isSlotSelected ? ' is-selected' : ''}`;
+    slot.tabIndex = 0;
     slot.setAttribute('data-physical-index', String(physicalIndex));
     slot.setAttribute('data-local-index', String(localIndex));
     slot.setAttribute('data-pattern-table', String(patternTable));
     slot.setAttribute('data-row', String(row));
     slot.setAttribute('data-col', String(col));
     slot.setAttribute('role', 'gridcell');
+    slot.setAttribute('aria-selected', String(isSlotSelected));
     slot.setAttribute(
       'aria-label',
       t('chrWorkspaceTileAriaLabel', {
@@ -349,6 +358,30 @@ function createPatternTableView(
       hex: hexLocal,
       id: physicalIndex,
       addr: addrHex,
+    });
+
+    slot.addEventListener('click', () => {
+      if (onSelectTile) {
+        onSelectTile(physicalIndex);
+      }
+    });
+
+    slot.addEventListener('keydown', (e?: KeyboardEvent) => {
+      if (e?.key === 'Enter' || e?.key === ' ') {
+        if (typeof e.preventDefault === 'function') {
+          e.preventDefault();
+        }
+        if (onSelectTile) {
+          onSelectTile(physicalIndex);
+        }
+      } else if (e?.key === 'Escape') {
+        if (typeof e.preventDefault === 'function') {
+          e.preventDefault();
+        }
+        if (onSelectTile) {
+          onSelectTile(null);
+        }
+      }
     });
 
     gridOverlay.append(slot);
@@ -417,17 +450,23 @@ function createViewerPanel(
   const ptContainer = document.createElement('div');
   ptContainer.className = 'chr-pattern-tables-container';
 
+  const selectedTileIndex = options.selectedTileIndex ?? null;
+
   const pt0Card = createPatternTableView(
     0,
     metrics.finalChrBytes,
     metrics.activeSpritePatternTable,
     zoom,
+    selectedTileIndex,
+    options.onSelectTile,
   );
   const pt1Card = createPatternTableView(
     1,
     metrics.finalChrBytes,
     metrics.activeSpritePatternTable,
     zoom,
+    selectedTileIndex,
+    options.onSelectTile,
   );
 
   ptContainer.append(pt0Card, pt1Card);
@@ -756,11 +795,29 @@ export function createChrWorkspace(
     actions.append(gotoAnimBtn, gotoPalettesBtn);
   }
 
+  // Contextual Tile Inspector (#section-chr-tile-inspector)
+  const tileInspector = createChrTileInspector({
+    selectedTileIndex: options.selectedTileIndex ?? null,
+    finalChrBytes: metrics.finalChrBytes,
+    mode: options.mode,
+    animationModel: options.animationModel,
+    baseChr: options.baseChr,
+    baseChrName: options.baseChrName,
+    destinationPatternTable: options.destinationPatternTable,
+    tiles: options.tiles,
+    onDeselect: () => {
+      if (options.onSelectTile) {
+        options.onSelectTile(null);
+      }
+    },
+  });
+
   exportPanel.append(exportHeader, actions);
 
   workspace.append(
     introPanel,
     viewerPanel,
+    tileInspector,
     occupancyPanel,
     spriteContextPanel,
     reusePanel,
@@ -768,9 +825,15 @@ export function createChrWorkspace(
   );
 
   const result = workspace as unknown as ChrWorkspaceElement;
-  Object.defineProperty(result, 'diagnosticsElement', {
-    value: diagnostics,
-    enumerable: true,
+  Object.defineProperties(result, {
+    diagnosticsElement: {
+      value: diagnostics,
+      enumerable: true,
+    },
+    tileInspectorElement: {
+      value: tileInspector,
+      enumerable: true,
+    },
   });
   return result;
 }

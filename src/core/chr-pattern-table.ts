@@ -86,6 +86,85 @@ export function patternTablePhysicalRange(
   return [start, start + NES_PATTERN_TABLE_TILE_COUNT - 1];
 }
 
+export interface TileAddressingMetadata {
+  readonly physicalIndex: number;
+  readonly physicalIndexHex: string;
+  readonly localIndex: number;
+  readonly localIndexHex: string;
+  readonly patternTable: SpritePatternTable;
+  readonly patternTableAddress: string;
+  readonly patternTableLabel: string;
+  readonly tileCol: number;
+  readonly tileRow: number;
+  readonly startByteOffset: number;
+  readonly startByteOffsetHex: string;
+  readonly plane0Offset: number;
+  readonly plane0OffsetHex: string;
+  readonly plane1Offset: number;
+  readonly plane1OffsetHex: string;
+}
+
+export function tileStartByteOffset(physicalIndex: number): number {
+  if (
+    !Number.isInteger(physicalIndex) ||
+    physicalIndex < 0 ||
+    physicalIndex >= NES_CHR_ROM_TILE_COUNT
+  ) {
+    throw new RangeError('Physical CHR tile index must be between 0 and 511.');
+  }
+  return physicalIndex * 16;
+}
+
+export function tileBitplaneOffsets(physicalIndex: number): {
+  readonly plane0: number;
+  readonly plane1: number;
+} {
+  const start = tileStartByteOffset(physicalIndex);
+  return {
+    plane0: start,
+    plane1: start + 8,
+  };
+}
+
+export function computeTileAddressingMetadata(
+  physicalIndex: number,
+): TileAddressingMetadata {
+  if (
+    !Number.isInteger(physicalIndex) ||
+    physicalIndex < 0 ||
+    physicalIndex >= NES_CHR_ROM_TILE_COUNT
+  ) {
+    throw new RangeError('Physical CHR tile index must be between 0 and 511.');
+  }
+
+  const localIndex = localPatternTableTileIndex(physicalIndex);
+  const patternTable = patternTableForPhysicalTile(physicalIndex);
+  const tileCol = localIndex % 16;
+  const tileRow = Math.floor(localIndex / 16);
+  const startByteOffset = physicalIndex * 16;
+  const plane0Offset = startByteOffset;
+  const plane1Offset = startByteOffset + 8;
+  const ptAddress = patternTable === 0 ? '$0000' : '$1000';
+
+  return {
+    physicalIndex,
+    physicalIndexHex: `$${physicalIndex.toString(16).toUpperCase().padStart(3, '0')}`,
+    localIndex,
+    localIndexHex: `$${localIndex.toString(16).toUpperCase().padStart(2, '0')}`,
+    patternTable,
+    patternTableAddress: ptAddress,
+    patternTableLabel: `PT${String(patternTable)} (${ptAddress})`,
+    tileCol,
+    tileRow,
+    startByteOffset,
+    startByteOffsetHex: `$${startByteOffset.toString(16).toUpperCase().padStart(4, '0')}`,
+    plane0Offset,
+    plane0OffsetHex: `$${plane0Offset.toString(16).toUpperCase().padStart(4, '0')}`,
+    plane1Offset,
+    plane1OffsetHex: `$${plane1Offset.toString(16).toUpperCase().padStart(4, '0')}`,
+  };
+}
+
 function validateBaseChr(baseChr: Uint8Array): void {
   if (baseChr.length % 16 !== 0 || baseChr.length > NES_CHR_ROM_SIZE) {
     throw new RangeError(

@@ -5,7 +5,10 @@ import {
   type AnimationDefinitionInput,
 } from '../core/animation-model';
 import type { IndexedImage, Tile } from '../core/types';
-import { createChrWorkspace } from './chr-workspace';
+import { setLocale } from '../i18n';
+import { CHR_ZOOM_LEVELS, createChrWorkspace } from './chr-workspace';
+import { applyWorkspaceUpdate } from './state-update';
+import { createWorkspaceState } from './workspace-state';
 
 class MockElement {
   tagName: string;
@@ -17,6 +20,8 @@ class MockElement {
   _text = '';
   value = '';
   title = '';
+  width = 0;
+  height = 0;
   style: Record<string, string> = {};
   open = false;
 
@@ -63,10 +68,10 @@ class MockElement {
     this.eventListeners.set(event, list);
   }
 
-  dispatchEvent(event: { type: string }) {
+  dispatchEvent(event: { type: string; [key: string]: unknown }) {
     const handlers = this.eventListeners.get(event.type) ?? [];
     handlers.forEach((fn) => {
-      fn();
+      fn(event);
     });
   }
 
@@ -193,6 +198,7 @@ function createMockIndexedImage(width: number, height: number): IndexedImage {
 
 describe('ChrWorkspace component', () => {
   beforeEach(() => {
+    setLocale('en');
     (globalThis as unknown as { document: unknown }).document = {
       createElement: (tagName: string) => new MockElement(tagName),
     };
@@ -619,5 +625,303 @@ describe('ChrWorkspace component', () => {
     const containers = mockWs.querySelectorAll('.chr-pt-canvas-container');
     expect(containers[0]?.style.width).toBe('128px');
     expect(containers[0]?.style.height).toBe('128px');
+  });
+
+  it('handles interactive tile selection on PT0 and PT1 via click and keyboard', () => {
+    const onSelectTile = vi.fn();
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+      selectedTileIndex: 10,
+      onSelectTile,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const slots = mockWs.querySelectorAll('.chr-tile-slot');
+
+    // Slot 10 should have .is-selected and aria-selected="true"
+    const slot10 = slots[10];
+    expect(slot10?.classList.contains('is-selected')).toBe(true);
+    expect(slot10?.getAttribute('aria-selected')).toBe('true');
+
+    // Slot 20 should not be selected
+    const slot20 = slots[20];
+    expect(slot20?.classList.contains('is-selected')).toBe(false);
+    expect(slot20?.getAttribute('aria-selected')).toBe('false');
+
+    // Clicking slot 20 triggers onSelectTile(20)
+    slot20?.click();
+    expect(onSelectTile).toHaveBeenCalledWith(20);
+
+    // Pressing Enter on slot 300 (in PT1) triggers onSelectTile(300)
+    const slot300 = slots[300];
+    slot300?.dispatchEvent({ type: 'keydown', key: 'Enter' });
+    expect(onSelectTile).toHaveBeenCalledWith(300);
+
+    // Pressing Space on slot 300 triggers onSelectTile(300)
+    slot300?.dispatchEvent({ type: 'keydown', key: ' ' });
+    expect(onSelectTile).toHaveBeenCalledWith(300);
+
+    // Pressing Escape on slot triggers onSelectTile(null)
+    slot10?.dispatchEvent({ type: 'keydown', key: 'Escape' });
+    expect(onSelectTile).toHaveBeenCalledWith(null);
+  });
+
+  it('renders contextual tile inspector panel with accurate addressing metadata, byte offsets, and enlarged preview', () => {
+    const onSelectTile = vi.fn();
+    const image = createMockIndexedImage(16, 16);
+    const definitions: AnimationDefinitionInput[] = [
+      {
+        id: 'hero_idle',
+        name: 'Hero_idle',
+        image,
+        frameWidth: 16,
+        frameHeight: 16,
+        originX: 8,
+        originY: 16,
+        frameIndices: [0],
+        frameDuration: 8,
+      },
+    ];
+
+    const model = buildAnimationProjectModel({
+      name: 'Hero',
+      animations: definitions,
+      patternTable: 0,
+      destinationPatternTable: 0,
+    });
+
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: model,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+      selectedTileIndex: 2,
+      onSelectTile,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const inspector = mockWs.querySelector('#section-chr-tile-inspector');
+    expect(inspector).not.toBeNull();
+    expect(inspector?.classList.contains('is-empty')).toBe(false);
+
+    // Title & Target
+    const title = inspector?.querySelector('.chr-tile-inspector-title');
+    expect(title?.textContent).toBe('Tile Inspector');
+    const target = inspector?.querySelector('.chr-tile-inspector-target');
+    expect(target?.textContent).toContain('PT0 Slot $02 (#2)');
+
+    // Enlarged Canvas Preview
+    const previewCanvas = inspector?.querySelector(
+      '.chr-tile-inspector-canvas',
+    );
+    expect(previewCanvas).not.toBeNull();
+    expect(
+      previewCanvas?.attributes.get('width') ??
+        (previewCanvas as unknown as { width: number }).width,
+    ).toBe(128);
+    expect(
+      previewCanvas?.attributes.get('height') ??
+        (previewCanvas as unknown as { height: number }).height,
+    ).toBe(128);
+
+    // Pixel Grid & Toggle
+    const pixelGrid = inspector?.querySelector(
+      '.chr-tile-inspector-pixel-grid',
+    );
+    expect(pixelGrid?.classList.contains('is-visible')).toBe(true);
+    const gridCells = pixelGrid?.querySelectorAll('.chr-pixel-grid-cell') ?? [];
+    expect(gridCells.length).toBe(64);
+
+    const toggleBtn = inspector?.querySelector('.chr-tile-grid-toggle');
+    expect(toggleBtn?.getAttribute('aria-pressed')).toBe('true');
+    toggleBtn?.click();
+    expect(pixelGrid?.classList.contains('is-visible')).toBe(false);
+    expect(toggleBtn?.getAttribute('aria-pressed')).toBe('false');
+
+    // Metrics list
+    const metrics = inspector?.querySelector('.chr-tile-inspector-metrics');
+    expect(metrics).not.toBeNull();
+    expect(metrics?.textContent).toContain('Global Physical Index');
+    expect(metrics?.textContent).toContain('2 ($002)');
+    expect(metrics?.textContent).toContain('Local Pattern Table Index');
+    expect(metrics?.textContent).toContain('2 ($02)');
+    expect(metrics?.textContent).toContain('Pattern Table');
+    expect(metrics?.textContent).toContain('PT0 ($0000)');
+    expect(metrics?.textContent).toContain('CHR-ROM Start Offset');
+    expect(metrics?.textContent).toContain('$0020 (32)');
+    expect(metrics?.textContent).toContain('Bitplane 0 Offset (+0)');
+    expect(metrics?.textContent).toContain('$0020 (+0)');
+    expect(metrics?.textContent).toContain('Bitplane 1 Offset (+8)');
+    expect(metrics?.textContent).toContain('$0028 (+8)');
+
+    // Slot state & Attribution
+    const slotBadge = inspector?.querySelector('.chr-slot-state-badge');
+    expect(slotBadge?.classList.contains('state-project')).toBe(true);
+    expect(slotBadge?.textContent).toBe('Project Tile (Occupied)');
+
+    const attribution = inspector?.querySelector('.chr-attribution-text');
+    expect(attribution?.textContent).toContain('Hero_idle (#0)');
+
+    // Deselect button
+    const deselectBtn = inspector?.querySelector(
+      '.chr-tile-inspector-deselect-btn',
+    );
+    expect(deselectBtn).not.toBeNull();
+    deselectBtn?.click();
+    expect(onSelectTile).toHaveBeenCalledWith(null);
+  });
+
+  it('correctly diagnoses Base CHR slot state and attribution in PT1', () => {
+    const baseChr4k = new Uint8Array(4096);
+    baseChr4k[0] = 0x55; // Tile 0 in base CHR (physical tile 256 in PT1)
+
+    const workspace = createChrWorkspace({
+      mode: 'animation',
+      animationModel: null,
+      baseChr: baseChr4k,
+      baseChrName: 'sprites_base.chr',
+      patternTable: 1,
+      destinationPatternTable: 1,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+      selectedTileIndex: 256,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const inspector = mockWs.querySelector('#section-chr-tile-inspector');
+    expect(inspector).not.toBeNull();
+
+    // Target
+    const target = inspector?.querySelector('.chr-tile-inspector-target');
+    expect(target?.textContent).toContain('PT1 Slot $00 (#256)');
+
+    // Metrics for PT1 start
+    const metrics = inspector?.querySelector('.chr-tile-inspector-metrics');
+    expect(metrics?.textContent).toContain('256 ($100)');
+    expect(metrics?.textContent).toContain('0 ($00)');
+    expect(metrics?.textContent).toContain('PT1 ($1000)');
+    expect(metrics?.textContent).toContain('$1000 (4096)');
+    expect(metrics?.textContent).toContain('$1000 (+0)');
+    expect(metrics?.textContent).toContain('$1008 (+8)');
+
+    // Base CHR state & Attribution
+    const slotBadge = inspector?.querySelector('.chr-slot-state-badge');
+    expect(slotBadge?.classList.contains('state-base')).toBe(true);
+    expect(slotBadge?.textContent).toBe('Base CHR (Imported)');
+
+    const attribution = inspector?.querySelector('.chr-attribution-text');
+    expect(attribution?.textContent).toContain('Base CHR: sprites_base.chr');
+  });
+
+  it('renders placeholder empty state when no tile is selected', () => {
+    const workspace = createChrWorkspace({
+      mode: 'tileset',
+      animationModel: null,
+      baseChr: null,
+      baseChrName: null,
+      patternTable: 0,
+      destinationPatternTable: 0,
+      tiles: [],
+      deduplicationEnabled: true,
+      flipDeduplicationEnabled: false,
+      selectedTileIndex: null,
+    });
+
+    const mockWs = workspace as unknown as MockElement;
+    const inspector = mockWs.querySelector('#section-chr-tile-inspector');
+    expect(inspector).not.toBeNull();
+    expect(inspector?.classList.contains('is-empty')).toBe(true);
+
+    const emptyMessage = inspector?.querySelector('.chr-tile-inspector-empty');
+    expect(emptyMessage).not.toBeNull();
+    expect(emptyMessage?.textContent).toContain('Select any 8×8 tile slot');
+  });
+
+  it('verifies uniform square scaling across all zoom levels for both PT0 and PT1', () => {
+    for (const zoom of CHR_ZOOM_LEVELS) {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        zoom,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const containers = mockWs.querySelectorAll('.chr-pt-canvas-container');
+      expect(containers.length).toBe(2);
+
+      const expectedDimension = `${String(128 * zoom)}px`;
+
+      // Verify both PT0 and PT1 containers scale equally in width and height (square)
+      containers.forEach((container) => {
+        expect(container.style.width).toBe(expectedDimension);
+        expect(container.style.height).toBe(expectedDimension);
+      });
+
+      // Verify backing canvases retain 128x128 resolution
+      const canvases = mockWs.querySelectorAll('.chr-pt-canvas');
+      expect(canvases.length).toBe(2);
+      canvases.forEach((canvas) => {
+        expect(
+          canvas.attributes.get('width') ??
+            (canvas as unknown as { width: number }).width,
+        ).toBe(128);
+        expect(
+          canvas.attributes.get('height') ??
+            (canvas as unknown as { height: number }).height,
+        ).toBe(128);
+      });
+
+      // Verify both grids contain exactly 256 cells in 16x16 structure
+      const overlays = mockWs.querySelectorAll('.chr-pt-grid-overlay');
+      expect(overlays.length).toBe(2);
+      overlays.forEach((overlay) => {
+        const cells = overlay.querySelectorAll('.chr-tile-slot');
+        expect(cells.length).toBe(256);
+
+        // First cell (local index 0) must be row 0, col 0
+        expect(cells[0]?.getAttribute('data-local-index')).toBe('0');
+        expect(cells[0]?.getAttribute('data-row')).toBe('0');
+        expect(cells[0]?.getAttribute('data-col')).toBe('0');
+
+        // Last cell (local index 255) must be row 15, col 15
+        expect(cells[255]?.getAttribute('data-local-index')).toBe('255');
+        expect(cells[255]?.getAttribute('data-row')).toBe('15');
+        expect(cells[255]?.getAttribute('data-col')).toBe('15');
+      });
+    }
+  });
+
+  it('guarantees that zoom updates are workspace-only and do not mark project dirty', () => {
+    const initialWorkspace = createWorkspaceState();
+    expect(initialWorkspace.chr.zoom).toBe(2);
+
+    const updateResult = applyWorkspaceUpdate(initialWorkspace, (prev) => ({
+      ...prev,
+      chr: { ...prev.chr, zoom: 8 },
+    }));
+
+    expect(updateResult.value.chr.zoom).toBe(8);
+    expect(updateResult.marksProjectDirty).toBe(false);
   });
 });

@@ -3098,7 +3098,10 @@ input:focus-visible + label {
 
 .chr-pt-canvas-container {
   position: relative;
-  display: inline-block;
+  display: block;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  margin: auto;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   line-height: 0;
@@ -3109,6 +3112,8 @@ input:focus-visible + label {
 
 .chr-pt-canvas {
   display: block;
+  width: 100%;
+  height: 100%;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
@@ -3141,6 +3146,209 @@ input:focus-visible + label {
 .chr-tile-slot:focus-visible {
   outline: 2px solid #38bdf8;
   z-index: 3;
+}
+
+.chr-tile-slot.is-selected {
+  outline: 2px solid #38bdf8;
+  box-shadow:
+    inset 0 0 0 1px #ffffff,
+    0 0 4px rgb(56 189 248 / 60%);
+  background: rgb(56 189 248 / 25%);
+  z-index: 4;
+}
+
+.chr-tile-slot.is-selected::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 4px;
+  height: 4px;
+  background: #38bdf8;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* CHR Tile Inspector Panel */
+.chr-tile-inspector-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+}
+
+.chr-tile-inspector-panel.is-empty {
+  opacity: 0.85;
+}
+
+.chr-tile-inspector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--panel-border, #1f2937);
+  padding-bottom: 0.75rem;
+}
+
+.chr-tile-inspector-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.chr-tile-inspector-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.chr-tile-inspector-target {
+  font-size: 0.85rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--accent, #57d3a4);
+  background: rgb(87 211 164 / 10%);
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgb(87 211 164 / 25%);
+}
+
+.chr-tile-inspector-deselect-btn {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.chr-tile-inspector-empty {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.chr-tile-inspector-content {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .chr-tile-inspector-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chr-tile-inspector-preview-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chr-tile-inspector-preview-wrapper {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  background: #090d14;
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.35rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
+  overflow: hidden;
+}
+
+.chr-tile-inspector-canvas {
+  display: block;
+  width: 128px;
+  height: 128px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.chr-tile-inspector-pixel-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  pointer-events: none;
+}
+
+.chr-tile-inspector-pixel-grid:not(.is-visible) {
+  display: none;
+}
+
+.chr-pixel-grid-cell {
+  border-right: 1px solid rgb(255 255 255 / 12%);
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+}
+
+.chr-tile-grid-toggle {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.chr-tile-inspector-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+}
+
+.chr-tile-inspector-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: rgb(0 0 0 / 20%);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgb(255 255 255 / 4%);
+}
+
+.chr-tile-inspector-metrics dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #8b9bb4);
+}
+
+.chr-tile-inspector-metrics dd {
+  margin: 0;
+  font-size: 0.92rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--foreground, #e6edf3);
+}
+
+.chr-slot-state-badge {
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  display: inline-block;
+  width: fit-content;
+}
+
+.chr-slot-state-badge.state-empty {
+  background: rgb(139 155 180 / 15%);
+  color: var(--muted, #8b9bb4);
+  border: 1px solid rgb(139 155 180 / 30%);
+}
+
+.chr-slot-state-badge.state-project {
+  background: rgb(56 189 248 / 15%);
+  color: #38bdf8;
+  border: 1px solid rgb(56 189 248 / 30%);
+}
+
+.chr-slot-state-badge.state-base {
+  background: rgb(168 85 247 / 15%);
+  color: #c084fc;
+  border: 1px solid rgb(168 85 247 / 30%);
+}
+
+.chr-attribution-text {
+  word-break: break-word;
+  font-size: 0.85rem;
 }
 
 .chr-occupancy-panel,

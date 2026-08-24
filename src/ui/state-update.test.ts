@@ -110,4 +110,37 @@ describe('application state update boundaries', () => {
     expect(result.value.loading).toBe(true);
     expect(result.marksProjectDirty).toBe(false);
   });
+
+  it('never marks CHR zoom or tile selection updates dirty', () => {
+    const project = createDefaultProject('CHR test', 'animation');
+    const serializedOriginal = serializeProject(project);
+    const workspace = createWorkspaceState();
+
+    expect(workspace.chr.selectedTileIndex).toBeNull();
+    expect(workspace.chr.zoom).toBe(2);
+
+    const selectTile = applyWorkspaceUpdate(workspace, (ws) => ({
+      ...ws,
+      chr: {
+        ...ws.chr,
+        selectedTileIndex: 42,
+      },
+    }));
+
+    expect(selectTile.marksProjectDirty).toBe(false);
+    expect(selectTile.value.chr.selectedTileIndex).toBe(42);
+    expect(serializeProject(project)).toBe(serializedOriginal);
+
+    const deselectTile = applyWorkspaceUpdate(selectTile.value, (ws) => ({
+      ...ws,
+      chr: {
+        ...ws.chr,
+        selectedTileIndex: null,
+      },
+    }));
+
+    expect(deselectTile.marksProjectDirty).toBe(false);
+    expect(deselectTile.value.chr.selectedTileIndex).toBeNull();
+    expect(serializeProject(project)).toBe(serializedOriginal);
+  });
 });
