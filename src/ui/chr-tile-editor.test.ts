@@ -289,6 +289,26 @@ describe('ChrTileEditor component', () => {
     expect(onToggleGrid).toHaveBeenCalledWith(false);
   });
 
+  function getPixelCallArg(
+    fn: { mock: { calls: unknown[][] } },
+    callIndex: number,
+    argIndex = 0,
+  ): Uint8Array {
+    const call = fn.mock.calls[callIndex];
+    if (!call || call.length <= argIndex) {
+      throw new Error(
+        `Expected call at index ${String(callIndex)} with arg at ${String(argIndex)}`,
+      );
+    }
+    const arg = call[argIndex];
+    if (!(arg instanceof Uint8Array)) {
+      throw new Error(
+        `Expected Uint8Array at call ${String(callIndex)} arg ${String(argIndex)}`,
+      );
+    }
+    return arg;
+  }
+
   it('handles pencil drawing on pointerdown and drag stroke', () => {
     const onPixelsChange = vi.fn();
     const onStrokeStart = vi.fn();
@@ -314,7 +334,7 @@ describe('ChrTileEditor component', () => {
 
     expect(onStrokeStart).toHaveBeenCalledTimes(1);
     expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const updatedPixels = onPixelsChange.mock.calls[0]![0] as Uint8Array;
+    const updatedPixels = getPixelCallArg(onPixelsChange, 0);
     expect(updatedPixels[3 * 8 + 2]).toBe(3);
 
     // Drag to pixel (3, 3): clientX = 3 * 32 + 10 = 106, clientY = 106
@@ -326,7 +346,7 @@ describe('ChrTileEditor component', () => {
     });
 
     expect(onPixelsChange).toHaveBeenCalledTimes(2);
-    const dragPixels = onPixelsChange.mock.calls[1]![0] as Uint8Array;
+    const dragPixels = getPixelCallArg(onPixelsChange, 1);
     expect(dragPixels[3 * 8 + 3]).toBe(3);
 
     // Dragging over the same pixel again does not fire duplicate change
@@ -367,7 +387,7 @@ describe('ChrTileEditor component', () => {
     });
 
     expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const updated = onPixelsChange.mock.calls[0]![0] as Uint8Array;
+    const updated = getPixelCallArg(onPixelsChange, 0);
     expect(updated[4 * 8 + 4]).toBe(0);
   });
 
@@ -426,7 +446,7 @@ describe('ChrTileEditor component', () => {
     });
 
     expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const filled = onPixelsChange.mock.calls[0]![0] as Uint8Array;
+    const filled = getPixelCallArg(onPixelsChange, 0);
     expect(filled[1 * 8 + 1]).toBe(2);
     expect(filled[2 * 8 + 2]).toBe(2);
     expect(filled[0 * 8 + 0]).toBe(0);
