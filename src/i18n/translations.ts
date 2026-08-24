@@ -119,6 +119,26 @@ const en = {
   chrWorkspaceNoBaseChr: 'No Base CHR loaded (Fresh 8 KiB space)',
   chrWorkspaceBaseChrLoaded:
     'Base CHR: {name} ({size} bytes, {slots} slots, {occupied} occupied)',
+  chrTileInspectorTitle: 'Tile Inspector',
+  chrTileInspectorSubtitle: 'Hardware Addressing & Tile Metadata',
+  chrTileInspectorEmpty:
+    'Select any 8×8 tile slot in Pattern Table 0 or 1 to inspect NES addressing, CHR-ROM offsets, and pixel metadata.',
+  chrTileInspectorDeselect: 'Deselect Tile',
+  chrTileInspectorGridToggle: 'Show Pixel Grid',
+  chrTileInspectorPhysicalIndex: 'Global Physical Index',
+  chrTileInspectorLocalIndex: 'Local Pattern Table Index',
+  chrTileInspectorPatternTable: 'Pattern Table',
+  chrTileInspectorStartOffset: 'CHR-ROM Start Offset',
+  chrTileInspectorBitplane0: 'Bitplane 0 Offset (+0)',
+  chrTileInspectorBitplane1: 'Bitplane 1 Offset (+8)',
+  chrTileInspectorSlotState: 'Slot State',
+  chrTileInspectorStateEmpty: 'Empty (Unallocated)',
+  chrTileInspectorStateProject: 'Project Tile (Occupied)',
+  chrTileInspectorStateBase: 'Base CHR (Imported)',
+  chrTileInspectorAttribution: 'Source Attribution',
+  chrTileInspectorNoAttribution: 'None (Unused slot)',
+  chrTileInspectorBaseAttribution: 'Base CHR: {name}',
+  chrTileInspectorTilePos: 'Col {col}, Row {row}',
   tilesetModeHint:
     'Use a PNG, a CHR file, or an iNES mapper 0 ROM with 8 KB of CHR-ROM.',
   playfieldModeHint:
@@ -755,6 +775,26 @@ const ptBr = {
   chrWorkspaceNoBaseChr: 'Nenhum CHR-base carregado (Espaço limpo de 8 KiB)',
   chrWorkspaceBaseChrLoaded:
     'CHR-Base: {name} ({size} bytes, {slots} slots, {occupied} ocupados)',
+  chrTileInspectorTitle: 'Inspetor de Tile',
+  chrTileInspectorSubtitle: 'Endereçamento de Hardware e Metadados do Tile',
+  chrTileInspectorEmpty:
+    'Selecione um slot de tile 8×8 na Tabela de Padrões 0 ou 1 para inspecionar endereçamento NES, offsets na CHR-ROM e metadados de pixels.',
+  chrTileInspectorDeselect: 'Desmarcar Tile',
+  chrTileInspectorGridToggle: 'Exibir Grade de Pixels',
+  chrTileInspectorPhysicalIndex: 'Índice Físico Global',
+  chrTileInspectorLocalIndex: 'Índice Local na Tabela',
+  chrTileInspectorPatternTable: 'Tabela de Padrões',
+  chrTileInspectorStartOffset: 'Offset Inicial na CHR-ROM',
+  chrTileInspectorBitplane0: 'Offset do Bitplane 0 (+0)',
+  chrTileInspectorBitplane1: 'Offset do Bitplane 1 (+8)',
+  chrTileInspectorSlotState: 'Estado do Slot',
+  chrTileInspectorStateEmpty: 'Vazio (Não alocado)',
+  chrTileInspectorStateProject: 'Tile do Projeto (Ocupado)',
+  chrTileInspectorStateBase: 'CHR-Base (Importada)',
+  chrTileInspectorAttribution: 'Atribuição de Origem',
+  chrTileInspectorNoAttribution: 'Nenhuma (Slot não utilizado)',
+  chrTileInspectorBaseAttribution: 'CHR-Base: {name}',
+  chrTileInspectorTilePos: 'Col {col}, Linha {row}',
   tilesetModeHint:
     'Use um PNG, um arquivo CHR ou uma ROM iNES mapper 0 com 8 KB de CHR-ROM.',
   playfieldModeHint:

@@ -223,10 +223,21 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 - Espaço visual e projetado de inspeção do modelo canônico de memória CHR-ROM (8 KiB / 512 slots de tiles):
   - **Visualização Completa das Pattern Tables (PT0 e PT1):** Renderização pixel-perfect das duas tabelas de padrões em grades 16×16 de 256 tiles cada (PT0: `$0000..$0FFF`, índices físicos 0..255; PT1: `$1000..$1FFF`, índices físicos 256..511), totalizando os 512 slots da CHR-ROM física em escala neutral/grayscale (2bpp NES).
   - **Controles de Zoom Pixel-Perfect:** Controles de ampliação (1×, 2×, 3×, 4×, 8×) com renderização nearest-neighbor (`image-rendering: pixelated`), gerenciados como estado transiente em `WorkspaceState` sem mutação do projeto.
+  - **Seleção Interativa e Inspetor de Tile (`src/ui/chr-tile-inspector.ts`):** Seleção interativa de qualquer slot 8×8 em PT0 e PT1 via mouse/touch ou teclado (Enter, Espaço, Setas e Escape para desmarcar) com destaque visual acessível e de alto contraste (outline duplo, borda interna de contraste, marcador e `aria-selected`).
+  - **Metadados de Endereçamento de Hardware da PPU:** Painel contextual com cálculo determinístico e em tempo real de:
+    - _Índice Físico Global:_ Decimal 0..511 e Hexadecimal `$000..$1FF`.
+    - _Índice Local na Tabela:_ Decimal 0..255 e Hexadecimal `$00..$FF`.
+    - _Identificador da Tabela:_ `PT0 ($0000)` ou `PT1 ($1000)`.
+    - _Coordenadas na Tabela 16×16:_ Coluna 0..15 e Linha 0..15.
+    - _Offsets de Bytes na CHR-ROM:_ Offset inicial do tile na ROM (`$0000..$1FF0`, fórmula `physicalIndex * 16`), Offset do Bitplane 0 (`+0`) e Offset do Bitplane 1 (`+8`, fórmula `physicalIndex * 16 + 8`).
+    - _Diagnóstico de Estado do Slot:_ Identificação visual precisa entre `Vazio (Não alocado)`, `Tile do Projeto (Ocupado)` e `CHR-Base (Importada)`.
+    - _Atribuição de Origem:_ Rastreamento do asset, animação e frame de origem associados ao tile físico no modelo de animação ou metadados de tileset.
+  - **Pré-visualização Ampliada (16× / 128×128 px):** Exibição ampliada dos 64 pixels do tile com renderização 2bpp nítida e sobreposição opcional da grade de pixels 8×8 com controle liga/desliga.
   - **Ocupação Física Total e Isolamento de Tabelas:** Exibe o total ocupado (`Total = PT0 + PT1`), detalhando a ocupação física das tabelas PT0 ($0000..$0FFF, 4 KiB, 256 tiles) e PT1 ($1000..$1FFF, 4 KiB, 256 tiles).
   - **Diferenciação Hardware (Índice Físico vs. Índice Local OAM):** Esclarece a distinção entre a posição física na ROM (0..511) e o índice de 8 bits gravado na OAM (0..255), determinado pelo registrador PPUCTRL (`$2000` bit 3).
   - **Capacidade Local de Sprites:** Exibe a capacidade da tabela de padrões ativa de sprites (256 tiles) e a contagem de tiles restantes para entidades.
   - **Detalhamento de Reúso e CHR-Base:** Discrimina tiles mantidos de CHR-base (4 KiB / 8 KiB / esparsos), tiles reutilizados por deduplicação/espelhamento e novos tiles alocados.
+  - **Estado Transiente Isolado:** A seleção de tiles é preservada em `WorkspaceState.chr.selectedTileIndex` via `applyWorkspaceUpdate` sem marcar o projeto como modificado (`dirty`).
   - **Links e Ações:** Acesso direto para download da CHR de 8 KiB (`.chr`) e atalhos de navegação para o Mapeamento de Metasprites, Editor de Animação e Workspace de Paletas.
 
 ### 6.6 Workspace de Entrega e Exportação (`src/ui/delivery-workspace.ts`)

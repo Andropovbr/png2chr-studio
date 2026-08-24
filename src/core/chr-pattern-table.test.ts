@@ -10,6 +10,9 @@ import {
   patternTableForPhysicalTile,
   patternTablePhysicalRange,
   physicalTileIndex,
+  tileBitplaneOffsets,
+  tileStartByteOffset,
+  computeTileAddressingMetadata,
 } from './chr-pattern-table';
 import type { Tile } from './types';
 
@@ -135,5 +138,110 @@ describe('NES sprite pattern tables', () => {
     expect(chr).toHaveLength(NES_CHR_ROM_SIZE);
     expect(chr.slice(0, 16)).toEqual(new Uint8Array(16));
     expect(chr.slice(256 * 16, 257 * 16)).toEqual(base);
+  });
+
+  describe('tile addressing and byte offset calculations', () => {
+    it('calculates start byte offset for tiles in PT0 and PT1', () => {
+      expect(tileStartByteOffset(0)).toBe(0x0000);
+      expect(tileStartByteOffset(1)).toBe(0x0010);
+      expect(tileStartByteOffset(255)).toBe(0x0ff0);
+      expect(tileStartByteOffset(256)).toBe(0x1000);
+      expect(tileStartByteOffset(511)).toBe(0x1ff0);
+    });
+
+    it('calculates bitplane 0 and bitplane 1 byte offsets', () => {
+      expect(tileBitplaneOffsets(0)).toEqual({ plane0: 0, plane1: 8 });
+      expect(tileBitplaneOffsets(1)).toEqual({ plane0: 16, plane1: 24 });
+      expect(tileBitplaneOffsets(256)).toEqual({ plane0: 4096, plane1: 4104 });
+      expect(tileBitplaneOffsets(511)).toEqual({ plane0: 8176, plane1: 8184 });
+    });
+
+    it('computes complete tile addressing metadata matching NES PPU specifications', () => {
+      const meta0 = computeTileAddressingMetadata(0);
+      expect(meta0).toEqual({
+        physicalIndex: 0,
+        physicalIndexHex: '$000',
+        localIndex: 0,
+        localIndexHex: '$00',
+        patternTable: 0,
+        patternTableAddress: '$0000',
+        patternTableLabel: 'PT0 ($0000)',
+        tileCol: 0,
+        tileRow: 0,
+        startByteOffset: 0,
+        startByteOffsetHex: '$0000',
+        plane0Offset: 0,
+        plane0OffsetHex: '$0000',
+        plane1Offset: 8,
+        plane1OffsetHex: '$0008',
+      });
+
+      const meta26 = computeTileAddressingMetadata(26);
+      expect(meta26).toEqual({
+        physicalIndex: 26,
+        physicalIndexHex: '$01A',
+        localIndex: 26,
+        localIndexHex: '$1A',
+        patternTable: 0,
+        patternTableAddress: '$0000',
+        patternTableLabel: 'PT0 ($0000)',
+        tileCol: 10,
+        tileRow: 1,
+        startByteOffset: 416,
+        startByteOffsetHex: '$01A0',
+        plane0Offset: 416,
+        plane0OffsetHex: '$01A0',
+        plane1Offset: 424,
+        plane1OffsetHex: '$01A8',
+      });
+
+      const meta256 = computeTileAddressingMetadata(256);
+      expect(meta256).toEqual({
+        physicalIndex: 256,
+        physicalIndexHex: '$100',
+        localIndex: 0,
+        localIndexHex: '$00',
+        patternTable: 1,
+        patternTableAddress: '$1000',
+        patternTableLabel: 'PT1 ($1000)',
+        tileCol: 0,
+        tileRow: 0,
+        startByteOffset: 4096,
+        startByteOffsetHex: '$1000',
+        plane0Offset: 4096,
+        plane0OffsetHex: '$1000',
+        plane1Offset: 4104,
+        plane1OffsetHex: '$1008',
+      });
+
+      const meta511 = computeTileAddressingMetadata(511);
+      expect(meta511).toEqual({
+        physicalIndex: 511,
+        physicalIndexHex: '$1FF',
+        localIndex: 255,
+        localIndexHex: '$FF',
+        patternTable: 1,
+        patternTableAddress: '$1000',
+        patternTableLabel: 'PT1 ($1000)',
+        tileCol: 15,
+        tileRow: 15,
+        startByteOffset: 8176,
+        startByteOffsetHex: '$1FF0',
+        plane0Offset: 8176,
+        plane0OffsetHex: '$1FF0',
+        plane1Offset: 8184,
+        plane1OffsetHex: '$1FF8',
+      });
+    });
+
+    it('rejects out of range indices for all tile calculation utilities', () => {
+      expect(() => tileStartByteOffset(-1)).toThrow(RangeError);
+      expect(() => tileStartByteOffset(512)).toThrow(RangeError);
+      expect(() => tileBitplaneOffsets(-1)).toThrow(RangeError);
+      expect(() => tileBitplaneOffsets(512)).toThrow(RangeError);
+      expect(() => computeTileAddressingMetadata(-1)).toThrow(RangeError);
+      expect(() => computeTileAddressingMetadata(512)).toThrow(RangeError);
+      expect(() => computeTileAddressingMetadata(1.5)).toThrow(RangeError);
+    });
   });
 });

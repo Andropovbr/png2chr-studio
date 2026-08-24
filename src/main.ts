@@ -2814,6 +2814,14 @@ function renderChrWorkspace(): void {
       });
       render();
     },
+    selectedTileIndex: workspace.chr.selectedTileIndex,
+    onSelectTile: (selectedTileIndex) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, selectedTileIndex },
+      });
+      render();
+    },
     loading: derivedStatus.loading,
     error: derivedStatus.error,
     onNavigateToWorkspace: (view) => {
