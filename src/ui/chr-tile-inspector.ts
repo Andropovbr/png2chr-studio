@@ -1,5 +1,6 @@
 import type { AnimationProjectModel } from '../core/animation-model';
 import {
+  classifyChrSlots,
   computeTileAddressingMetadata,
   type SpritePatternTable,
   type TileAddressingMetadata,
@@ -15,7 +16,7 @@ export const NEUTRAL_NES_GRAYSCALE = [
   { red: 255, green: 255, blue: 255 }, // 3: NES $30
 ] as const;
 
-export type TileSlotState = 'empty' | 'project' | 'base';
+export type TileSlotState = 'empty' | 'project' | 'base' | 'reserved';
 
 export interface TileSlotDiagnosis {
   readonly state: TileSlotState;
@@ -49,100 +50,56 @@ export function resolveTileSlotDiagnosis(
   baseChrName: string | null = null,
   destinationPatternTable: SpritePatternTable = 0,
   tiles: readonly Tile[] = [],
+  deduplicationEnabled = true,
+  flipDeduplicationEnabled = false,
 ): TileSlotDiagnosis {
-  const startByte = physicalIndex * 16;
-  const tileBytes =
-    finalChrBytes.length >= startByte + 16
-      ? finalChrBytes.subarray(startByte, startByte + 16)
-      : new Uint8Array(16);
-  const isNonZero = tileBytes.some((byte) => byte !== 0);
+  const classifications = classifyChrSlots({
+    mode,
+    animationModel,
+    baseChr,
+    baseChrName,
+    destinationPatternTable,
+    tiles,
+    deduplicationEnabled,
+    flipDeduplicationEnabled,
+    finalChrBytes,
+  });
 
-  // Check Base CHR attribution
-  if (baseChr && baseChr.length > 0) {
-    const fileTileSlots = Math.floor(baseChr.length / 16);
-    const baseStart = fileTileSlots <= 256 ? destinationPatternTable * 256 : 0;
-    if (
-      physicalIndex >= baseStart &&
-      physicalIndex < baseStart + fileTileSlots
-    ) {
-      const baseTileIndex = physicalIndex - baseStart;
-      const baseRawOffset = baseTileIndex * 16;
-      const baseHasData = baseChr
-        .subarray(baseRawOffset, baseRawOffset + 16)
-        .some((b) => b !== 0);
-
-      if (baseHasData) {
-        return {
-          state: 'base',
-          stateLabel: t('chrTileInspectorStateBase'),
-          attribution: baseChrName
-            ? t('chrTileInspectorBaseAttribution', { name: baseChrName })
-            : t('chrTileInspectorStateBase'),
-        };
-      }
-    }
-  }
-
-  // Animation mode attribution
-  if (mode === 'animation' && animationModel !== null) {
-    const references: string[] = [];
-    for (const anim of animationModel.animations) {
-      anim.frames.forEach((frame, frameIdx) => {
-        if (
-          frame.sprites.some(
-            (sprite) => sprite.physicalTileIndex === physicalIndex,
-          )
-        ) {
-          const frameLabel = `${anim.name} (#${String(frameIdx)})`;
-          if (!references.includes(frameLabel)) {
-            references.push(frameLabel);
-          }
-        }
-      });
-    }
-
-    if (references.length > 0) {
-      return {
-        state: 'project',
-        stateLabel: t('chrTileInspectorStateProject'),
-        attribution: references.join(', '),
-      };
-    }
-
-    if (isNonZero) {
-      return {
-        state: 'project',
-        stateLabel: t('chrTileInspectorStateProject'),
-        attribution: t('chrTileInspectorStateProject'),
-      };
-    }
-
-    return {
-      state: 'empty',
-      stateLabel: t('chrTileInspectorStateEmpty'),
-      attribution: t('chrTileInspectorNoAttribution'),
-    };
-  }
-
-  // Tileset or Playfield mode
-  if (isNonZero) {
-    const matchedTile = tiles.find((tItem) => tItem.id === physicalIndex);
-    const attribution = matchedTile
-      ? `Tile #${String(matchedTile.id)} (${t('chrTileInspectorTilePos', { col: matchedTile.column, row: matchedTile.row })})`
-      : t('chrTileInspectorStateProject');
-
-    return {
-      state: 'project',
-      stateLabel: t('chrTileInspectorStateProject'),
-      attribution,
-    };
-  }
-
-  return {
-    state: 'empty',
-    stateLabel: t('chrTileInspectorStateEmpty'),
-    attribution: t('chrTileInspectorNoAttribution'),
+  const slot = classifications[physicalIndex] ?? {
+    occupancy: 'empty',
   };
+
+  switch (slot.occupancy) {
+    case 'base':
+      return {
+        state: 'base',
+        stateLabel: t('chrTileInspectorStateBase'),
+        attribution:
+          slot.attribution ??
+          (baseChrName
+            ? t('chrTileInspectorBaseAttribution', { name: baseChrName })
+            : t('chrTileInspectorStateBase')),
+      };
+    case 'project':
+      return {
+        state: 'project',
+        stateLabel: t('chrTileInspectorStateProject'),
+        attribution: slot.attribution ?? t('chrTileInspectorStateProject'),
+      };
+    case 'reserved':
+      return {
+        state: 'reserved',
+        stateLabel: t('chrTileInspectorStateReserved'),
+        attribution: slot.attribution ?? t('chrTileInspectorStateReserved'),
+      };
+    case 'empty':
+    default:
+      return {
+        state: 'empty',
+        stateLabel: t('chrTileInspectorStateEmpty'),
+        attribution: t('chrTileInspectorNoAttribution'),
+      };
+  }
 }
 
 export function renderEnlargedTileCanvas(

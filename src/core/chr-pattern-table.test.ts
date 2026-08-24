@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { encodeChr } from './chr-encoder';
 import {
   analyzeBaseChrOccupancy,
+  classifyChrSlots,
   createPatternTableSlots,
   encodePatternTableSlots,
   localPatternTableTileIndex,
@@ -242,6 +243,114 @@ describe('NES sprite pattern tables', () => {
       expect(() => computeTileAddressingMetadata(-1)).toThrow(RangeError);
       expect(() => computeTileAddressingMetadata(512)).toThrow(RangeError);
       expect(() => computeTileAddressingMetadata(1.5)).toThrow(RangeError);
+    });
+  });
+
+  describe('classifyChrSlots', () => {
+    it('classifies all 512 slots as empty when project has no tiles or base CHR', () => {
+      const slots = classifyChrSlots({ mode: 'tileset', tiles: [] });
+      expect(slots).toHaveLength(512);
+      expect(slots.every((s) => s.occupancy === 'empty')).toBe(true);
+      expect(slots[0]?.localIndex).toBe(0);
+      expect(slots[0]?.patternTable).toBe(0);
+      expect(slots[256]?.localIndex).toBe(0);
+      expect(slots[256]?.patternTable).toBe(1);
+    });
+
+    it('classifies an intentionally allocated blank tile (16 zero bytes) as project, NOT empty', () => {
+      const blankTile: Tile = {
+        id: 0,
+        column: 0,
+        row: 0,
+        pixels: new Uint8Array(64).fill(0), // all zero pixels = 16 zero bytes in 2bpp
+      };
+
+      const slots = classifyChrSlots({
+        mode: 'tileset',
+        tiles: [blankTile],
+      });
+
+      expect(slots).toHaveLength(512);
+      // Slot 0 is allocated for the project
+      expect(slots[0]?.occupancy).toBe('project');
+      expect(slots[0]?.attribution).toContain('Tile #0');
+      // Slots 1..511 are unallocated free slots
+      expect(slots.slice(1).every((s) => s.occupancy === 'empty')).toBe(true);
+    });
+
+    it('accurately distinguishes Base CHR slots from inserted project tiles', () => {
+      const baseChr = new Uint8Array(4096);
+      baseChr[0] = 0x55; // slot 0 in PT1 has data
+      baseChr[16] = 0xaa; // slot 1 in PT1 has data
+
+      const projectTile: Tile = {
+        id: 0,
+        column: 1,
+        row: 1,
+        pixels: new Uint8Array(64).fill(2),
+      };
+
+      const slots = classifyChrSlots({
+        mode: 'tileset',
+        baseChr,
+        baseChrName: 'custom_base.chr',
+        destinationPatternTable: 1,
+        tiles: [projectTile],
+      });
+
+      // PT0: Slot 0 receives the imported project tile
+      expect(slots[0]?.occupancy).toBe('project');
+      expect(slots[0]?.patternTable).toBe(0);
+      // Other slots in PT0 are empty
+      expect(slots.slice(1, 256).every((s) => s.occupancy === 'empty')).toBe(
+        true,
+      );
+
+      // PT1: Slots 256 and 257 contain base CHR data
+      expect(slots[256]?.occupancy).toBe('base');
+      expect(slots[256]?.attribution).toContain('custom_base.chr');
+      expect(slots[257]?.occupancy).toBe('base');
+      expect(slots[257]?.attribution).toContain('custom_base.chr');
+
+      // Rest of PT1 is empty
+      expect(slots.slice(258, 512).every((s) => s.occupancy === 'empty')).toBe(
+        true,
+      );
+    });
+
+    it('classifies frame-referenced tiles in animation mode with frame attribution', () => {
+      const animationModel = {
+        animations: [
+          {
+            name: 'walk',
+            frames: [
+              {
+                sprites: [{ physicalTileIndex: 4 }, { physicalTileIndex: 5 }],
+              },
+              {
+                sprites: [{ physicalTileIndex: 5 }, { physicalTileIndex: 6 }],
+              },
+            ],
+          },
+        ],
+      };
+
+      const slots = classifyChrSlots({
+        mode: 'animation',
+        animationModel,
+      });
+
+      expect(slots[4]?.occupancy).toBe('project');
+      expect(slots[4]?.attribution).toBe('walk (#0)');
+
+      expect(slots[5]?.occupancy).toBe('project');
+      expect(slots[5]?.attribution).toBe('walk (#0), walk (#1)');
+
+      expect(slots[6]?.occupancy).toBe('project');
+      expect(slots[6]?.attribution).toBe('walk (#1)');
+
+      expect(slots[0]?.occupancy).toBe('empty');
+      expect(slots[7]?.occupancy).toBe('empty');
     });
   });
 });

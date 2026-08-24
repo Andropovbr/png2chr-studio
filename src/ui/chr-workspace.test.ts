@@ -120,6 +120,15 @@ class MockElement {
       if (selector.startsWith('#')) {
         return el.id === selector.slice(1);
       }
+      if (selector.startsWith('[') && selector.endsWith(']')) {
+        const inner = selector.slice(1, -1);
+        if (inner.includes('=')) {
+          const [attr, rawVal] = inner.split('=');
+          const val = rawVal ? rawVal.replace(/^["']|["']$/g, '') : '';
+          return el.getAttribute(attr?.trim() ?? '') === val;
+        }
+        return el.attributes.has(inner.trim());
+      }
       return el.tagName.toLowerCase() === selector.toLowerCase();
     };
 
@@ -1162,6 +1171,171 @@ describe('ChrWorkspace component', () => {
 
       expect(updateResult.value.chr.previewPalette).toBe('bg-2');
       expect(updateResult.marksProjectDirty).toBe(false);
+    });
+  });
+
+  describe('CHR slot occupancy visualization & breakdown', () => {
+    it('renders the occupancy legend with Project, Base CHR, and Free indicators', () => {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const legend = mockWs.querySelector('.chr-occupancy-legend');
+      expect(legend).not.toBeNull();
+      expect(legend?.getAttribute('role')).toBe('group');
+
+      const items = legend?.querySelectorAll('.chr-legend-item') ?? [];
+      expect(items.length).toBe(3);
+      expect(items[0]?.textContent).toContain('Project');
+      expect(items[1]?.textContent).toContain('Base CHR');
+      expect(items[2]?.textContent).toContain('Free');
+    });
+
+    it('renders pattern table occupancy badges and utilization subtitles on PT cards', () => {
+      const baseChr = new Uint8Array(4096);
+      for (let i = 0; i < 10; i += 1) {
+        baseChr[i * 16] = 0xff; // 10 occupied tiles in base CHR
+      }
+
+      const projectTiles: Tile[] = [
+        { id: 0, column: 0, row: 0, pixels: new Uint8Array(64).fill(1) },
+        { id: 1, column: 1, row: 0, pixels: new Uint8Array(64).fill(2) },
+      ];
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr,
+        baseChrName: 'game_base.chr',
+        patternTable: 0,
+        destinationPatternTable: 1,
+        tiles: projectTiles,
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const pt0Card = mockWs.querySelector('[data-pattern-table="0"]');
+      const pt1Card = mockWs.querySelector('[data-pattern-table="1"]');
+
+      // PT0: 2 project tiles occupied
+      const pt0Badge = pt0Card?.querySelector('.chr-pt-occupancy-badge');
+      expect(pt0Badge?.textContent).toBe('2 / 256');
+      expect(pt0Card?.textContent).toContain('2 / 256 occupied (254 free)');
+
+      // PT1: 10 base CHR tiles occupied
+      const pt1Badge = pt1Card?.querySelector('.chr-pt-occupancy-badge');
+      expect(pt1Badge?.textContent).toBe('10 / 256');
+      expect(pt1Card?.textContent).toContain('10 / 256 occupied (246 free)');
+    });
+
+    it('accurately distinguishes an intentionally allocated blank tile (16 zero bytes) as project from free slots', () => {
+      const blankTile: Tile = {
+        id: 0,
+        column: 0,
+        row: 0,
+        pixels: new Uint8Array(64).fill(0), // blank tile (16 zeroes)
+      };
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [blankTile],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const pt0Card = mockWs.querySelector('[data-pattern-table="0"]');
+      const slot0 = pt0Card?.querySelector('[data-physical-index="0"]');
+      const slot1 = pt0Card?.querySelector('[data-physical-index="1"]');
+
+      // Slot 0 is an intentionally allocated project tile despite being 16 zeroes
+      expect(slot0?.getAttribute('data-occupancy')).toBe('project');
+      expect(slot0?.classList.contains('is-occupancy-project')).toBe(true);
+      expect(slot0?.getAttribute('aria-label')).toContain(
+        'Project Tile (Occupied)',
+      );
+      expect(slot0?.title).toContain('Project Tile (Occupied)');
+
+      // Slot 1 is unallocated / free
+      expect(slot1?.getAttribute('data-occupancy')).toBe('empty');
+      expect(slot1?.classList.contains('is-occupancy-empty')).toBe(true);
+      expect(slot1?.getAttribute('aria-label')).toContain('Free (Unallocated)');
+      expect(slot1?.title).toContain('Free (Unallocated)');
+    });
+
+    it('renders Base CHR slots with base occupancy decoration and attribution in tooltips', () => {
+      const baseChr = new Uint8Array(4096);
+      baseChr[0] = 0x55; // PT1 slot 256 has data
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr,
+        baseChrName: 'stages.chr',
+        patternTable: 0,
+        destinationPatternTable: 1,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const pt1Card = mockWs.querySelector('[data-pattern-table="1"]');
+      const slot256 = pt1Card?.querySelector('[data-physical-index="256"]');
+      const slot257 = pt1Card?.querySelector('[data-physical-index="257"]');
+
+      // Slot 256 is from Base CHR
+      expect(slot256?.getAttribute('data-occupancy')).toBe('base');
+      expect(slot256?.classList.contains('is-occupancy-base')).toBe(true);
+      expect(slot256?.getAttribute('aria-label')).toContain(
+        'Base CHR (Imported)',
+      );
+      expect(slot256?.title).toContain('Base CHR (Imported)');
+
+      // Slot 257 has no base data, so it is empty
+      expect(slot257?.getAttribute('data-occupancy')).toBe('empty');
+      expect(slot257?.classList.contains('is-occupancy-empty')).toBe(true);
+    });
+
+    it('maintains selection dominance over occupancy styles when a slot is selected', () => {
+      const projectTiles: Tile[] = [
+        { id: 0, column: 0, row: 0, pixels: new Uint8Array(64).fill(1) },
+      ];
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: projectTiles,
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const slot0 = mockWs.querySelector('[data-physical-index="0"]');
+
+      expect(slot0?.classList.contains('is-selected')).toBe(true);
+      expect(slot0?.classList.contains('is-occupancy-project')).toBe(true);
+      expect(slot0?.getAttribute('aria-selected')).toBe('true');
     });
   });
 });

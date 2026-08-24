@@ -1,12 +1,15 @@
 import type { AnimationProjectModel } from '../core/animation-model';
 import {
   analyzeBaseChrOccupancy,
+  classifyChrSlots,
   createPatternTableSlots,
   encodePatternTableSlots,
   NES_CHR_ROM_SIZE,
   NES_CHR_ROM_TILE_COUNT,
   NES_PATTERN_TABLE_SIZE,
   NES_PATTERN_TABLE_TILE_COUNT,
+  type ChrSlotClassification,
+  type ChrSlotOccupancy,
   type SpritePatternTable,
 } from '../core/chr-pattern-table';
 import {
@@ -427,11 +430,24 @@ function createPatternTableView(
     readonly green: number;
     readonly blue: number;
   }[],
+  classifications: readonly ChrSlotClassification[],
   onSelectTile?: (tileIndex: number | null) => void,
 ): HTMLElement {
   const card = document.createElement('div');
   card.className = 'chr-pt-view-card';
   card.setAttribute('data-pattern-table', String(patternTable));
+
+  // Calculate PT-specific occupancy metrics from classifications
+  const startPhysical = patternTable * NES_PATTERN_TABLE_TILE_COUNT;
+  const ptClassifications = classifications.slice(
+    startPhysical,
+    startPhysical + NES_PATTERN_TABLE_TILE_COUNT,
+  );
+  const occupiedCount = ptClassifications.filter(
+    (c) => c.occupancy !== 'empty',
+  ).length;
+  const freeCount = NES_PATTERN_TABLE_TILE_COUNT - occupiedCount;
+  const ptRange = patternTable === 0 ? '$0000..$0FFF' : '$1000..$1FFF';
 
   // Header
   const header = document.createElement('div');
@@ -446,12 +462,23 @@ function createPatternTableView(
 
   const subtitle = document.createElement('span');
   subtitle.className = 'chr-pt-view-subtitle';
-  subtitle.textContent =
-    patternTable === 0
-      ? t('chrWorkspacePt0Subtitle')
-      : t('chrWorkspacePt1Subtitle');
+  subtitle.textContent = t('chrWorkspacePtUtilization', {
+    range: ptRange,
+    occupied: occupiedCount,
+    free: freeCount,
+  });
 
   titleGroup.append(title, subtitle);
+
+  const headerBadges = document.createElement('div');
+  headerBadges.className = 'chr-pt-header-badges';
+
+  const occupancyBadge = document.createElement('span');
+  occupancyBadge.className = `chr-pt-occupancy-badge${occupiedCount === NES_PATTERN_TABLE_TILE_COUNT ? ' is-full' : ''}`;
+  occupancyBadge.textContent = `${String(occupiedCount)} / ${String(NES_PATTERN_TABLE_TILE_COUNT)}`;
+  occupancyBadge.title = t('chrWorkspacePtOccupancy', {
+    occupied: occupiedCount,
+  });
 
   const role = document.createElement('span');
   const isSprite = activeSpritePt === patternTable;
@@ -460,7 +487,8 @@ function createPatternTableView(
     ? t('chrWorkspacePtRoleSprite')
     : t('chrWorkspacePtRoleBackground');
 
-  header.append(titleGroup, role);
+  headerBadges.append(occupancyBadge, role);
+  header.append(titleGroup, headerBadges);
 
   // Canvas and Overlay
   const canvasWrapper = document.createElement('div');
@@ -496,7 +524,6 @@ function createPatternTableView(
     patternTable === 0 ? t('chrWorkspacePt0Title') : t('chrWorkspacePt1Title'),
   );
 
-  const startPhysical = patternTable * NES_PATTERN_TABLE_TILE_COUNT;
   for (
     let localIndex = 0;
     localIndex < NES_PATTERN_TABLE_TILE_COUNT;
@@ -512,12 +539,26 @@ function createPatternTableView(
       .toUpperCase()
       .padStart(4, '0');
 
+    const classification = classifications[physicalIndex] ?? {
+      occupancy: 'empty',
+    };
+    const occupancy = classification.occupancy;
+    let occupancyLabel = t('chrWorkspaceSlotOccupancyEmpty');
+    if (occupancy === 'project') {
+      occupancyLabel = t('chrWorkspaceSlotOccupancyProject');
+    } else if (occupancy === 'base') {
+      occupancyLabel = t('chrWorkspaceSlotOccupancyBase');
+    } else if (occupancy === 'reserved') {
+      occupancyLabel = t('chrWorkspaceSlotOccupancyReserved');
+    }
+
     const slot = document.createElement('div');
-    slot.className = `chr-tile-slot${isSlotSelected ? ' is-selected' : ''}`;
+    slot.className = `chr-tile-slot is-occupancy-${occupancy}${isSlotSelected ? ' is-selected' : ''}`;
     slot.tabIndex = 0;
     slot.setAttribute('data-physical-index', String(physicalIndex));
     slot.setAttribute('data-local-index', String(localIndex));
     slot.setAttribute('data-pattern-table', String(patternTable));
+    slot.setAttribute('data-occupancy', occupancy);
     slot.setAttribute('data-row', String(row));
     slot.setAttribute('data-col', String(col));
     slot.setAttribute('role', 'gridcell');
@@ -528,12 +569,14 @@ function createPatternTableView(
         pt: patternTable,
         hex: hexLocal,
         id: physicalIndex,
+        state: occupancyLabel,
       }),
     );
     slot.title = t('chrWorkspaceTileTooltip', {
       pt: patternTable,
       hex: hexLocal,
       id: physicalIndex,
+      state: occupancyLabel,
       addr: addrHex,
     });
 
@@ -579,6 +622,7 @@ function createViewerPanel(
     readonly green: number;
     readonly blue: number;
   }[],
+  classifications: readonly ChrSlotClassification[],
 ): HTMLElement {
   const viewerPanel = document.createElement('section');
   viewerPanel.className = 'panel chr-viewer-panel';
@@ -599,7 +643,7 @@ function createViewerPanel(
 
   titleGroup.append(heading, hint);
 
-  // Controls container (Palette + Zoom)
+  // Controls container (Palette + Legend + Zoom)
   const toolbarControls = document.createElement('div');
   toolbarControls.className = 'chr-viewer-toolbar-controls';
 
@@ -687,6 +731,34 @@ function createViewerPanel(
 
   paletteControls.append(paletteLabel, paletteSelect, swatches);
 
+  // Occupancy legend
+  const legend = document.createElement('div');
+  legend.className = 'chr-occupancy-legend';
+  legend.setAttribute('role', 'group');
+  legend.setAttribute('aria-label', t('chrWorkspaceLegendTitle'));
+
+  const legendItems: readonly { key: ChrSlotOccupancy; label: string }[] = [
+    { key: 'project', label: t('chrWorkspaceLegendProject') },
+    { key: 'base', label: t('chrWorkspaceLegendBase') },
+    { key: 'empty', label: t('chrWorkspaceLegendEmpty') },
+  ];
+
+  legendItems.forEach((item) => {
+    const itemEl = document.createElement('span');
+    itemEl.className = `chr-legend-item is-${item.key}`;
+
+    const indicator = document.createElement('span');
+    indicator.className = 'chr-legend-indicator';
+    indicator.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('span');
+    label.className = 'chr-legend-label';
+    label.textContent = item.label;
+
+    itemEl.append(indicator, label);
+    legend.append(itemEl);
+  });
+
   // Zoom controls
   const zoomControls = document.createElement('div');
   zoomControls.className = 'chr-zoom-controls';
@@ -716,7 +788,7 @@ function createViewerPanel(
 
   zoomControls.append(zoomLabel, segmented);
 
-  toolbarControls.append(paletteControls, zoomControls);
+  toolbarControls.append(paletteControls, legend, zoomControls);
   toolbar.append(titleGroup, toolbarControls);
 
   const ptContainer = document.createElement('div');
@@ -731,6 +803,7 @@ function createViewerPanel(
     zoom,
     selectedTileIndex,
     previewColors,
+    classifications,
     options.onSelectTile,
   );
   const pt1Card = createPatternTableView(
@@ -740,6 +813,7 @@ function createViewerPanel(
     zoom,
     selectedTileIndex,
     previewColors,
+    classifications,
     options.onSelectTile,
   );
 
@@ -838,8 +912,25 @@ export function createChrWorkspace(
     options.activeSpritePaletteSlots,
   );
 
+  const classifications = classifyChrSlots({
+    mode: options.mode,
+    animationModel: options.animationModel,
+    baseChr: options.baseChr,
+    baseChrName: options.baseChrName,
+    destinationPatternTable: options.destinationPatternTable,
+    tiles: options.tiles,
+    deduplicationEnabled: options.deduplicationEnabled,
+    flipDeduplicationEnabled: options.flipDeduplicationEnabled,
+  });
+
   // 2. Pattern Tables Viewer Panel (#section-chr-viewer)
-  const viewerPanel = createViewerPanel(options, metrics, zoom, previewColors);
+  const viewerPanel = createViewerPanel(
+    options,
+    metrics,
+    zoom,
+    previewColors,
+    classifications,
+  );
 
   // 3. Physical Occupancy & Pattern Tables Panel (#section-chr-occupancy)
   const occupancyPanel = document.createElement('section');
