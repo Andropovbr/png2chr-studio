@@ -2839,8 +2839,37 @@ function renderChrWorkspace(): void {
       });
       render();
     },
-    selectedAnimationId: workspace.animation.selectedAnimationId,
-    selectedFrameIndex: workspace.animation.selectedFrameIndex ?? 0,
+    selectedAnimationId:
+      workspace.chr.selectedAnimationId ??
+      workspace.animation.selectedAnimationId ??
+      animModel?.animations[0]?.id ??
+      null,
+    onSelectAnimation: (selectedAnimationId) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, selectedAnimationId, selectedFrameIndex: 0 },
+      });
+      render();
+    },
+    selectedFrameIndex:
+      workspace.chr.selectedFrameIndex ??
+      workspace.animation.selectedFrameIndex ??
+      0,
+    onSelectFrame: (selectedFrameIndex) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, selectedFrameIndex },
+      });
+      render();
+    },
+    selectedEntity: workspace.chr.selectedEntity ?? null,
+    onSelectEntity: (selectedEntity) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, selectedEntity },
+      });
+      render();
+    },
     paletteSet: project.paletteSet,
     palettes: project.palettes,
     activeSpritePaletteSlots: project.activeSpritePaletteSlots,

@@ -1499,17 +1499,178 @@ describe('ChrWorkspace component', () => {
       expect(selectedSlot?.getAttribute('data-highlighted')).toBe('true');
     });
 
+    it('is independently usable when no animation or frame is pre-selected in the animation workspace', () => {
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        animations: definitions,
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      // No selectedAnimationId, selectedFrameIndex, or selectedEntity supplied
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'frame',
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const select = mockWs.querySelector('.chr-highlight-select');
+      expect(select).toBeDefined();
+
+      const animSelect = mockWs.querySelector('.chr-highlight-anim-select');
+      expect(animSelect).toBeDefined();
+
+      const frameSelect = mockWs.querySelector('.chr-highlight-frame-select');
+      expect(frameSelect).toBeDefined();
+
+      const summary = mockWs.querySelector('.chr-highlight-summary');
+      expect(summary).toBeDefined();
+      expect(summary?.textContent).toContain('PT0: 1 · PT1: 0');
+    });
+
+    it('provides dedicated animation and frame select dropdowns that invoke onSelectAnimation and onSelectFrame', () => {
+      const onSelectAnimation = vi.fn();
+      const onSelectFrame = vi.fn();
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        animations: [
+          ...definitions,
+          {
+            name: 'hero_attack',
+            sourceImageName: 'hero.png',
+            image: mockImage,
+            playback: 'once',
+            allowHorizontalFlip: false,
+            allowVerticalFlip: false,
+            flipH: false,
+            flipV: false,
+            frameIndices: [0],
+            frameDuration: 4,
+          },
+        ],
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'frame',
+        selectedAnimationId: 'hero-walk',
+        selectedFrameIndex: 1,
+        onSelectAnimation,
+        onSelectFrame,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const animSelect = mockWs.querySelector('.chr-highlight-anim-select');
+      expect(animSelect).toBeDefined();
+      expect(animSelect?.children.length).toBe(2);
+
+      animSelect?.dispatchEvent({ type: 'change' });
+      expect(onSelectAnimation).toHaveBeenCalled();
+
+      const frameSelect = mockWs.querySelector('.chr-highlight-frame-select');
+      expect(frameSelect).toBeDefined();
+      expect(frameSelect?.children.length).toBe(2);
+
+      frameSelect?.dispatchEvent({ type: 'change' });
+      expect(onSelectFrame).toHaveBeenCalled();
+    });
+
+    it('provides entity selector dropdown when multiple entities exist and invokes onSelectEntity', () => {
+      const onSelectEntity = vi.fn();
+      const model = buildAnimationProjectModel({
+        name: 'game',
+        animations: [
+          {
+            name: 'Hero_walk',
+            entity: 'Hero',
+            sourceImageName: 'hero.png',
+            image: mockImage,
+            playback: 'loop',
+            allowHorizontalFlip: false,
+            allowVerticalFlip: false,
+            flipH: false,
+            flipV: false,
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+          {
+            name: 'Enemy_walk',
+            entity: 'Enemy',
+            sourceImageName: 'enemy.png',
+            image: mockImage,
+            playback: 'loop',
+            allowHorizontalFlip: false,
+            allowVerticalFlip: false,
+            flipH: false,
+            flipV: false,
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'entity',
+        selectedEntity: 'Hero',
+        onSelectEntity,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const entitySelect = mockWs.querySelector('.chr-highlight-entity-select');
+      expect(entitySelect).toBeDefined();
+      expect(entitySelect?.children.length).toBe(2);
+
+      entitySelect?.dispatchEvent({ type: 'change' });
+      expect(onSelectEntity).toHaveBeenCalled();
+    });
+
     it('preserves state purity when updating highlightScope in WorkspaceState', () => {
       const initialState = createWorkspaceState();
       expect(initialState.chr.highlightScope).toBe('none');
 
       const result = applyWorkspaceUpdate(initialState, {
         ...initialState,
-        chr: { ...initialState.chr, highlightScope: 'animation' },
+        chr: {
+          ...initialState.chr,
+          highlightScope: 'animation',
+          selectedAnimationId: 'hero-walk',
+          selectedFrameIndex: 1,
+        },
       });
 
       expect(result.marksProjectDirty).toBe(false);
       expect(result.value.chr.highlightScope).toBe('animation');
+      expect(result.value.chr.selectedAnimationId).toBe('hero-walk');
+      expect(result.value.chr.selectedFrameIndex).toBe(1);
       expect(initialState.chr.highlightScope).toBe('none');
     });
   });

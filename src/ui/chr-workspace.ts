@@ -1,4 +1,7 @@
-import type { AnimationProjectModel } from '../core/animation-model';
+import type {
+  AnimationModel,
+  AnimationProjectModel,
+} from '../core/animation-model';
 import {
   analyzeBaseChrOccupancy,
   classifyChrSlots,
@@ -65,8 +68,11 @@ export interface ChrWorkspaceOptions {
   readonly highlightScope?: ChrHighlightScope;
   readonly onHighlightScopeChange?: (scope: ChrHighlightScope) => void;
   readonly selectedAnimationId?: string | null;
+  readonly onSelectAnimation?: (animationId: string) => void;
   readonly selectedFrameIndex?: number | null;
+  readonly onSelectFrame?: (frameIndex: number) => void;
   readonly selectedEntity?: string | null;
+  readonly onSelectEntity?: (entity: string) => void;
   readonly paletteSet?: NesPaletteSet;
   readonly palettes?: readonly PaletteDefinition[];
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
@@ -667,6 +673,10 @@ function createViewerPanel(
   highlightedIndices: ReadonlySet<number>,
   highlightScope: ChrHighlightScope,
   highlightScopeLabel: string,
+  targetAnim: AnimationModel | null,
+  activeFrameIndex: number,
+  activeEntity: string | null,
+  uniqueEntities: readonly string[],
 ): HTMLElement {
   const viewerPanel = document.createElement('section');
   viewerPanel.className = 'panel chr-viewer-panel';
@@ -795,21 +805,15 @@ function createViewerPanel(
   if (highlightScope === 'none') noneOpt.selected = true;
   highlightSelect.append(noneOpt);
 
-  if (options.mode === 'animation' && options.animationModel) {
-    const targetAnim =
-      (options.selectedAnimationId
-        ? options.animationModel.animations.find(
-            (a) =>
-              a.id === options.selectedAnimationId ||
-              a.name === options.selectedAnimationId,
-          )
-        : null) ?? options.animationModel.animations[0];
-
-    const frameOrder = options.selectedFrameIndex ?? 0;
+  if (
+    options.mode === 'animation' &&
+    options.animationModel &&
+    options.animationModel.animations.length > 0
+  ) {
     const frameOpt = document.createElement('option');
     frameOpt.value = 'frame';
     frameOpt.textContent = t('chrWorkspaceHighlightScopeFrame', {
-      info: `#${String(frameOrder)}`,
+      info: `#${String(activeFrameIndex)}`,
     });
     if (highlightScope === 'frame') frameOpt.selected = true;
     highlightSelect.append(frameOpt);
@@ -823,16 +827,11 @@ function createViewerPanel(
       if (highlightScope === 'animation') animOpt.selected = true;
       highlightSelect.append(animOpt);
 
-      const entityName = resolveAnimationEntityName(
-        options.selectedEntity,
-        targetAnim,
-      );
-
-      if (entityName) {
+      if (activeEntity) {
         const entityOpt = document.createElement('option');
         entityOpt.value = 'entity';
         entityOpt.textContent = t('chrWorkspaceHighlightScopeEntity', {
-          name: entityName,
+          name: activeEntity,
         });
         if (highlightScope === 'entity') entityOpt.selected = true;
         highlightSelect.append(entityOpt);
@@ -869,6 +868,101 @@ function createViewerPanel(
   });
 
   highlightControls.append(highlightLabel, highlightSelect);
+
+  // Direct Animation and Frame Selection subcontrols for independent CHR viewer usability
+  if (
+    options.mode === 'animation' &&
+    options.animationModel &&
+    options.animationModel.animations.length > 0
+  ) {
+    if (highlightScope === 'frame' || highlightScope === 'animation') {
+      const animSelect = document.createElement('select');
+      animSelect.className = 'chr-highlight-anim-select';
+      animSelect.setAttribute(
+        'aria-label',
+        t('chrWorkspaceHighlightAnimLabel'),
+      );
+
+      for (const anim of options.animationModel.animations) {
+        const opt = document.createElement('option');
+        opt.value = anim.id ?? anim.name;
+        opt.textContent = anim.name;
+        if (
+          (targetAnim?.id && anim.id === targetAnim.id) ||
+          anim.name === targetAnim?.name
+        ) {
+          opt.selected = true;
+        }
+        animSelect.append(opt);
+      }
+
+      animSelect.addEventListener('change', () => {
+        if (options.onSelectAnimation) {
+          options.onSelectAnimation(animSelect.value);
+        }
+      });
+
+      highlightControls.append(animSelect);
+    }
+
+    if (
+      highlightScope === 'frame' &&
+      targetAnim &&
+      targetAnim.frames.length > 0
+    ) {
+      const frameSelect = document.createElement('select');
+      frameSelect.className = 'chr-highlight-frame-select';
+      frameSelect.setAttribute(
+        'aria-label',
+        t('chrWorkspaceHighlightFrameLabel'),
+      );
+
+      targetAnim.frames.forEach((_, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = t('chrWorkspaceHighlightFrameOption', { index: idx });
+        if (idx === activeFrameIndex) {
+          opt.selected = true;
+        }
+        frameSelect.append(opt);
+      });
+
+      frameSelect.addEventListener('change', () => {
+        if (options.onSelectFrame) {
+          options.onSelectFrame(Number(frameSelect.value));
+        }
+      });
+
+      highlightControls.append(frameSelect);
+    }
+
+    if (highlightScope === 'entity' && uniqueEntities.length > 1) {
+      const entitySelect = document.createElement('select');
+      entitySelect.className = 'chr-highlight-entity-select';
+      entitySelect.setAttribute(
+        'aria-label',
+        t('chrWorkspaceHighlightEntityLabel'),
+      );
+
+      for (const ent of uniqueEntities) {
+        const opt = document.createElement('option');
+        opt.value = ent;
+        opt.textContent = ent;
+        if (ent === activeEntity) {
+          opt.selected = true;
+        }
+        entitySelect.append(opt);
+      }
+
+      entitySelect.addEventListener('change', () => {
+        if (options.onSelectEntity) {
+          options.onSelectEntity(entitySelect.value);
+        }
+      });
+
+      highlightControls.append(entitySelect);
+    }
+  }
 
   if (highlightScope !== 'none') {
     let pt0Count = 0;
@@ -1094,48 +1188,60 @@ export function createChrWorkspace(
     flipDeduplicationEnabled: options.flipDeduplicationEnabled,
   });
 
+  const animations = options.animationModel?.animations ?? [];
+  const targetAnim =
+    (options.selectedAnimationId && options.animationModel
+      ? animations.find(
+          (a) =>
+            a.id === options.selectedAnimationId ||
+            a.name === options.selectedAnimationId,
+        )
+      : null) ??
+    animations[0] ??
+    null;
+
+  const frameCount = targetAnim?.frames.length ?? 0;
+  const activeFrameIndex =
+    frameCount > 0
+      ? Math.min(Math.max(0, options.selectedFrameIndex ?? 0), frameCount - 1)
+      : 0;
+
+  const activeEntity = resolveAnimationEntityName(
+    options.selectedEntity,
+    targetAnim,
+  );
+
+  const uniqueEntities = Array.from(
+    new Set(
+      animations
+        .map((a) => resolveAnimationEntityName(null, a))
+        .filter((e): e is string => Boolean(e && e.length > 0)),
+    ),
+  );
+
   const highlightScope: ChrHighlightScope = options.highlightScope ?? 'none';
   const highlightedIndices = collectChrHighlightTileIndices({
     scope: highlightScope,
     mode: options.mode,
     animationModel: options.animationModel,
-    selectedAnimationId: options.selectedAnimationId,
-    selectedFrameIndex: options.selectedFrameIndex,
-    selectedEntity: options.selectedEntity,
+    selectedAnimationId: targetAnim?.id ?? targetAnim?.name ?? null,
+    selectedFrameIndex: activeFrameIndex,
+    selectedEntity: activeEntity,
     classifications,
   });
 
   let highlightScopeLabel = t('chrWorkspaceHighlightScopeNone');
   if (highlightScope === 'frame') {
     highlightScopeLabel = t('chrWorkspaceHighlightScopeFrame', {
-      info: `#${String(options.selectedFrameIndex ?? 0)}`,
+      info: `#${String(activeFrameIndex)}`,
     });
   } else if (highlightScope === 'animation') {
-    const targetAnim =
-      (options.selectedAnimationId && options.animationModel
-        ? options.animationModel.animations.find(
-            (a) =>
-              a.id === options.selectedAnimationId ||
-              a.name === options.selectedAnimationId,
-          )
-        : null) ?? options.animationModel?.animations[0];
     highlightScopeLabel = t('chrWorkspaceHighlightScopeAnimation', {
       name: targetAnim?.name ?? 'Active',
     });
   } else if (highlightScope === 'entity') {
-    const targetAnim =
-      (options.selectedAnimationId && options.animationModel
-        ? options.animationModel.animations.find(
-            (a) =>
-              a.id === options.selectedAnimationId ||
-              a.name === options.selectedAnimationId,
-          )
-        : null) ?? options.animationModel?.animations[0];
-    const entityName =
-      resolveAnimationEntityName(options.selectedEntity, targetAnim) ??
-      'Entity';
     highlightScopeLabel = t('chrWorkspaceHighlightScopeEntity', {
-      name: entityName,
+      name: activeEntity ?? 'Entity',
     });
   } else if (highlightScope === 'base') {
     highlightScopeLabel = t('chrWorkspaceHighlightScopeBase');
@@ -1153,6 +1259,10 @@ export function createChrWorkspace(
     highlightedIndices,
     highlightScope,
     highlightScopeLabel,
+    targetAnim,
+    activeFrameIndex,
+    activeEntity,
+    uniqueEntities,
   );
 
   // 3. Physical Occupancy & Pattern Tables Panel (#section-chr-occupancy)

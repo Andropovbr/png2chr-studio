@@ -26,6 +26,9 @@ export interface ChrWorkspaceState {
   readonly selectedTileIndex: number | null;
   readonly previewPalette?: string;
   readonly highlightScope?: ChrHighlightScope;
+  readonly selectedAnimationId?: string | null;
+  readonly selectedFrameIndex?: number | null;
+  readonly selectedEntity?: string | null;
 }
 
 export interface WorkspaceState {
@@ -76,6 +79,9 @@ export function createWorkspaceState(
       selectedTileIndex: null,
       previewPalette: 'grayscale',
       highlightScope: 'none',
+      selectedAnimationId: null,
+      selectedFrameIndex: 0,
+      selectedEntity: null,
     },
   };
 }

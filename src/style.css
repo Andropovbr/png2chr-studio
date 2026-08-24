@@ -3109,7 +3109,10 @@ input:focus-visible + label {
   font-weight: 600;
 }
 
-.chr-highlight-select {
+.chr-highlight-select,
+.chr-highlight-anim-select,
+.chr-highlight-frame-select,
+.chr-highlight-entity-select {
   background: #090d14;
   color: var(--text, #eaf0f5);
   border: 1px solid var(--panel-border, #1f2937);
@@ -3120,7 +3123,10 @@ input:focus-visible + label {
   cursor: pointer;
 }
 
-.chr-highlight-select:focus {
+.chr-highlight-select:focus,
+.chr-highlight-anim-select:focus,
+.chr-highlight-frame-select:focus,
+.chr-highlight-entity-select:focus {
   outline: 2px solid #38bdf8;
   border-color: #38bdf8;
 }
