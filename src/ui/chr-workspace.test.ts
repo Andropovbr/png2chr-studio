@@ -5,7 +5,10 @@ import {
   type AnimationDefinitionInput,
 } from '../core/animation-model';
 import type { IndexedImage, Tile } from '../core/types';
-import { createChrWorkspace } from './chr-workspace';
+import { setLocale } from '../i18n';
+import { CHR_ZOOM_LEVELS, createChrWorkspace } from './chr-workspace';
+import { applyWorkspaceUpdate } from './state-update';
+import { createWorkspaceState } from './workspace-state';
 
 class MockElement {
   tagName: string;
@@ -195,6 +198,7 @@ function createMockIndexedImage(width: number, height: number): IndexedImage {
 
 describe('ChrWorkspace component', () => {
   beforeEach(() => {
+    setLocale('en');
     (globalThis as unknown as { document: unknown }).document = {
       createElement: (tagName: string) => new MockElement(tagName),
     };
@@ -845,5 +849,79 @@ describe('ChrWorkspace component', () => {
     const emptyMessage = inspector?.querySelector('.chr-tile-inspector-empty');
     expect(emptyMessage).not.toBeNull();
     expect(emptyMessage?.textContent).toContain('Select any 8×8 tile slot');
+  });
+
+  it('verifies uniform square scaling across all zoom levels for both PT0 and PT1', () => {
+    for (const zoom of CHR_ZOOM_LEVELS) {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        zoom,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const containers = mockWs.querySelectorAll('.chr-pt-canvas-container');
+      expect(containers.length).toBe(2);
+
+      const expectedDimension = `${String(128 * zoom)}px`;
+
+      // Verify both PT0 and PT1 containers scale equally in width and height (square)
+      containers.forEach((container) => {
+        expect(container.style.width).toBe(expectedDimension);
+        expect(container.style.height).toBe(expectedDimension);
+      });
+
+      // Verify backing canvases retain 128x128 resolution
+      const canvases = mockWs.querySelectorAll('.chr-pt-canvas');
+      expect(canvases.length).toBe(2);
+      canvases.forEach((canvas) => {
+        expect(
+          canvas.attributes.get('width') ??
+            (canvas as unknown as { width: number }).width,
+        ).toBe(128);
+        expect(
+          canvas.attributes.get('height') ??
+            (canvas as unknown as { height: number }).height,
+        ).toBe(128);
+      });
+
+      // Verify both grids contain exactly 256 cells in 16x16 structure
+      const overlays = mockWs.querySelectorAll('.chr-pt-grid-overlay');
+      expect(overlays.length).toBe(2);
+      overlays.forEach((overlay) => {
+        const cells = overlay.querySelectorAll('.chr-tile-slot');
+        expect(cells.length).toBe(256);
+
+        // First cell (local index 0) must be row 0, col 0
+        expect(cells[0]?.getAttribute('data-local-index')).toBe('0');
+        expect(cells[0]?.getAttribute('data-row')).toBe('0');
+        expect(cells[0]?.getAttribute('data-col')).toBe('0');
+
+        // Last cell (local index 255) must be row 15, col 15
+        expect(cells[255]?.getAttribute('data-local-index')).toBe('255');
+        expect(cells[255]?.getAttribute('data-row')).toBe('15');
+        expect(cells[255]?.getAttribute('data-col')).toBe('15');
+      });
+    }
+  });
+
+  it('guarantees that zoom updates are workspace-only and do not mark project dirty', () => {
+    const initialWorkspace = createWorkspaceState();
+    expect(initialWorkspace.chr.zoom).toBe(2);
+
+    const updateResult = applyWorkspaceUpdate(initialWorkspace, (prev) => ({
+      ...prev,
+      chr: { ...prev.chr, zoom: 8 },
+    }));
+
+    expect(updateResult.value.chr.zoom).toBe(8);
+    expect(updateResult.marksProjectDirty).toBe(false);
   });
 });

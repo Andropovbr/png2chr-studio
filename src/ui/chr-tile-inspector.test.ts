@@ -5,6 +5,7 @@ import {
   type AnimationDefinitionInput,
 } from '../core/animation-model';
 import type { IndexedImage, Tile } from '../core/types';
+import { setLocale } from '../i18n';
 import {
   createChrTileInspector,
   renderEnlargedTileCanvas,
@@ -146,6 +147,7 @@ function createMockIndexedImage(width: number, height: number): IndexedImage {
 
 describe('ChrTileInspector component and utilities', () => {
   beforeEach(() => {
+    setLocale('en');
     (globalThis as unknown as { document: unknown }).document = {
       createElement: (tagName: string) => new MockElement(tagName),
     };

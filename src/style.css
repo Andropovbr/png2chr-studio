@@ -3098,7 +3098,10 @@ input:focus-visible + label {
 
 .chr-pt-canvas-container {
   position: relative;
-  display: inline-block;
+  display: block;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  margin: auto;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   line-height: 0;
@@ -3109,6 +3112,8 @@ input:focus-visible + label {
 
 .chr-pt-canvas {
   display: block;
+  width: 100%;
+  height: 100%;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
