@@ -71,8 +71,13 @@ class MockElement {
 
   click() {
     const handlers = this.eventListeners.get('click') ?? [];
+    const event = {
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+      target: this,
+    };
     handlers.forEach((fn) => {
-      fn();
+      fn(event);
     });
   }
 
@@ -84,6 +89,12 @@ class MockElement {
         this.children.push(node);
       }
     });
+  }
+
+  replaceChildren(...nodes: (MockElement | string)[]) {
+    this.children = [];
+    this._text = '';
+    this.append(...nodes);
   }
 
   querySelector(selector: string): MockElement | null {
@@ -379,6 +390,115 @@ describe('ChrTileInspector component and utilities', () => {
       expect(badge).not.toBeNull();
       expect(badge?.classList.contains('is-highlighted')).toBe(true);
       expect(badge?.textContent).toContain('Highlighted in Current Frame (#0)');
+    });
+
+    it('renders Used by section with empty message when no references exist', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        references: [],
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      expect(mockEl.querySelector('.chr-tile-used-by-title')?.textContent).toBe(
+        'Used by (0)',
+      );
+      expect(mockEl.querySelector('.chr-tile-used-by-empty')?.textContent).toBe(
+        'No current project references',
+      );
+    });
+
+    it('renders reference items with jump buttons and invokes onNavigateToReference', () => {
+      const onNavigateToReference = vi.fn();
+      const references = [
+        {
+          type: 'animation' as const,
+          entity: 'Hero',
+          animationId: 'hero-walk',
+          animationName: 'Hero_walk',
+          frameIndex: 0,
+          spriteIndex: 0,
+          x: 0,
+          y: 0,
+          horizontalFlip: false,
+          verticalFlip: false,
+          physicalTileIndex: 5,
+        },
+        {
+          type: 'playfield' as const,
+          column: 4,
+          row: 2,
+          nametableIndex: 68,
+          tileIndex: 5,
+          physicalTileIndex: 5,
+        },
+        {
+          type: 'tileset' as const,
+          tileIndex: 5,
+          physicalTileIndex: 5,
+        },
+      ];
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        references,
+        onNavigateToReference,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      expect(mockEl.querySelector('.chr-tile-used-by-title')?.textContent).toBe(
+        'Used by (3)',
+      );
+
+      const items = mockEl.querySelectorAll('.chr-tile-ref-item');
+      expect(items.length).toBe(3);
+      expect(items[0]?.textContent).toContain('Hero · Hero_walk · Frame #0');
+      expect(items[1]?.textContent).toContain('(4, 2) · tile $05');
+      expect(items[2]?.textContent).toContain('tile #5');
+
+      const jumpBtns = mockEl.querySelectorAll('.chr-tile-ref-jump-btn');
+      expect(jumpBtns.length).toBe(3);
+
+      jumpBtns[0]?.click();
+      expect(onNavigateToReference).toHaveBeenCalledWith(references[0]);
+
+      jumpBtns[1]?.click();
+      expect(onNavigateToReference).toHaveBeenCalledWith(references[1]);
+    });
+
+    it('truncates references when more than initial count and toggles full list', () => {
+      const references = Array.from({ length: 10 }, (_, i) => ({
+        type: 'animation' as const,
+        entity: 'Hero',
+        animationId: 'hero-walk',
+        animationName: 'Hero_walk',
+        frameIndex: i,
+        spriteIndex: 0,
+        x: 0,
+        y: 0,
+        horizontalFlip: false,
+        verticalFlip: false,
+        physicalTileIndex: 5,
+      }));
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        references,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      let items = mockEl.querySelectorAll('.chr-tile-ref-item');
+      expect(items.length).toBe(6);
+
+      const toggleBtn = mockEl.querySelector('.chr-tile-refs-toggle-btn');
+      expect(toggleBtn).not.toBeNull();
+      expect(toggleBtn?.textContent).toContain('Show all (10)');
+
+      toggleBtn?.click();
+      items = mockEl.querySelectorAll('.chr-tile-ref-item');
+      expect(items.length).toBe(10);
     });
   });
 });

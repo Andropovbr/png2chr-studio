@@ -1,3 +1,4 @@
+import type { AnimationProjectModel } from './animation-model';
 import { decodeChrTile } from './chr-decoder';
 import { encodeTile } from './chr-encoder';
 import {
@@ -790,4 +791,240 @@ export function collectChrHighlightTileIndices(
     default:
       return new Set<number>();
   }
+}
+
+export interface AnimationTileReference {
+  readonly type: 'animation';
+  readonly entity?: string;
+  readonly animationId: string;
+  readonly animationName: string;
+  readonly frameIndex: number;
+  readonly spriteIndex: number;
+  readonly x: number;
+  readonly y: number;
+  readonly horizontalFlip: boolean;
+  readonly verticalFlip: boolean;
+  readonly physicalTileIndex: number;
+}
+
+export interface PlayfieldTileReference {
+  readonly type: 'playfield';
+  readonly column: number;
+  readonly row: number;
+  readonly nametableIndex: number;
+  readonly tileIndex: number;
+  readonly physicalTileIndex: number;
+}
+
+export interface TilesetTileReference {
+  readonly type: 'tileset';
+  readonly tileIndex: number;
+  readonly sourceIndex?: number;
+  readonly physicalTileIndex: number;
+}
+
+export type ChrTileReference =
+  AnimationTileReference | PlayfieldTileReference | TilesetTileReference;
+
+export interface CollectChrTileReferencesOptions {
+  readonly physicalTileIndex: number;
+  readonly mode?: 'tileset' | 'playfield' | 'animation';
+  readonly animationModel?: AnimationProjectModel | null;
+  readonly playfieldNametable?: Uint8Array | null;
+  readonly destinationPatternTable?: SpritePatternTable;
+  readonly tiles?: readonly Tile[];
+  readonly deduplicationEnabled?: boolean;
+  readonly flipDeduplicationEnabled?: boolean;
+}
+
+export function collectPhysicalTileReferences(
+  options: CollectChrTileReferencesOptions,
+): readonly ChrTileReference[] {
+  const references: ChrTileReference[] = [];
+  const targetIndex = options.physicalTileIndex;
+  if (targetIndex < 0 || targetIndex >= NES_CHR_ROM_TILE_COUNT) {
+    return references;
+  }
+
+  // 1. Animation references
+  if (options.animationModel) {
+    for (const anim of options.animationModel.animations) {
+      for (
+        let frameIndex = 0;
+        frameIndex < anim.frames.length;
+        frameIndex += 1
+      ) {
+        const frame = anim.frames[frameIndex];
+        if (!frame) continue;
+        for (
+          let spriteIndex = 0;
+          spriteIndex < frame.sprites.length;
+          spriteIndex += 1
+        ) {
+          const sprite = frame.sprites[spriteIndex];
+          if (sprite?.physicalTileIndex === targetIndex) {
+            references.push({
+              type: 'animation',
+              entity: anim.entity,
+              animationId: anim.id ?? anim.name,
+              animationName: anim.name,
+              frameIndex,
+              spriteIndex,
+              x: sprite.x,
+              y: sprite.y,
+              horizontalFlip: sprite.horizontalFlip,
+              verticalFlip: sprite.verticalFlip,
+              physicalTileIndex: targetIndex,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Playfield references
+  if (options.mode === 'playfield' && options.playfieldNametable) {
+    const destPt = options.destinationPatternTable ?? 0;
+    const nametable = options.playfieldNametable;
+    const maxCells = Math.min(nametable.length, 960);
+    for (let i = 0; i < maxCells; i += 1) {
+      const tileIndex = nametable[i] ?? 0;
+      const physicalIndex = destPt * NES_PATTERN_TABLE_TILE_COUNT + tileIndex;
+      if (physicalIndex === targetIndex) {
+        const row = Math.floor(i / 32);
+        const col = i % 32;
+        references.push({
+          type: 'playfield',
+          column: col,
+          row,
+          nametableIndex: i,
+          tileIndex,
+          physicalTileIndex: targetIndex,
+        });
+      }
+    }
+  }
+
+  // 3. Tileset references
+  if (options.mode === 'tileset' && options.tiles && options.tiles.length > 0) {
+    const destPt = options.destinationPatternTable ?? 0;
+    const deduplicationEnabled = options.deduplicationEnabled ?? true;
+    const flipDeduplicationEnabled = options.flipDeduplicationEnabled ?? false;
+    const visibleTiles = deduplicationEnabled
+      ? flipDeduplicationEnabled
+        ? deduplicateTilesConsideringFlips(options.tiles)
+        : deduplicateTiles(options.tiles)
+      : options.tiles;
+
+    const baseOffset = destPt * NES_PATTERN_TABLE_TILE_COUNT;
+    const localIndex = targetIndex - baseOffset;
+    if (localIndex >= 0 && localIndex < visibleTiles.length) {
+      const tile = visibleTiles[localIndex];
+      references.push({
+        type: 'tileset',
+        tileIndex: localIndex,
+        sourceIndex: tile?.id,
+        physicalTileIndex: targetIndex,
+      });
+    }
+  }
+
+  return references;
+}
+
+export function buildPhysicalTileReferenceIndex(
+  options: Omit<CollectChrTileReferencesOptions, 'physicalTileIndex'>,
+): Map<number, readonly ChrTileReference[]> {
+  const index = new Map<number, ChrTileReference[]>();
+
+  const addRef = (ref: ChrTileReference): void => {
+    const existing = index.get(ref.physicalTileIndex);
+    if (existing) {
+      existing.push(ref);
+    } else {
+      index.set(ref.physicalTileIndex, [ref]);
+    }
+  };
+
+  // 1. Animation references
+  if (options.animationModel) {
+    for (const anim of options.animationModel.animations) {
+      for (
+        let frameIndex = 0;
+        frameIndex < anim.frames.length;
+        frameIndex += 1
+      ) {
+        const frame = anim.frames[frameIndex];
+        if (!frame) continue;
+        for (
+          let spriteIndex = 0;
+          spriteIndex < frame.sprites.length;
+          spriteIndex += 1
+        ) {
+          const sprite = frame.sprites[spriteIndex];
+          if (sprite) {
+            addRef({
+              type: 'animation',
+              entity: anim.entity,
+              animationId: anim.id ?? anim.name,
+              animationName: anim.name,
+              frameIndex,
+              spriteIndex,
+              x: sprite.x,
+              y: sprite.y,
+              horizontalFlip: sprite.horizontalFlip,
+              verticalFlip: sprite.verticalFlip,
+              physicalTileIndex: sprite.physicalTileIndex,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Playfield references
+  if (options.mode === 'playfield' && options.playfieldNametable) {
+    const destPt = options.destinationPatternTable ?? 0;
+    const nametable = options.playfieldNametable;
+    const maxCells = Math.min(nametable.length, 960);
+    for (let i = 0; i < maxCells; i += 1) {
+      const tileIndex = nametable[i] ?? 0;
+      const physicalIndex = destPt * NES_PATTERN_TABLE_TILE_COUNT + tileIndex;
+      const row = Math.floor(i / 32);
+      const col = i % 32;
+      addRef({
+        type: 'playfield',
+        column: col,
+        row,
+        nametableIndex: i,
+        tileIndex,
+        physicalTileIndex: physicalIndex,
+      });
+    }
+  }
+
+  // 3. Tileset references
+  if (options.mode === 'tileset' && options.tiles && options.tiles.length > 0) {
+    const destPt = options.destinationPatternTable ?? 0;
+    const deduplicationEnabled = options.deduplicationEnabled ?? true;
+    const flipDeduplicationEnabled = options.flipDeduplicationEnabled ?? false;
+    const visibleTiles = deduplicationEnabled
+      ? flipDeduplicationEnabled
+        ? deduplicateTilesConsideringFlips(options.tiles)
+        : deduplicateTiles(options.tiles)
+      : options.tiles;
+
+    const baseOffset = destPt * NES_PATTERN_TABLE_TILE_COUNT;
+    visibleTiles.forEach((tile, localIndex) => {
+      const physicalIndex = baseOffset + localIndex;
+      addRef({
+        type: 'tileset',
+        tileIndex: localIndex,
+        sourceIndex: tile.id,
+        physicalTileIndex: physicalIndex,
+      });
+    });
+  }
+
+  return index;
 }

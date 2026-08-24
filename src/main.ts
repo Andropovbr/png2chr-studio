@@ -2426,6 +2426,14 @@ function renderAnimationWorkspace(): void {
       setDerivedStatus({ ...derivedStatus, error: null });
       render();
     },
+    onInspectInChr: (physicalTileIndex) => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'chr',
+        chr: { ...workspace.chr, selectedTileIndex: physicalTileIndex },
+      });
+      render();
+    },
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,
   };
@@ -2562,6 +2570,14 @@ function renderTilesetWorkspace(): void {
     },
     onFlipDeduplicationChange: (enabled) => {
       updateProject({ ...project, flipDeduplicationEnabled: enabled });
+      render();
+    },
+    onInspectInChr: (physicalTileIndex) => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'chr',
+        chr: { ...workspace.chr, selectedTileIndex: physicalTileIndex },
+      });
       render();
     },
     onDownloadBytes: downloadBytes,
@@ -2705,6 +2721,14 @@ function renderPlayfieldWorkspace(): void {
       });
       render();
     },
+    onInspectInChr: (physicalTileIndex) => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'chr',
+        chr: { ...workspace.chr, selectedTileIndex: physicalTileIndex },
+      });
+      render();
+    },
     onDownloadBytes: downloadBytes,
   });
 
@@ -2786,9 +2810,42 @@ function renderPaletteWorkspace(): void {
 function renderChrWorkspace(): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
 
+  let playfieldNametable: Uint8Array | null = null;
+  if (project.mode === 'playfield' && project.indexedImage !== null) {
+    const regionSize =
+      project.indexedImage.width === 256 && project.indexedImage.height === 240
+        ? PLAYFIELD_PALETTE_REGION_SIZE
+        : TILESET_PALETTE_REGION_SIZE;
+    const mappedImage = mapImageToNesPalettes(
+      project.indexedImage,
+      project.paletteSet,
+      project.paletteAssignments,
+      regionSize,
+      project.pixelOverrides,
+      false,
+      project.quantizationSettings.colorDistanceMode,
+    );
+    const mappedTiles = extractTiles(mappedImage).slice(
+      0,
+      project.tiles.length,
+    );
+    try {
+      const encodedPlayfield = encodePlayfield(
+        mappedImage,
+        mappedTiles,
+        project.deduplicationEnabled,
+        project.paletteAssignments,
+      );
+      playfieldNametable = encodedPlayfield.nametable;
+    } catch {
+      playfieldNametable = null;
+    }
+  }
+
   const workspaceElement = createChrWorkspace({
     mode: project.mode,
     animationModel: animModel,
+    playfieldNametable,
     baseChr:
       project.mode === 'animation' &&
       project.animation.destinationChr.length > 0
@@ -2882,6 +2939,33 @@ function renderChrWorkspace(): void {
       } else {
         render();
       }
+    },
+    onNavigateToAnimation: (animationId, frameIndex) => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'animation',
+        animation: {
+          ...workspace.animation,
+          selectedAnimationId: animationId,
+          selectedFrameIndex: frameIndex,
+        },
+      });
+      changeMode('animation');
+    },
+    onNavigateToPlayfield: (column, row) => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'playfield',
+        zoomedPaletteRegion: Math.floor(row / 2) * 16 + Math.floor(column / 2),
+      });
+      changeMode('playfield');
+    },
+    onNavigateToTileset: () => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'tileset',
+      });
+      changeMode('tileset');
     },
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,

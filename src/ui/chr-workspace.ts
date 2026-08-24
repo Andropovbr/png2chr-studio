@@ -6,6 +6,7 @@ import {
   analyzeBaseChrOccupancy,
   classifyChrSlots,
   collectChrHighlightTileIndices,
+  collectPhysicalTileReferences,
   createPatternTableSlots,
   encodePatternTableSlots,
   NES_CHR_ROM_SIZE,
@@ -52,6 +53,7 @@ export const NEUTRAL_NES_GRAYSCALE = [
 export interface ChrWorkspaceOptions {
   readonly mode: ProjectMode;
   readonly animationModel: AnimationProjectModel | null;
+  readonly playfieldNametable?: Uint8Array | null;
   readonly baseChr: Uint8Array | null;
   readonly baseChrName: string | null;
   readonly patternTable: SpritePatternTable;
@@ -79,6 +81,12 @@ export interface ChrWorkspaceOptions {
   readonly loading?: boolean;
   readonly error?: DisplayError | null;
   readonly onNavigateToWorkspace?: (workspace: WorkspaceView) => void;
+  readonly onNavigateToAnimation?: (
+    animationId: string,
+    frameIndex: number,
+  ) => void;
+  readonly onNavigateToPlayfield?: (column: number, row: number) => void;
+  readonly onNavigateToTileset?: (tileIndex: number) => void;
   readonly onDownloadBytes?: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText?: (text: string, fileName: string) => void;
 }
@@ -1506,6 +1514,21 @@ export function createChrWorkspace(
     options.selectedTileIndex !== undefined &&
     highlightedIndices.has(options.selectedTileIndex);
 
+  const selectedReferences =
+    options.selectedTileIndex !== null &&
+    options.selectedTileIndex !== undefined
+      ? collectPhysicalTileReferences({
+          physicalTileIndex: options.selectedTileIndex,
+          mode: options.mode,
+          animationModel: options.animationModel,
+          playfieldNametable: options.playfieldNametable,
+          destinationPatternTable: options.destinationPatternTable,
+          tiles: options.tiles,
+          deduplicationEnabled: options.deduplicationEnabled,
+          flipDeduplicationEnabled: options.flipDeduplicationEnabled,
+        })
+      : [];
+
   const tileInspector = createChrTileInspector({
     selectedTileIndex: options.selectedTileIndex ?? null,
     finalChrBytes: metrics.finalChrBytes,
@@ -1518,6 +1541,28 @@ export function createChrWorkspace(
     colors: previewColors,
     isHighlighted: isSelectedTileHighlighted,
     highlightScopeLabel: highlightScope !== 'none' ? highlightScopeLabel : null,
+    references: selectedReferences,
+    onNavigateToReference: (ref) => {
+      if (ref.type === 'animation') {
+        if (options.onNavigateToAnimation) {
+          options.onNavigateToAnimation(ref.animationId, ref.frameIndex);
+        } else if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('animation');
+        }
+      } else if (ref.type === 'playfield') {
+        if (options.onNavigateToPlayfield) {
+          options.onNavigateToPlayfield(ref.column, ref.row);
+        } else if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('playfield');
+        }
+      } else {
+        if (options.onNavigateToTileset) {
+          options.onNavigateToTileset(ref.tileIndex);
+        } else if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('tileset');
+        }
+      }
+    },
     onDeselect: () => {
       if (options.onSelectTile) {
         options.onSelectTile(null);
@@ -1536,6 +1581,19 @@ export function createChrWorkspace(
     reusePanel,
     exportPanel,
   );
+
+  // Auto-focus / visibility scroll for selected slot
+  if (
+    options.selectedTileIndex !== null &&
+    options.selectedTileIndex !== undefined
+  ) {
+    const slotEl = viewerPanel.querySelector(
+      `[data-physical-index="${String(options.selectedTileIndex)}"]`,
+    );
+    if (slotEl && typeof slotEl.scrollIntoView === 'function') {
+      slotEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
 
   const result = workspace as unknown as ChrWorkspaceElement;
   Object.defineProperties(result, {

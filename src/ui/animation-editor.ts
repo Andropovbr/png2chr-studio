@@ -162,6 +162,7 @@ export interface AnimationEditorOptions {
   ) => void;
   readonly onDestinationFile: (file: File) => void;
   readonly onDestinationClear: () => void;
+  readonly onInspectInChr?: (physicalTileIndex: number) => void;
   readonly onDownloadBytes: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText: (text: string, fileName: string) => void;
 }
@@ -1907,8 +1908,31 @@ function createSelectedAnimationMapping(
           .toString(16)
           .padStart(2, '0')
           .toUpperCase()}`;
+
+        if (options.onInspectInChr) {
+          const inspectBtn = document.createElement('button');
+          inspectBtn.type = 'button';
+          inspectBtn.className =
+            'button secondary-button animation-inspect-chr-btn';
+          inspectBtn.textContent = t('chrInspectInChrAction');
+          inspectBtn.title = t('chrInspectInChrTitle', {
+            hex: sprite.physicalTileIndex
+              .toString(16)
+              .toUpperCase()
+              .padStart(2, '0'),
+          });
+          inspectBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            options.onInspectInChr?.(sprite.physicalTileIndex);
+          });
+          cell.append(details, inspectBtn);
+        } else {
+          cell.append(details);
+        }
       }
-      cell.append(details);
+      if (!sprite) {
+        cell.append(details);
+      }
       grid.append(cell);
     });
     article.append(frameTitle, grid);
@@ -2329,8 +2353,31 @@ function createMapping(options: AnimationEditorOptions): HTMLElement {
             .toString(16)
             .padStart(2, '0')
             .toUpperCase()}`;
+
+          if (options.onInspectInChr) {
+            const inspectBtn = document.createElement('button');
+            inspectBtn.type = 'button';
+            inspectBtn.className =
+              'button secondary-button animation-inspect-chr-btn';
+            inspectBtn.textContent = t('chrInspectInChrAction');
+            inspectBtn.title = t('chrInspectInChrTitle', {
+              hex: sprite.physicalTileIndex
+                .toString(16)
+                .toUpperCase()
+                .padStart(2, '0'),
+            });
+            inspectBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              options.onInspectInChr?.(sprite.physicalTileIndex);
+            });
+            cell.append(details, inspectBtn);
+          } else {
+            cell.append(details);
+          }
         }
-        cell.append(details);
+        if (!sprite) {
+          cell.append(details);
+        }
         grid.append(cell);
       });
       article.append(frameTitle, grid);
