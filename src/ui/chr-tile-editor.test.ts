@@ -284,6 +284,38 @@ describe('ChrTileEditor component', () => {
 
     const paletteBtns = element.querySelectorAll('.chr-editor-color-btn');
     expect(paletteBtns.length).toBe(4);
+
+    const canvasWrapper = element.querySelector(
+      '.chr-tile-editor-canvas-wrapper',
+    );
+    expect(canvasWrapper).not.toBeNull();
+    expect(canvasWrapper?.classList.contains('has-grid')).toBe(true);
+
+    const gridOverlay = element.querySelector('.chr-tile-editor-grid-overlay');
+    expect(gridOverlay).not.toBeNull();
+    expect(gridOverlay?.classList.contains('is-visible')).toBe(true);
+    expect(gridOverlay?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('renders without grid overlay when showGrid is false and toggles grid state', () => {
+    const onToggleGrid = vi.fn();
+    const options = createTestOptions({ showGrid: false, onToggleGrid });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+
+    const canvasWrapper = element.querySelector(
+      '.chr-tile-editor-canvas-wrapper',
+    );
+    expect(canvasWrapper?.classList.contains('has-grid')).toBe(false);
+
+    const gridOverlay = element.querySelector('.chr-tile-editor-grid-overlay');
+    expect(gridOverlay?.classList.contains('is-visible')).toBe(false);
+
+    const gridToggleBtn = element.querySelector('.chr-editor-grid-btn');
+    expect(gridToggleBtn?.classList.contains('is-active')).toBe(false);
+    expect(gridToggleBtn?.getAttribute('aria-pressed')).toBe('false');
+
+    gridToggleBtn?.click();
+    expect(onToggleGrid).toHaveBeenCalledWith(true);
   });
 
   it('batches an entire Pencil drag stroke into a single atomic history step', () => {

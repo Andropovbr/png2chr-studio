@@ -477,12 +477,19 @@ export function createChrTileEditor(
   const canvasContainer = document.createElement('div');
   canvasContainer.className = 'chr-tile-editor-canvas-container';
 
+  const canvasWrapper = document.createElement('div');
+  canvasWrapper.className = `chr-tile-editor-canvas-wrapper${showGrid ? ' has-grid' : ''}`;
+
   const canvas = document.createElement('canvas');
   canvas.className = `chr-tile-editor-canvas${showGrid ? ' has-grid' : ''}`;
   canvas.width = TILE_SIZE;
   canvas.height = TILE_SIZE;
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', t('chrEditorCanvasAriaLabel'));
+
+  const gridOverlay = document.createElement('div');
+  gridOverlay.className = `chr-tile-editor-grid-overlay${showGrid ? ' is-visible' : ''}`;
+  gridOverlay.setAttribute('aria-hidden', 'true');
 
   // Render 8x8 pixels onto canvas
   const ctx = canvas.getContext('2d');
@@ -501,7 +508,8 @@ export function createChrTileEditor(
     ctx.putImageData(imgData, 0, 0);
   }
 
-  canvasContainer.append(canvas);
+  canvasWrapper.append(canvas, gridOverlay);
+  canvasContainer.append(canvasWrapper);
 
   // --- 4. Status / Coordinates Bar ---
   const statusBar = document.createElement('div');
