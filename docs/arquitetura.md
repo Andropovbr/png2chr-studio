@@ -172,6 +172,11 @@ O fluxo de transformação de uma imagem PNG em estruturas consumíveis pelo NES
 A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como duas **Pattern Tables de 4 KiB** (PT0 e PT1), contendo 256 tiles de 8×8 cada.
 
 - **Codificação Planar 2bpp:** Cada tile é composto por 16 bytes. Os primeiros 8 bytes representam o plano de bits menos significativo (bitplane 0) de cada uma das 8 linhas do tile. Os 8 bytes seguintes representam o plano mais significativo (bitplane 1).
+- **Operações Puras de Edição de Tile (`src/core/chr-tile-editor.ts`):** Módulo desacoplado e funcional contendo transformações geométricas, mutação atômica e codificação de tiles NES 8×8 (64 pixels, valores 0..3):
+  - _Transformações Geométricas:_ Espelhamento horizontal (`flipTileHorizontal`), espelhamento vertical (`flipTileVertical`), deslocamentos direcionais com preenchimento ou wrap cíclico (`shiftTile`) e rotações 90° horário/anti-horário (`rotateTile90`).
+  - _Preenchimento e Limpeza:_ Preenchimento por inundação 4-conectado (`floodFillTile`), limpeza para índice arbitrário (`clearTile`) e mutação pontual com verificação de limites (`setTilePixel`).
+  - _Codificação e Decodificação Planar Direta:_ Conversão bidirecional entre matriz de 64 pixels e buffer planar NES de 16 bytes (`encodeChrTileFromPixels`, `decodeChrTileToPixels`).
+  - _Gerenciamento Genérico de Histórico (`createTileHistory`):_ Pilha delimitada de Undo/Redo com descarte de estados duplicados consecutivos e invalidação de histórico futuro em nova ação.
 - **Alocação de Sprites e Pattern Table Selecionada:** No modo animação, o usuário seleciona explicitamente a pattern table de sprites (PT0 ou PT1) que o jogo ativará no registro `PPUCTRL` (bit 3).
 - **Indexação Local OAM (8 bits):** O hardware de sprites do NES (OAM) armazena um índice de tile de 8 bits (`$00–$FF`). O Studio traduz o índice físico (0 a 511 na CHR física) para o índice local correspondente da tabela ativa (`tileIndex = physicalIndex - tableOffset`).
 - **Reutilização e Concatenação com Base CHR:** O Studio permite importar um arquivo base `.chr` de até 8 KiB. Os slots ocupados pela base são respeitados, e novos tiles do projeto são alocados nos primeiros slots livres da pattern table selecionada, evitando colisões ou substituições indevidas.
