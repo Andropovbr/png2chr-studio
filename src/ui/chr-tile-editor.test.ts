@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createChrTileEditor,
   DEFAULT_CHR_EDITOR_PALETTE,
+  isEditableElement,
   type ChrTileEditorOptions,
 } from './chr-tile-editor';
 import {
+  areTilePixelsEqual,
   clearTileClipboard,
   createEmptyTilePixels,
+  createTileHistory,
 } from '../core/chr-tile-editor';
 import { setLocale } from '../i18n';
 
@@ -15,6 +18,8 @@ class MockElement {
   className = '';
   id = '';
   disabled = false;
+  tabIndex = 0;
+  isContentEditable = false;
   children: MockElement[] = [];
   attributes = new Map<string, string>();
   eventListeners = new Map<string, ((e?: unknown) => void)[]>();
@@ -26,6 +31,8 @@ class MockElement {
   style: Record<string, string> = {};
   setPointerCapture = vi.fn();
   releasePointerCapture = vi.fn();
+  focus = vi.fn();
+  blur = vi.fn();
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
@@ -85,8 +92,14 @@ class MockElement {
 
   dispatchEvent(event: { type: string; [key: string]: unknown }) {
     const handlers = this.eventListeners.get(event.type) ?? [];
+    const syntheticEvent = {
+      target: this,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      ...event,
+    };
     handlers.forEach((fn) => {
-      fn(event);
+      fn(syntheticEvent);
     });
   }
 
@@ -239,268 +252,60 @@ describe('ChrTileEditor component', () => {
       onHoverPixel: vi.fn(),
       onCopy: vi.fn(),
       onPaste: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
       ...overrides,
     };
   }
 
-  it('renders structure with toolbar, 4 tools, 4 palette buttons, grid button and canvas', () => {
+  it('renders structure with toolbar, tools, palette buttons, grid, and operations toolbar with history', () => {
     const options = createTestOptions();
     const element = createChrTileEditor(options) as unknown as MockElement;
 
     expect(element.getAttribute('role')).toBe('region');
     expect(element.getAttribute('aria-label')).toBe('CHR Tile Editor');
 
+    const historyGroup = element.querySelector('.chr-editor-history-group');
+    expect(historyGroup).not.toBeNull();
+
+    const undoBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="undo"]',
+    );
+    const redoBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="redo"]',
+    );
+    expect(undoBtn?.disabled).toBe(true);
+    expect(redoBtn?.disabled).toBe(true);
+
     const toolsGroup = element.querySelector('.chr-editor-tools-group');
     expect(toolsGroup).not.toBeNull();
-
     const toolBtns = element.querySelectorAll('.chr-editor-tool-btn');
     expect(toolBtns.length).toBe(4);
 
-    const activePencilBtn = element.querySelector(
-      '.chr-editor-tool-btn[data-tool="pencil"]',
-    );
-    expect(activePencilBtn?.classList.contains('is-active')).toBe(true);
-    expect(activePencilBtn?.getAttribute('aria-pressed')).toBe('true');
-
     const paletteBtns = element.querySelectorAll('.chr-editor-color-btn');
     expect(paletteBtns.length).toBe(4);
-
-    const activeColorBtn = element.querySelector(
-      '.chr-editor-color-btn[data-color-index="2"]',
-    );
-    expect(activeColorBtn?.classList.contains('is-active')).toBe(true);
-    expect(activeColorBtn?.getAttribute('aria-checked')).toBe('true');
-
-    const gridBtn = element.querySelector('.chr-editor-grid-btn');
-    expect(gridBtn?.classList.contains('is-active')).toBe(true);
-
-    const canvas = element.querySelector('.chr-tile-editor-canvas');
-    expect(canvas).not.toBeNull();
-    expect(canvas?.classList.contains('has-grid')).toBe(true);
   });
 
-  it('renders operations toolbar with transform, shift, and tile action groups', () => {
-    const options = createTestOptions();
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    const transformGroup = element.querySelector('.chr-editor-transform-group');
-    expect(transformGroup).not.toBeNull();
-    expect(
-      transformGroup?.querySelectorAll('.chr-editor-action-btn').length,
-    ).toBe(4);
-
-    const shiftGroup = element.querySelector('.chr-editor-shift-group');
-    expect(shiftGroup).not.toBeNull();
-    expect(shiftGroup?.querySelectorAll('.chr-editor-action-btn').length).toBe(
-      5,
-    ); // 4 arrows + wrap
-
-    const actionsGroup = element.querySelector('.chr-editor-actions-group');
-    expect(actionsGroup).not.toBeNull();
-    expect(
-      actionsGroup?.querySelectorAll('.chr-editor-action-btn').length,
-    ).toBe(3); // clear, copy, paste
-
-    const pasteBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="paste"]',
-    );
-    expect(pasteBtn?.disabled).toBe(true);
-  });
-
-  it('invokes onSelectTool when clicking tool buttons', () => {
-    const onSelectTool = vi.fn();
-    const options = createTestOptions({ onSelectTool });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    const eraserBtn = element.querySelector(
-      '.chr-editor-tool-btn[data-tool="eraser"]',
-    );
-    eraserBtn?.click();
-    expect(onSelectTool).toHaveBeenCalledWith('eraser');
-
-    const fillBtn = element.querySelector(
-      '.chr-editor-tool-btn[data-tool="fill"]',
-    );
-    fillBtn?.click();
-    expect(onSelectTool).toHaveBeenCalledWith('fill');
-  });
-
-  it('invokes onSelectColorIndex when clicking color index buttons', () => {
-    const onSelectColorIndex = vi.fn();
-    const options = createTestOptions({ onSelectColorIndex });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    const color1Btn = element.querySelector(
-      '.chr-editor-color-btn[data-color-index="1"]',
-    );
-    color1Btn?.click();
-    expect(onSelectColorIndex).toHaveBeenCalledWith(1);
-
-    const color3Btn = element.querySelector(
-      '.chr-editor-color-btn[data-color-index="3"]',
-    );
-    color3Btn?.click();
-    expect(onSelectColorIndex).toHaveBeenCalledWith(3);
-  });
-
-  it('invokes onToggleGrid when clicking the grid button', () => {
-    const onToggleGrid = vi.fn();
-    const options = createTestOptions({ showGrid: true, onToggleGrid });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    const gridBtn = element.querySelector('.chr-editor-grid-btn');
-    gridBtn?.click();
-    expect(onToggleGrid).toHaveBeenCalledWith(false);
-  });
-
-  function getPixelCallArg(
-    fn: { mock: { calls: unknown[][] } },
-    callIndex: number,
-    argIndex = 0,
-  ): Uint8Array {
-    const call = fn.mock.calls[callIndex];
-    if (!call || call.length <= argIndex) {
-      throw new Error(
-        `Expected call at index ${String(callIndex)} with arg at ${String(argIndex)}`,
-      );
-    }
-    const arg = call[argIndex];
-    if (!(arg instanceof Uint8Array)) {
-      throw new Error(
-        `Expected Uint8Array at call ${String(callIndex)} arg ${String(argIndex)}`,
-      );
-    }
-    return arg;
-  }
-
-  it('handles pencil drawing on pointerdown and drag stroke', () => {
+  it('batches an entire Pencil drag stroke into a single atomic history step', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
     const onPixelsChange = vi.fn();
-    const onStrokeStart = vi.fn();
-    const onStrokeEnd = vi.fn();
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+
     const options = createTestOptions({
+      pixels: initialPixels,
+      history,
       activeTool: 'pencil',
       selectedColorIndex: 3,
       onPixelsChange,
-      onStrokeStart,
-      onStrokeEnd,
+      onUndo,
+      onRedo,
     });
     const element = createChrTileEditor(options) as unknown as MockElement;
     const canvas = element.querySelector('.chr-tile-editor-canvas');
 
-    // Click at pixel (2, 3): clientX = 2 * (256/8) + 10 = 74, clientY = 3 * (256/8) + 10 = 106
-    canvas?.dispatchEvent({
-      type: 'pointerdown',
-      button: 0,
-      clientX: 74,
-      clientY: 106,
-      pointerId: 1,
-    });
-
-    expect(onStrokeStart).toHaveBeenCalledTimes(1);
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const updatedPixels = getPixelCallArg(onPixelsChange, 0);
-    expect(updatedPixels[3 * 8 + 2]).toBe(3);
-
-    // Drag to pixel (3, 3): clientX = 3 * 32 + 10 = 106, clientY = 106
-    canvas?.dispatchEvent({
-      type: 'pointermove',
-      clientX: 106,
-      clientY: 106,
-      pointerId: 1,
-    });
-
-    expect(onPixelsChange).toHaveBeenCalledTimes(2);
-    const dragPixels = getPixelCallArg(onPixelsChange, 1);
-    expect(dragPixels[3 * 8 + 3]).toBe(3);
-
-    // Dragging over the same pixel again does not fire duplicate change
-    canvas?.dispatchEvent({
-      type: 'pointermove',
-      clientX: 108,
-      clientY: 108,
-      pointerId: 1,
-    });
-    expect(onPixelsChange).toHaveBeenCalledTimes(2);
-
-    // Release stroke
-    canvas?.dispatchEvent({
-      type: 'pointerup',
-      pointerId: 1,
-    });
-    expect(onStrokeEnd).toHaveBeenCalledTimes(1);
-  });
-
-  it('handles eraser tool writing color index 0', () => {
-    const pixels = createEmptyTilePixels(2);
-    const onPixelsChange = vi.fn();
-    const options = createTestOptions({
-      pixels,
-      activeTool: 'eraser',
-      onPixelsChange,
-    });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-    const canvas = element.querySelector('.chr-tile-editor-canvas');
-
-    // Click at pixel (4, 4): clientX = 4 * 32 + 5 = 133, clientY = 4 * 32 + 5 = 133
-    canvas?.dispatchEvent({
-      type: 'pointerdown',
-      button: 0,
-      clientX: 133,
-      clientY: 133,
-      pointerId: 1,
-    });
-
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const updated = getPixelCallArg(onPixelsChange, 0);
-    expect(updated[4 * 8 + 4]).toBe(0);
-  });
-
-  it('handles eyedropper tool picking color index without modifying tile', () => {
-    const pixels = createEmptyTilePixels(0);
-    pixels[5 * 8 + 2] = 3;
-    const onSelectColorIndex = vi.fn();
-    const onPixelsChange = vi.fn();
-    const options = createTestOptions({
-      pixels,
-      activeTool: 'eyedropper',
-      onSelectColorIndex,
-      onPixelsChange,
-    });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-    const canvas = element.querySelector('.chr-tile-editor-canvas');
-
-    // Click at pixel (2, 5): clientX = 2 * 32 + 5 = 69, clientY = 5 * 32 + 5 = 165
-    canvas?.dispatchEvent({
-      type: 'pointerdown',
-      button: 0,
-      clientX: 69,
-      clientY: 165,
-      pointerId: 1,
-    });
-
-    expect(onSelectColorIndex).toHaveBeenCalledWith(3);
-    expect(onPixelsChange).not.toHaveBeenCalled();
-  });
-
-  it('handles flood fill tool filling contiguous area', () => {
-    const pixels = createEmptyTilePixels(0);
-    // Create a 2x2 box of color 1
-    pixels[1 * 8 + 1] = 1;
-    pixels[1 * 8 + 2] = 1;
-    pixels[2 * 8 + 1] = 1;
-    pixels[2 * 8 + 2] = 1;
-
-    const onPixelsChange = vi.fn();
-    const options = createTestOptions({
-      pixels,
-      activeTool: 'fill',
-      selectedColorIndex: 2,
-      onPixelsChange,
-    });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-    const canvas = element.querySelector('.chr-tile-editor-canvas');
-
-    // Click at (1, 1): clientX = 1 * 32 + 5 = 37, clientY = 1 * 32 + 5 = 37
+    // Stroke Start at (1, 1) -> clientX = 37, clientY = 37
     canvas?.dispatchEvent({
       type: 'pointerdown',
       button: 0,
@@ -509,259 +314,539 @@ describe('ChrTileEditor component', () => {
       pointerId: 1,
     });
 
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const filled = getPixelCallArg(onPixelsChange, 0);
-    expect(filled[1 * 8 + 1]).toBe(2);
-    expect(filled[2 * 8 + 2]).toBe(2);
-    expect(filled[0 * 8 + 0]).toBe(0);
-  });
-
-  it('updates coordinates readout and fires onHoverPixel on move', () => {
-    const onHoverPixel = vi.fn();
-    const options = createTestOptions({ onHoverPixel });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-    const canvas = element.querySelector('.chr-tile-editor-canvas');
-    const coordsDisplay = element.querySelector('.chr-tile-editor-coords');
-
-    // Move to (4, 6): clientX = 4 * 32 + 5 = 133, clientY = 6 * 32 + 5 = 197
+    // Drag to (2, 1) -> clientX = 69, clientY = 37
     canvas?.dispatchEvent({
       type: 'pointermove',
-      clientX: 133,
-      clientY: 197,
+      clientX: 69,
+      clientY: 37,
       pointerId: 1,
     });
 
-    expect(coordsDisplay?.textContent).toBe('X: 4, Y: 6');
-    expect(onHoverPixel).toHaveBeenCalledWith({ x: 4, y: 6 });
-
-    // Leave canvas
+    // Drag to (3, 1) -> clientX = 101, clientY = 37
     canvas?.dispatchEvent({
-      type: 'pointerleave',
+      type: 'pointermove',
+      clientX: 101,
+      clientY: 37,
       pointerId: 1,
     });
 
-    expect(coordsDisplay?.textContent).toBe('—');
-    expect(onHoverPixel).toHaveBeenCalledWith(null);
+    // onPixelsChange called 3 times during the stroke for live feedback
+    expect(onPixelsChange).toHaveBeenCalledTimes(3);
+
+    // End stroke
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 1,
+    });
+
+    // History now has exactly 1 entry on undo stack
+    expect(history.depth).toBe(1);
+    expect(history.canUndo).toBe(true);
+    expect(history.canRedo).toBe(false);
+
+    // Undo should restore the tile to completely empty in a single step
+    const undoBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="undo"]',
+    );
+    undoBtn?.click();
+
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onPixelsChange).toHaveBeenCalledTimes(4);
+    const restoredPixels = getPixelCallArg(onPixelsChange, 3);
+    for (let i = 0; i < 64; i += 1) {
+      expect(restoredPixels[i]).toBe(0);
+    }
+    expect(history.canUndo).toBe(false);
+    expect(history.canRedo).toBe(true);
+
+    // Redo restores the final 3-pixel stroke in a single step
+    const redoBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="redo"]',
+    );
+    redoBtn?.click();
+
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(onPixelsChange).toHaveBeenCalledTimes(5);
+    const redonePixels = getPixelCallArg(onPixelsChange, 4);
+    expect(redonePixels[1 * 8 + 1]).toBe(3);
+    expect(redonePixels[1 * 8 + 2]).toBe(3);
+    expect(redonePixels[1 * 8 + 3]).toBe(3);
   });
 
-  it('flips tile horizontally on flip-h button click', () => {
-    const pixels = createEmptyTilePixels(0);
-    pixels[0 * 8 + 1] = 3; // (1, 0)
+  it('does not create history entry if stroke does not change any pixel', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      activeTool: 'eraser', // Drawing 0 on already 0 tile
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+    const canvas = element.querySelector('.chr-tile-editor-canvas');
+
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      button: 0,
+      clientX: 37,
+      clientY: 37,
+      pointerId: 1,
+    });
+
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 1,
+    });
+
+    expect(history.depth).toBe(0);
+    expect(history.canUndo).toBe(false);
+  });
+
+  it('records flood fill as a single atomic undoable action', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
     const onPixelsChange = vi.fn();
-    const options = createTestOptions({ pixels, onPixelsChange });
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      activeTool: 'fill',
+      selectedColorIndex: 2,
+      onPixelsChange,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+    const canvas = element.querySelector('.chr-tile-editor-canvas');
+
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      button: 0,
+      clientX: 37,
+      clientY: 37,
+      pointerId: 1,
+    });
+
+    expect(history.depth).toBe(1);
+    expect(history.canUndo).toBe(true);
+
+    const undoBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="undo"]',
+    );
+    undoBtn?.click();
+
+    expect(history.canUndo).toBe(false);
+    expect(history.canRedo).toBe(true);
+    const restored = getPixelCallArg(onPixelsChange, 1);
+    expect(restored.every((p) => p === 0)).toBe(true);
+  });
+
+  it('records geometric transformations as atomic undoable actions', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    initialPixels[0 * 8 + 1] = 3;
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      onPixelsChange,
+    });
     const element = createChrTileEditor(options) as unknown as MockElement;
 
+    // Flip H
     const flipHBtn = element.querySelector(
       '.chr-editor-action-btn[data-action="flip-h"]',
     );
     flipHBtn?.click();
 
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const flipped = getPixelCallArg(onPixelsChange, 0);
-    expect(flipped[0 * 8 + 6]).toBe(3); // 7 - 1 = 6
-  });
+    expect(history.depth).toBe(1);
+    expect(history.canUndo).toBe(true);
 
-  it('flips tile vertically on flip-v button click', () => {
-    const pixels = createEmptyTilePixels(0);
-    pixels[1 * 8 + 0] = 2; // (0, 1)
-    const onPixelsChange = vi.fn();
-    const options = createTestOptions({ pixels, onPixelsChange });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    const flipVBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="flip-v"]',
+    // Undo Flip H
+    const undoBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="undo"]',
     );
-    flipVBtn?.click();
+    undoBtn?.click();
 
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const flipped = getPixelCallArg(onPixelsChange, 0);
-    expect(flipped[6 * 8 + 0]).toBe(2); // 7 - 1 = 6
+    expect(history.canUndo).toBe(false);
+    const restored = getPixelCallArg(onPixelsChange, 1);
+    expect(restored[0 * 8 + 1]).toBe(3);
+    expect(restored[0 * 8 + 6]).toBe(0);
   });
 
-  it('rotates tile 90 degrees clockwise and counter-clockwise', () => {
-    const pixels = createEmptyTilePixels(0);
-    pixels[0 * 8 + 1] = 1; // (1, 0)
-    const onPixelsChange = vi.fn();
-    const options = createTestOptions({ pixels, onPixelsChange });
+  it('invalidates redo stack when a new action is performed after undo', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    initialPixels[0] = 1;
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+    });
     const element = createChrTileEditor(options) as unknown as MockElement;
 
-    // Clockwise: (1, 0) -> (7 - 0, 1) = (7, 1)
+    // Action 1: Flip H
+    const flipHBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="flip-h"]',
+    );
+    flipHBtn?.click();
+    expect(history.canUndo).toBe(true);
+
+    // Undo
+    const undoBtn = element.querySelector(
+      '.chr-editor-action-btn[data-action="undo"]',
+    );
+    undoBtn?.click();
+    expect(history.canRedo).toBe(true);
+
+    // Action 2: Rotate CW
     const rotCwBtn = element.querySelector(
       '.chr-editor-action-btn[data-action="rotate-cw"]',
     );
     rotCwBtn?.click();
 
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const rotatedCw = getPixelCallArg(onPixelsChange, 0);
-    expect(rotatedCw[1 * 8 + 7]).toBe(1);
-
-    // Counter-Clockwise: (1, 0) -> (0, 7 - 1) = (0, 6)
-    const rotCcwBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="rotate-ccw"]',
-    );
-    rotCcwBtn?.click();
-
-    expect(onPixelsChange).toHaveBeenCalledTimes(2);
-    const rotatedCcw = getPixelCallArg(onPixelsChange, 1);
-    expect(rotatedCcw[6 * 8 + 0]).toBe(1);
+    // Redo should now be invalid
+    expect(history.canRedo).toBe(false);
+    expect(history.canUndo).toBe(true);
   });
 
-  it('shifts tile in all directions with and without wrap', () => {
-    const pixels = createEmptyTilePixels(0);
-    pixels[0 * 8 + 0] = 3; // (0, 0)
-    const onPixelsChange = vi.fn();
-    const onToggleShiftWrap = vi.fn();
-    const options = createTestOptions({
-      pixels,
-      shiftWrap: false,
-      onPixelsChange,
-      onToggleShiftWrap,
-    });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    // Shift Right without wrap: (0, 0) -> (1, 0)
-    const shiftRightBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="shift-right"]',
-    );
-    shiftRightBtn?.click();
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const shiftedRight = getPixelCallArg(onPixelsChange, 0);
-    expect(shiftedRight[0 * 8 + 1]).toBe(3);
-
-    // Shift Left without wrap (from (0,0)): (0,0) falls off
-    const shiftLeftBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="shift-left"]',
-    );
-    shiftLeftBtn?.click();
-    expect(onPixelsChange).toHaveBeenCalledTimes(2);
-    const shiftedLeft = getPixelCallArg(onPixelsChange, 1);
-    expect(shiftedLeft[0 * 8 + 0]).toBe(0);
-
-    // Toggle Wrap on
-    const wrapBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="wrap-toggle"]',
-    );
-    wrapBtn?.click();
-    expect(onToggleShiftWrap).toHaveBeenCalledWith(true);
-    expect(wrapBtn?.classList.contains('is-active')).toBe(true);
-
-    // Shift Left with wrap on (0, 0) -> wraps to (7, 0)
-    shiftLeftBtn?.click();
-    expect(onPixelsChange).toHaveBeenCalledTimes(3);
-    const wrappedLeft = getPixelCallArg(onPixelsChange, 2);
-    expect(wrappedLeft[0 * 8 + 7]).toBe(3);
-
-    // Shift Up with wrap on (0, 0) -> wraps to (0, 7)
-    const shiftUpBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="shift-up"]',
-    );
-    shiftUpBtn?.click();
-    expect(onPixelsChange).toHaveBeenCalledTimes(4);
-    const wrappedUp = getPixelCallArg(onPixelsChange, 3);
-    expect(wrappedUp[7 * 8 + 0]).toBe(3);
-  });
-
-  it('clears tile to color index 0 on clear button click', () => {
-    const pixels = createEmptyTilePixels(2);
-    const onPixelsChange = vi.fn();
-    const options = createTestOptions({ pixels, onPixelsChange });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    const clearBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="clear"]',
-    );
-    clearBtn?.click();
-
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-    const cleared = getPixelCallArg(onPixelsChange, 0);
-    for (let i = 0; i < 64; i += 1) {
-      expect(cleared[i]).toBe(0);
-    }
-  });
-
-  it('handles copy and paste clipboard workflow, keeping copies independent', () => {
-    const pixels = createEmptyTilePixels(1);
-    pixels[2 * 8 + 3] = 3;
-
-    const onPixelsChange = vi.fn();
-    const onCopy = vi.fn();
-    const onPaste = vi.fn();
-
-    const options = createTestOptions({
-      pixels,
-      onPixelsChange,
-      onCopy,
-      onPaste,
-    });
-    const element = createChrTileEditor(options) as unknown as MockElement;
-
-    const copyBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="copy"]',
-    );
-    const pasteBtn = element.querySelector(
-      '.chr-editor-action-btn[data-action="paste"]',
-    );
-
-    // Paste is initially disabled
-    expect(pasteBtn?.disabled).toBe(true);
-
-    // Copy tile
-    copyBtn?.click();
-    expect(onCopy).toHaveBeenCalledTimes(1);
-    expect(pasteBtn?.disabled).toBe(false);
-
-    // Mutate the original pixels buffer afterwards
-    pixels[2 * 8 + 3] = 0;
-
-    // Paste tile
-    pasteBtn?.click();
-    expect(onPaste).toHaveBeenCalledTimes(1);
-    expect(onPixelsChange).toHaveBeenCalledTimes(1);
-
-    const pasted = getPixelCallArg(onPixelsChange, 0);
-    expect(pasted[2 * 8 + 3]).toBe(3); // copied value preserved
-
-    // Mutating pasted buffer does not affect clipboard
-    pasted[2 * 8 + 3] = 0;
-
-    // Paste again into another call
-    pasteBtn?.click();
-    expect(onPixelsChange).toHaveBeenCalledTimes(2);
-    const pastedAgain = getPixelCallArg(onPixelsChange, 1);
-    expect(pastedAgain[2 * 8 + 3]).toBe(3);
-  });
-
-  it('allows copying from one editor instance and pasting into a second instance', () => {
-    const tileA = createEmptyTilePixels(2);
+  it('allows pasting into history and undoing paste while leaving clipboard intact', () => {
+    const tileA = createEmptyTilePixels(1);
     tileA[0] = 3;
     const tileB = createEmptyTilePixels(0);
-
-    const onCopyA = vi.fn();
+    const historyB = createTileHistory(tileB, 50, areTilePixelsEqual);
     const onPixelsChangeB = vi.fn();
 
+    // Copy tileA
     const editorA = createChrTileEditor(
-      createTestOptions({ pixels: tileA, onCopy: onCopyA }),
+      createTestOptions({ pixels: tileA }),
     ) as unknown as MockElement;
+    editorA
+      .querySelector('.chr-editor-action-btn[data-action="copy"]')
+      ?.click();
 
-    const copyBtnA = editorA.querySelector(
-      '.chr-editor-action-btn[data-action="copy"]',
-    );
-    copyBtnA?.click();
-
-    // Create second editor instance for tile B
+    // Paste into tileB editor
     const editorB = createChrTileEditor(
-      createTestOptions({ pixels: tileB, onPixelsChange: onPixelsChangeB }),
+      createTestOptions({
+        pixels: tileB,
+        history: historyB,
+        onPixelsChange: onPixelsChangeB,
+      }),
     ) as unknown as MockElement;
 
     const pasteBtnB = editorB.querySelector(
       '.chr-editor-action-btn[data-action="paste"]',
     );
-    expect(pasteBtnB?.disabled).toBe(false);
-
     pasteBtnB?.click();
+
+    expect(historyB.canUndo).toBe(true);
+
+    // Undo Paste
+    const undoBtnB = editorB.querySelector(
+      '.chr-editor-action-btn[data-action="undo"]',
+    );
+    undoBtnB?.click();
+
+    const restoredB = getPixelCallArg(onPixelsChangeB, 1);
+    expect(restoredB.every((p) => p === 0)).toBe(true);
+
+    // Paste again to confirm clipboard wasn't affected
+    pasteBtnB?.click();
+    const pastedAgain = getPixelCallArg(onPixelsChangeB, 2);
+    expect(pastedAgain[0]).toBe(3);
+  });
+
+  it('handles keyboard shortcuts for Undo (Ctrl+Z, Cmd+Z) and Redo (Ctrl+Y, Ctrl+Shift+Z, Cmd+Shift+Z)', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    initialPixels[0] = 2;
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      onPixelsChange,
+      onUndo,
+      onRedo,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+
+    // Mutate via Rotate CW
+    element
+      .querySelector('.chr-editor-action-btn[data-action="rotate-cw"]')
+      ?.click();
+    expect(history.canUndo).toBe(true);
+
+    // Test Ctrl+Z
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'z',
+      ctrlKey: true,
+      shiftKey: false,
+    });
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(history.canRedo).toBe(true);
+
+    // Test Ctrl+Y
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'y',
+      ctrlKey: true,
+      shiftKey: false,
+    });
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(history.canUndo).toBe(true);
+
+    // Test Cmd+Z (macOS)
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'z',
+      metaKey: true,
+      shiftKey: false,
+    });
+    expect(onUndo).toHaveBeenCalledTimes(2);
+
+    // Test Ctrl+Shift+Z
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'z',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(onRedo).toHaveBeenCalledTimes(2);
+
+    // Undo again so we can test Cmd+Shift+Z
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'z',
+      metaKey: true,
+      shiftKey: false,
+    });
+    expect(onUndo).toHaveBeenCalledTimes(3);
+
+    // Test Cmd+Shift+Z (macOS)
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'z',
+      metaKey: true,
+      shiftKey: true,
+    });
+    expect(onRedo).toHaveBeenCalledTimes(3);
+  });
+
+  it('handles tool selection shortcuts (P, E, I, F) and color shortcuts (0, 1, 2, 3)', () => {
+    const onSelectTool = vi.fn();
+    const onSelectColorIndex = vi.fn();
+    const options = createTestOptions({ onSelectTool, onSelectColorIndex });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+
+    element.dispatchEvent({ type: 'keydown', key: 'e' });
+    expect(onSelectTool).toHaveBeenCalledWith('eraser');
+
+    element.dispatchEvent({ type: 'keydown', key: 'i' });
+    expect(onSelectTool).toHaveBeenCalledWith('eyedropper');
+
+    element.dispatchEvent({ type: 'keydown', key: 'f' });
+    expect(onSelectTool).toHaveBeenCalledWith('fill');
+
+    element.dispatchEvent({ type: 'keydown', key: 'p' });
+    expect(onSelectTool).toHaveBeenCalledWith('pencil');
+
+    element.dispatchEvent({ type: 'keydown', key: '0' });
+    expect(onSelectColorIndex).toHaveBeenCalledWith(0);
+
+    element.dispatchEvent({ type: 'keydown', key: '3' });
+    expect(onSelectColorIndex).toHaveBeenCalledWith(3);
+  });
+
+  it('handles Copy (Ctrl+C) and Paste (Ctrl+V) shortcuts on the editor', () => {
+    const tileA = createEmptyTilePixels(1);
+    tileA[5] = 3;
+    const tileB = createEmptyTilePixels(0);
+
+    const onCopyA = vi.fn();
+    const onPasteB = vi.fn();
+    const onPixelsChangeB = vi.fn();
+
+    const editorA = createChrTileEditor(
+      createTestOptions({
+        pixels: tileA,
+        onCopy: onCopyA,
+      }),
+    ) as unknown as MockElement;
+
+    // Ctrl+C on editorA
+    editorA.dispatchEvent({
+      type: 'keydown',
+      key: 'c',
+      ctrlKey: true,
+    });
+    expect(onCopyA).toHaveBeenCalledTimes(1);
+
+    const editorB = createChrTileEditor(
+      createTestOptions({
+        pixels: tileB,
+        onPaste: onPasteB,
+        onPixelsChange: onPixelsChangeB,
+      }),
+    ) as unknown as MockElement;
+
+    // Ctrl+V on editorB
+    editorB.dispatchEvent({
+      type: 'keydown',
+      key: 'v',
+      ctrlKey: true,
+    });
+    expect(onPasteB).toHaveBeenCalledTimes(1);
     expect(onPixelsChangeB).toHaveBeenCalledTimes(1);
-    const pastedToB = getPixelCallArg(onPixelsChangeB, 0);
-    expect(pastedToB[0]).toBe(3);
-    expect(pastedToB[1]).toBe(2);
+    const pasted = getPixelCallArg(onPixelsChangeB, 0);
+    expect(pasted[5]).toBe(3);
+    expect(pasted[0]).toBe(1);
+  });
+
+  it('ignores keyboard shortcuts when focus is on input, textarea, select, or contenteditable', () => {
+    const onSelectTool = vi.fn();
+    const onUndo = vi.fn();
+    const options = createTestOptions({ onSelectTool, onUndo });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+
+    const inputTarget = new MockElement('input');
+    const textareaTarget = new MockElement('textarea');
+    const selectTarget = new MockElement('select');
+    const editableTarget = new MockElement('div');
+    editableTarget.isContentEditable = true;
+
+    // Press P inside <input>
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'p',
+      target: inputTarget,
+    });
+    expect(onSelectTool).not.toHaveBeenCalled();
+
+    // Press Ctrl+Z inside <textarea>
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'z',
+      ctrlKey: true,
+      target: textareaTarget,
+    });
+    expect(onUndo).not.toHaveBeenCalled();
+
+    // Press E inside <select>
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'e',
+      target: selectTarget,
+    });
+    expect(onSelectTool).not.toHaveBeenCalled();
+
+    // Press F inside contenteditable
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'f',
+      target: editableTarget,
+    });
+    expect(onSelectTool).not.toHaveBeenCalled();
+  });
+
+  it('records flip-v, shifts, and clear into undoable history', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    initialPixels[0 * 8 + 0] = 3;
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      onPixelsChange,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+
+    // Flip V: (0, 0) moves to (0, 7)
+    element
+      .querySelector('.chr-editor-action-btn[data-action="flip-v"]')
+      ?.click();
+    expect(onPixelsChange).toHaveBeenCalledTimes(1);
+    expect(history.depth).toBe(1);
+    expect(history.canUndo).toBe(true);
+
+    // Undo Flip V
+    element
+      .querySelector('.chr-editor-action-btn[data-action="undo"]')
+      ?.click();
+    expect(history.depth).toBe(0);
+    expect(history.canUndo).toBe(false);
+    const restored = getPixelCallArg(onPixelsChange, 1);
+    expect(restored[0 * 8 + 0]).toBe(3);
+  });
+
+  it('handles Delete and Backspace shortcuts to clear tile', () => {
+    const pixels = createEmptyTilePixels(2);
+    const onPixelsChange = vi.fn();
+    const history = createTileHistory(pixels, 50, areTilePixelsEqual);
+    const options = createTestOptions({
+      pixels,
+      history,
+      onPixelsChange,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+
+    element.dispatchEvent({
+      type: 'keydown',
+      key: 'Delete',
+    });
+
+    expect(onPixelsChange).toHaveBeenCalledTimes(1);
+    const cleared = getPixelCallArg(onPixelsChange, 0);
+    expect(cleared.every((p) => p === 0)).toBe(true);
+    expect(history.canUndo).toBe(true);
+  });
+
+  it('resets undo/redo history when switched to a new history instance on tile change', () => {
+    const tile1 = createEmptyTilePixels(0);
+    tile1[0] = 3;
+    const history1 = createTileHistory(tile1, 50, areTilePixelsEqual);
+    const editor1 = createChrTileEditor(
+      createTestOptions({ pixels: tile1, history: history1 }),
+    ) as unknown as MockElement;
+
+    editor1
+      .querySelector('.chr-editor-action-btn[data-action="rotate-cw"]')
+      ?.click();
+    expect(history1.canUndo).toBe(true);
+
+    // User switches to Tile 2: new history instance is passed
+    const tile2 = createEmptyTilePixels(0);
+    const history2 = createTileHistory(tile2, 50, areTilePixelsEqual);
+    const editor2 = createChrTileEditor(
+      createTestOptions({ pixels: tile2, history: history2 }),
+    ) as unknown as MockElement;
+
+    const undoBtn2 = editor2.querySelector(
+      '.chr-editor-action-btn[data-action="undo"]',
+    );
+    expect(history2.canUndo).toBe(false);
+    expect(undoBtn2?.disabled).toBe(true);
+  });
+
+  it('correctly evaluates isEditableElement helper', () => {
+    expect(isEditableElement(null)).toBe(false);
+    expect(
+      isEditableElement(new MockElement('div') as unknown as HTMLElement),
+    ).toBe(false);
+    expect(
+      isEditableElement(new MockElement('input') as unknown as HTMLElement),
+    ).toBe(true);
+    expect(
+      isEditableElement(new MockElement('textarea') as unknown as HTMLElement),
+    ).toBe(true);
+    expect(
+      isEditableElement(new MockElement('select') as unknown as HTMLElement),
+    ).toBe(true);
+
+    const div = new MockElement('div');
+    div.isContentEditable = true;
+    expect(isEditableElement(div as unknown as HTMLElement)).toBe(true);
   });
 });

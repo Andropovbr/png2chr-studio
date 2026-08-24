@@ -500,6 +500,9 @@ const en = {
   chrEditorClear: 'Clear Tile',
   chrEditorCopy: 'Copy Tile (64 pixels)',
   chrEditorPaste: 'Paste Tile',
+  chrEditorHistoryGroup: 'History',
+  chrEditorUndo: 'Undo (Ctrl+Z)',
+  chrEditorRedo: 'Redo (Ctrl+Y / Ctrl+Shift+Z)',
   animationErrorDuplicateName:
     'Animation names must be unique within the asset.',
   animationErrorDuplicateIdentifier:
@@ -1270,6 +1273,9 @@ const ptBr = {
   chrEditorClear: 'Limpar Tile',
   chrEditorCopy: 'Copiar Tile (64 pixels)',
   chrEditorPaste: 'Colar Tile',
+  chrEditorHistoryGroup: 'Histórico',
+  chrEditorUndo: 'Desfazer (Ctrl+Z)',
+  chrEditorRedo: 'Refazer (Ctrl+Y / Ctrl+Shift+Z)',
   animationErrorDuplicateName:
     'Os nomes das animações devem ser exclusivos no asset.',
   animationErrorDuplicateIdentifier:

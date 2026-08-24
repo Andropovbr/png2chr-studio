@@ -309,6 +309,8 @@ export interface TileHistoryManager<T> {
   getRedoStack(): readonly T[];
 }
 
+export type TileHistory<T> = TileHistoryManager<T>;
+
 export function createTileHistory<T>(
   initialState: T,
   maxDepth = DEFAULT_HISTORY_DEPTH,

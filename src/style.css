@@ -4781,6 +4781,7 @@ input:focus-visible + label {
   margin-top: 0.1rem;
 }
 
+.chr-editor-history-group,
 .chr-editor-transform-group,
 .chr-editor-shift-group,
 .chr-editor-actions-group {
