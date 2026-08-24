@@ -32,6 +32,11 @@ export interface ChrTileInspectorOptions {
   readonly baseChrName?: string | null;
   readonly destinationPatternTable?: SpritePatternTable;
   readonly tiles?: readonly Tile[];
+  readonly colors?: readonly {
+    readonly red: number;
+    readonly green: number;
+    readonly blue: number;
+  }[];
   readonly onDeselect?: () => void;
 }
 
@@ -273,6 +278,7 @@ export function createChrTileInspector(
       options.finalChrBytes,
       options.selectedTileIndex,
       16,
+      options.colors ?? NEUTRAL_NES_GRAYSCALE,
     );
 
     const gridOverlay = document.createElement('div');

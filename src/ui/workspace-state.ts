@@ -20,6 +20,7 @@ export type WorkspaceView =
 export interface ChrWorkspaceState {
   readonly zoom: number;
   readonly selectedTileIndex: number | null;
+  readonly previewPalette?: string;
 }
 
 export interface WorkspaceState {
@@ -67,6 +68,7 @@ export function createWorkspaceState(
     chr: {
       zoom: 2,
       selectedTileIndex: null,
+      previewPalette: 'grayscale',
     },
   };
 }

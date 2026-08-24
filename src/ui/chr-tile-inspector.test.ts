@@ -321,5 +321,24 @@ describe('ChrTileInspector component and utilities', () => {
       deselectBtn?.click();
       expect(onDeselect).toHaveBeenCalled();
     });
+
+    it('renders enlarged preview using custom preview palette colors', () => {
+      const customColors = [
+        { red: 0, green: 0, blue: 0 },
+        { red: 255, green: 0, blue: 0 },
+        { red: 0, green: 255, blue: 0 },
+        { red: 0, green: 0, blue: 255 },
+      ];
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        colors: customColors,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const canvas = mockEl.querySelector('.chr-tile-inspector-canvas');
+      expect(canvas).not.toBeNull();
+    });
   });
 });

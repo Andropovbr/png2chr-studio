@@ -111,13 +111,14 @@ describe('application state update boundaries', () => {
     expect(result.marksProjectDirty).toBe(false);
   });
 
-  it('never marks CHR zoom or tile selection updates dirty', () => {
+  it('never marks CHR zoom, tile selection, or preview palette updates dirty', () => {
     const project = createDefaultProject('CHR test', 'animation');
     const serializedOriginal = serializeProject(project);
     const workspace = createWorkspaceState();
 
     expect(workspace.chr.selectedTileIndex).toBeNull();
     expect(workspace.chr.zoom).toBe(2);
+    expect(workspace.chr.previewPalette).toBe('grayscale');
 
     const selectTile = applyWorkspaceUpdate(workspace, (ws) => ({
       ...ws,
@@ -131,7 +132,19 @@ describe('application state update boundaries', () => {
     expect(selectTile.value.chr.selectedTileIndex).toBe(42);
     expect(serializeProject(project)).toBe(serializedOriginal);
 
-    const deselectTile = applyWorkspaceUpdate(selectTile.value, (ws) => ({
+    const changePalette = applyWorkspaceUpdate(selectTile.value, (ws) => ({
+      ...ws,
+      chr: {
+        ...ws.chr,
+        previewPalette: 'bg-1',
+      },
+    }));
+
+    expect(changePalette.marksProjectDirty).toBe(false);
+    expect(changePalette.value.chr.previewPalette).toBe('bg-1');
+    expect(serializeProject(project)).toBe(serializedOriginal);
+
+    const deselectTile = applyWorkspaceUpdate(changePalette.value, (ws) => ({
       ...ws,
       chr: {
         ...ws.chr,

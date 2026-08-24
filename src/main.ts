@@ -2822,6 +2822,17 @@ function renderChrWorkspace(): void {
       });
       render();
     },
+    previewPalette: workspace.chr.previewPalette ?? 'grayscale',
+    onPreviewPaletteChange: (previewPalette) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, previewPalette },
+      });
+      render();
+    },
+    paletteSet: project.paletteSet,
+    palettes: project.palettes,
+    activeSpritePaletteSlots: project.activeSpritePaletteSlots,
     loading: derivedStatus.loading,
     error: derivedStatus.error,
     onNavigateToWorkspace: (view) => {
