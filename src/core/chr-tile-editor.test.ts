@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   areTilePixelsEqual,
   clearTile,
+  clearTileClipboard,
   cloneTilePixels,
+  copyTileToClipboard,
   createEmptyTilePixels,
   createTileHistory,
   decodeChrTileToPixels,
@@ -10,6 +12,9 @@ import {
   flipTileHorizontal,
   flipTileVertical,
   floodFillTile,
+  getClipboardTile,
+  hasClipboardTile,
+  pasteTileFromClipboard,
   rotateTile90,
   setTilePixel,
   shiftTile,
@@ -437,6 +442,39 @@ describe('chr-tile-editor domain operations', () => {
       expect(history.canUndo).toBe(false);
       expect(history.canRedo).toBe(false);
       expect(history.depth).toBe(0);
+    });
+  });
+
+  describe('clipboard storage', () => {
+    it('stores, pastes, and clears independent tile buffers', () => {
+      clearTileClipboard();
+      expect(hasClipboardTile()).toBe(false);
+      expect(pasteTileFromClipboard()).toBeNull();
+      expect(getClipboardTile()).toBeNull();
+
+      const pixels = createEmptyTilePixels(1);
+      pixels[0] = 3;
+
+      const copied = copyTileToClipboard(pixels);
+      expect(hasClipboardTile()).toBe(true);
+      expect(copied[0]).toBe(3);
+
+      // Mutating source buffer does not affect clipboard
+      pixels[0] = 0;
+      const pasted = pasteTileFromClipboard();
+      expect(pasted).not.toBeNull();
+      expect(pasted?.[0]).toBe(3);
+
+      // Mutating pasted buffer does not affect clipboard
+      if (pasted) {
+        pasted[0] = 1;
+      }
+      const pastedAgain = pasteTileFromClipboard();
+      expect(pastedAgain?.[0]).toBe(3);
+
+      clearTileClipboard();
+      expect(hasClipboardTile()).toBe(false);
+      expect(pasteTileFromClipboard()).toBeNull();
     });
   });
 });

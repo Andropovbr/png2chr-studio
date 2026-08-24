@@ -1,12 +1,20 @@
 /**
  * Interactive 8x8 NES CHR Tile Pixel Editor Component.
  * Purely controlled UI component for pixel editing, drawing tools,
- * color index selection, and pointer stroke interaction.
+ * color index selection, geometric transformations, shifts, and clipboard actions.
  */
 
 import {
+  clearTile,
+  copyTileToClipboard,
+  flipTileHorizontal,
+  flipTileVertical,
   floodFillTile,
+  hasClipboardTile,
+  pasteTileFromClipboard,
+  rotateTile90,
   setTilePixel,
+  shiftTile,
   validateTilePixels,
   TILE_SIZE,
   PIXELS_PER_TILE,
@@ -34,13 +42,17 @@ export interface ChrTileEditorOptions {
   readonly activeTool?: ChrDrawingTool;
   readonly paletteColors?: readonly ChrTileEditorRgbColor[];
   readonly showGrid?: boolean;
+  readonly shiftWrap?: boolean;
   readonly onPixelsChange?: (pixels: Uint8Array) => void;
   readonly onSelectColorIndex?: (colorIndex: number) => void;
   readonly onSelectTool?: (tool: ChrDrawingTool) => void;
   readonly onToggleGrid?: (showGrid: boolean) => void;
+  readonly onToggleShiftWrap?: (shiftWrap: boolean) => void;
   readonly onStrokeStart?: () => void;
   readonly onStrokeEnd?: () => void;
   readonly onHoverPixel?: (coord: { x: number; y: number } | null) => void;
+  readonly onCopy?: (copiedPixels: Uint8Array) => void;
+  readonly onPaste?: (pastedPixels: Uint8Array) => void;
   readonly ariaLabel?: string;
 }
 
@@ -64,8 +76,9 @@ export function createChrTileEditor(
       ? options.paletteColors
       : DEFAULT_CHR_EDITOR_PALETTE;
   const showGrid = options.showGrid ?? true;
+  let shiftWrap = options.shiftWrap ?? false;
 
-  // --- 1. Toolbar ---
+  // --- 1. Primary Toolbar (Drawing & Palette) ---
   const toolbar = document.createElement('div');
   toolbar.className = 'chr-tile-editor-toolbar';
 
@@ -93,9 +106,7 @@ export function createChrTileEditor(
     btn.textContent = icon;
 
     btn.addEventListener('click', () => {
-      if (options.onSelectTool) {
-        options.onSelectTool(id);
-      }
+      options.onSelectTool?.(id);
     });
 
     toolsGroup.append(btn);
@@ -135,9 +146,7 @@ export function createChrTileEditor(
     btn.append(swatch, label);
 
     btn.addEventListener('click', () => {
-      if (options.onSelectColorIndex) {
-        options.onSelectColorIndex(colorIdx);
-      }
+      options.onSelectColorIndex?.(colorIdx);
     });
 
     paletteGroup.append(btn);
@@ -152,15 +161,201 @@ export function createChrTileEditor(
   gridToggleBtn.setAttribute('aria-label', t('chrEditorGridToggle'));
   gridToggleBtn.textContent = '⊞';
   gridToggleBtn.addEventListener('click', () => {
-    if (options.onToggleGrid) {
-      options.onToggleGrid(!showGrid);
-    }
+    options.onToggleGrid?.(!showGrid);
   });
 
   toolbar.append(toolsGroup, paletteGroup, gridToggleBtn);
-  container.append(toolbar);
 
-  // --- 2. Main Canvas Container ---
+  // --- 2. Secondary Operations Toolbar (Transform, Shift & Clipboard) ---
+  const actionsToolbar = document.createElement('div');
+  actionsToolbar.className =
+    'chr-tile-editor-toolbar chr-tile-editor-actions-toolbar';
+
+  // Transform Group (Flip H, Flip V, Rotate CW, Rotate CCW)
+  const transformGroup = document.createElement('div');
+  transformGroup.className = 'chr-editor-transform-group';
+  transformGroup.setAttribute('role', 'toolbar');
+  transformGroup.setAttribute('aria-label', t('chrEditorTransformGroup'));
+
+  const transformActions: {
+    id: string;
+    labelKey: string;
+    icon: string;
+    execute: () => Uint8Array;
+  }[] = [
+    {
+      id: 'flip-h',
+      labelKey: 'chrEditorFlipH',
+      icon: '⇋',
+      execute: () => flipTileHorizontal(options.pixels),
+    },
+    {
+      id: 'flip-v',
+      labelKey: 'chrEditorFlipV',
+      icon: '⇅',
+      execute: () => flipTileVertical(options.pixels),
+    },
+    {
+      id: 'rotate-cw',
+      labelKey: 'chrEditorRotateCw',
+      icon: '↷',
+      execute: () => rotateTile90(options.pixels, true),
+    },
+    {
+      id: 'rotate-ccw',
+      labelKey: 'chrEditorRotateCcw',
+      icon: '↶',
+      execute: () => rotateTile90(options.pixels, false),
+    },
+  ];
+
+  transformActions.forEach(({ id, labelKey, icon, execute }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'button icon-button chr-editor-action-btn';
+    btn.setAttribute('data-action', id);
+    btn.title = t(labelKey as Parameters<typeof t>[0]);
+    btn.setAttribute('aria-label', t(labelKey as Parameters<typeof t>[0]));
+    btn.textContent = icon;
+
+    btn.addEventListener('click', () => {
+      const next = execute();
+      options.onPixelsChange?.(next);
+    });
+
+    transformGroup.append(btn);
+  });
+
+  // Shift Group (Up, Down, Left, Right, Wrap Toggle)
+  const shiftGroup = document.createElement('div');
+  shiftGroup.className = 'chr-editor-shift-group';
+  shiftGroup.setAttribute('role', 'toolbar');
+  shiftGroup.setAttribute('aria-label', t('chrEditorShiftGroup'));
+
+  const shiftDirections: {
+    dir: 'up' | 'down' | 'left' | 'right';
+    id: string;
+    labelKey: string;
+    icon: string;
+  }[] = [
+    { dir: 'up', id: 'shift-up', labelKey: 'chrEditorShiftUp', icon: '↑' },
+    {
+      dir: 'down',
+      id: 'shift-down',
+      labelKey: 'chrEditorShiftDown',
+      icon: '↓',
+    },
+    {
+      dir: 'left',
+      id: 'shift-left',
+      labelKey: 'chrEditorShiftLeft',
+      icon: '←',
+    },
+    {
+      dir: 'right',
+      id: 'shift-right',
+      labelKey: 'chrEditorShiftRight',
+      icon: '→',
+    },
+  ];
+
+  shiftDirections.forEach(({ dir, id, labelKey, icon }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'button icon-button chr-editor-action-btn';
+    btn.setAttribute('data-action', id);
+    btn.title = t(labelKey as Parameters<typeof t>[0]);
+    btn.setAttribute('aria-label', t(labelKey as Parameters<typeof t>[0]));
+    btn.textContent = icon;
+
+    btn.addEventListener('click', () => {
+      const next = shiftTile(options.pixels, dir, shiftWrap);
+      options.onPixelsChange?.(next);
+    });
+
+    shiftGroup.append(btn);
+  });
+
+  // Wrap toggle
+  const wrapBtn = document.createElement('button');
+  wrapBtn.type = 'button';
+  wrapBtn.className = `button icon-button chr-editor-action-btn chr-editor-wrap-btn${shiftWrap ? ' is-active' : ''}`;
+  wrapBtn.setAttribute('data-action', 'wrap-toggle');
+  wrapBtn.setAttribute('aria-pressed', shiftWrap ? 'true' : 'false');
+  wrapBtn.title = t('chrEditorShiftWrap');
+  wrapBtn.setAttribute('aria-label', t('chrEditorShiftWrap'));
+  wrapBtn.textContent = '🔁';
+  wrapBtn.addEventListener('click', () => {
+    shiftWrap = !shiftWrap;
+    wrapBtn.setAttribute('aria-pressed', shiftWrap ? 'true' : 'false');
+    wrapBtn.classList.toggle('is-active', shiftWrap);
+    options.onToggleShiftWrap?.(shiftWrap);
+  });
+  shiftGroup.append(wrapBtn);
+
+  // Actions Group (Clear, Copy, Paste)
+  const actionsGroup = document.createElement('div');
+  actionsGroup.className = 'chr-editor-actions-group';
+  actionsGroup.setAttribute('role', 'toolbar');
+  actionsGroup.setAttribute('aria-label', t('chrEditorActionsGroup'));
+
+  // Clear button
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'button icon-button chr-editor-action-btn';
+  clearBtn.setAttribute('data-action', 'clear');
+  clearBtn.title = t('chrEditorClear');
+  clearBtn.setAttribute('aria-label', t('chrEditorClear'));
+  clearBtn.textContent = '🗑️';
+  clearBtn.addEventListener('click', () => {
+    const next = clearTile(options.pixels, 0);
+    options.onPixelsChange?.(next);
+  });
+
+  // Copy button
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'button icon-button chr-editor-action-btn';
+  copyBtn.setAttribute('data-action', 'copy');
+  copyBtn.title = t('chrEditorCopy');
+  copyBtn.setAttribute('aria-label', t('chrEditorCopy'));
+  copyBtn.textContent = '📋';
+
+  // Paste button
+  const pasteBtn = document.createElement('button');
+  pasteBtn.type = 'button';
+  pasteBtn.className = 'button icon-button chr-editor-action-btn';
+  pasteBtn.setAttribute('data-action', 'paste');
+  pasteBtn.title = t('chrEditorPaste');
+  pasteBtn.setAttribute('aria-label', t('chrEditorPaste'));
+  pasteBtn.textContent = '📥';
+  const hasClipboard = hasClipboardTile();
+  pasteBtn.disabled = !hasClipboard;
+  if (!hasClipboard) {
+    pasteBtn.setAttribute('aria-disabled', 'true');
+  }
+
+  copyBtn.addEventListener('click', () => {
+    const copied = copyTileToClipboard(options.pixels);
+    pasteBtn.disabled = false;
+    pasteBtn.removeAttribute('aria-disabled');
+    options.onCopy?.(copied);
+  });
+
+  pasteBtn.addEventListener('click', () => {
+    const pasted = pasteTileFromClipboard();
+    if (pasted) {
+      options.onPixelsChange?.(pasted);
+      options.onPaste?.(pasted);
+    }
+  });
+
+  actionsGroup.append(clearBtn, copyBtn, pasteBtn);
+
+  actionsToolbar.append(transformGroup, shiftGroup, actionsGroup);
+  container.append(toolbar, actionsToolbar);
+
+  // --- 3. Main Canvas Container ---
   const canvasContainer = document.createElement('div');
   canvasContainer.className = 'chr-tile-editor-canvas-container';
 
@@ -190,7 +385,7 @@ export function createChrTileEditor(
 
   canvasContainer.append(canvas);
 
-  // --- 3. Status / Coordinates Bar ---
+  // --- 4. Status / Coordinates Bar ---
   const statusBar = document.createElement('div');
   statusBar.className = 'chr-tile-editor-status-bar';
 
@@ -201,7 +396,7 @@ export function createChrTileEditor(
   statusBar.append(coordsDisplay);
   container.append(canvasContainer, statusBar);
 
-  // --- 4. Pointer Interaction ---
+  // --- 5. Pointer Interaction ---
   let isDragging = false;
   let lastPixel: { x: number; y: number } | null = null;
 
@@ -222,30 +417,22 @@ export function createChrTileEditor(
     switch (activeTool) {
       case 'pencil': {
         const next = setTilePixel(options.pixels, px, py, selectedColorIndex);
-        if (options.onPixelsChange) {
-          options.onPixelsChange(next);
-        }
+        options.onPixelsChange?.(next);
         break;
       }
       case 'eraser': {
         const next = setTilePixel(options.pixels, px, py, 0);
-        if (options.onPixelsChange) {
-          options.onPixelsChange(next);
-        }
+        options.onPixelsChange?.(next);
         break;
       }
       case 'eyedropper': {
         const picked = options.pixels[py * TILE_SIZE + px] ?? 0;
-        if (options.onSelectColorIndex) {
-          options.onSelectColorIndex(picked);
-        }
+        options.onSelectColorIndex?.(picked);
         break;
       }
       case 'fill': {
         const next = floodFillTile(options.pixels, px, py, selectedColorIndex);
-        if (options.onPixelsChange) {
-          options.onPixelsChange(next);
-        }
+        options.onPixelsChange?.(next);
         break;
       }
     }
@@ -271,10 +458,7 @@ export function createChrTileEditor(
     isDragging = true;
     lastPixel = { x: px, y: py };
 
-    if (options.onStrokeStart) {
-      options.onStrokeStart();
-    }
-
+    options.onStrokeStart?.();
     applyToolAt(px, py);
   });
 
@@ -311,9 +495,7 @@ export function createChrTileEditor(
       // Safe fallback
     }
 
-    if (options.onStrokeEnd) {
-      options.onStrokeEnd();
-    }
+    options.onStrokeEnd?.();
   };
 
   canvas.addEventListener('pointerup', endDrag);
@@ -322,9 +504,7 @@ export function createChrTileEditor(
   canvas.addEventListener('pointerleave', () => {
     if (!isDragging) {
       coordsDisplay.textContent = '—';
-      if (options.onHoverPixel) {
-        options.onHoverPixel(null);
-      }
+      options.onHoverPixel?.(null);
     }
   });
 
