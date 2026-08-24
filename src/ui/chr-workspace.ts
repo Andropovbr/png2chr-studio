@@ -546,6 +546,7 @@ function createPatternTableView(
   canvasContainer.className = 'chr-pt-canvas-container';
   canvasContainer.style.width = `${String(128 * zoom)}px`;
   canvasContainer.style.height = `${String(128 * zoom)}px`;
+  canvasContainer.setAttribute('data-zoom', String(zoom));
 
   const canvas = document.createElement('canvas');
   canvas.width = 128;
@@ -573,10 +574,21 @@ function createPatternTableView(
   if (heatmapEnabled) gridOverlayClass += ' has-heatmap';
   gridOverlay.className = gridOverlayClass;
   gridOverlay.setAttribute('role', 'grid');
+  gridOverlay.setAttribute('aria-rowcount', '16');
+  gridOverlay.setAttribute('aria-colcount', '16');
   gridOverlay.setAttribute(
     'aria-label',
     patternTable === 0 ? t('chrWorkspacePt0Title') : t('chrWorkspacePt1Title'),
   );
+
+  const isSelectedInThisTable =
+    selectedTileIndex !== null &&
+    selectedTileIndex >= startPhysical &&
+    selectedTileIndex < startPhysical + NES_PATTERN_TABLE_TILE_COUNT;
+
+  const initialFocusLocalIndex = isSelectedInThisTable
+    ? selectedTileIndex - startPhysical
+    : 0;
 
   for (
     let localIndex = 0;
@@ -619,7 +631,7 @@ function createPatternTableView(
 
     const slot = document.createElement('div');
     slot.className = slotClass;
-    slot.tabIndex = 0;
+    slot.tabIndex = localIndex === initialFocusLocalIndex ? 0 : -1;
     slot.setAttribute('data-physical-index', String(physicalIndex));
     slot.setAttribute('data-local-index', String(localIndex));
     slot.setAttribute('data-pattern-table', String(patternTable));
@@ -630,6 +642,8 @@ function createPatternTableView(
     slot.setAttribute('data-row', String(row));
     slot.setAttribute('data-col', String(col));
     slot.setAttribute('role', 'gridcell');
+    slot.setAttribute('aria-rowindex', String(row + 1));
+    slot.setAttribute('aria-colindex', String(col + 1));
     slot.setAttribute('aria-selected', String(isSlotSelected));
 
     const stateAndHighlight = isHighlighted
@@ -693,25 +707,89 @@ function createPatternTableView(
     }
 
     slot.addEventListener('click', () => {
+      const allSlots = gridOverlay.querySelectorAll(
+        '.chr-tile-slot',
+      ) as unknown as HTMLElement[];
+      allSlots.forEach((s) => {
+        if (s !== slot && s.tabIndex === 0) {
+          s.tabIndex = -1;
+        }
+      });
+      slot.tabIndex = 0;
       if (onSelectTile) {
         onSelectTile(physicalIndex);
       }
     });
 
     slot.addEventListener('keydown', (e?: KeyboardEvent) => {
-      if (e?.key === 'Enter' || e?.key === ' ') {
-        if (typeof e.preventDefault === 'function') {
-          e.preventDefault();
+      if (!e) return;
+      let targetLocalIndex: number;
+      switch (e.key) {
+        case 'ArrowLeft':
+          targetLocalIndex =
+            (localIndex - 1 + NES_PATTERN_TABLE_TILE_COUNT) %
+            NES_PATTERN_TABLE_TILE_COUNT;
+          break;
+        case 'ArrowRight':
+          targetLocalIndex = (localIndex + 1) % NES_PATTERN_TABLE_TILE_COUNT;
+          break;
+        case 'ArrowUp':
+          targetLocalIndex =
+            (localIndex - 16 + NES_PATTERN_TABLE_TILE_COUNT) %
+            NES_PATTERN_TABLE_TILE_COUNT;
+          break;
+        case 'ArrowDown':
+          targetLocalIndex = (localIndex + 16) % NES_PATTERN_TABLE_TILE_COUNT;
+          break;
+        case 'Home':
+          targetLocalIndex = e.ctrlKey ? 0 : Math.floor(localIndex / 16) * 16;
+          break;
+        case 'End':
+          targetLocalIndex = e.ctrlKey
+            ? 255
+            : Math.floor(localIndex / 16) * 16 + 15;
+          break;
+        case 'PageUp':
+          targetLocalIndex = localIndex % 16;
+          break;
+        case 'PageDown':
+          targetLocalIndex = 240 + (localIndex % 16);
+          break;
+        case 'Enter':
+        case ' ':
+          if (typeof e.preventDefault === 'function') {
+            e.preventDefault();
+          }
+          if (onSelectTile) {
+            onSelectTile(physicalIndex);
+          }
+          return;
+        case 'Escape':
+          if (typeof e.preventDefault === 'function') {
+            e.preventDefault();
+          }
+          if (onSelectTile) {
+            onSelectTile(null);
+          }
+          return;
+        default:
+          return;
+      }
+
+      if (typeof e.preventDefault === 'function') {
+        e.preventDefault();
+      }
+      const targetSlot = gridOverlay.querySelector<HTMLElement>(
+        `[data-local-index="${String(targetLocalIndex)}"]`,
+      );
+      if (targetSlot) {
+        slot.tabIndex = -1;
+        targetSlot.tabIndex = 0;
+        if (typeof targetSlot.focus === 'function') {
+          targetSlot.focus();
         }
-        if (onSelectTile) {
-          onSelectTile(physicalIndex);
-        }
-      } else if (e?.key === 'Escape') {
-        if (typeof e.preventDefault === 'function') {
-          e.preventDefault();
-        }
-        if (onSelectTile) {
-          onSelectTile(null);
+        if (typeof targetSlot.scrollIntoView === 'function') {
+          targetSlot.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         }
       }
     });
@@ -1184,13 +1262,19 @@ function createViewerPanel(
 
   zoomControls.append(zoomLabel, segmented);
 
-  toolbarControls.append(
-    paletteControls,
-    highlightControls,
-    heatmapControls,
-    activeLegend,
-    zoomControls,
-  );
+  const viewGroup = document.createElement('div');
+  viewGroup.className = 'chr-toolbar-group is-view-group';
+  viewGroup.setAttribute('role', 'group');
+  viewGroup.setAttribute('aria-label', t('chrWorkspaceViewGroupLabel'));
+  viewGroup.append(zoomControls, paletteControls, heatmapControls);
+
+  const contextGroup = document.createElement('div');
+  contextGroup.className = 'chr-toolbar-group is-context-group';
+  contextGroup.setAttribute('role', 'group');
+  contextGroup.setAttribute('aria-label', t('chrWorkspaceContextGroupLabel'));
+  contextGroup.append(highlightControls, activeLegend);
+
+  toolbarControls.append(viewGroup, contextGroup);
   toolbar.append(titleGroup, toolbarControls);
 
   const ptContainer = document.createElement('div');
@@ -1768,11 +1852,16 @@ export function createChrWorkspace(
     options.selectedTileIndex !== null &&
     options.selectedTileIndex !== undefined
   ) {
-    const slotEl = viewerPanel.querySelector(
+    const slotEl = viewerPanel.querySelector<HTMLElement>(
       `[data-physical-index="${String(options.selectedTileIndex)}"]`,
     );
-    if (slotEl && typeof slotEl.scrollIntoView === 'function') {
-      slotEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (slotEl) {
+      if (typeof slotEl.scrollIntoView === 'function') {
+        slotEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+      if (typeof slotEl.focus === 'function') {
+        slotEl.focus();
+      }
     }
   }
 

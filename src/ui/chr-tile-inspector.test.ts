@@ -494,9 +494,14 @@ describe('ChrTileInspector component and utilities', () => {
 
       const toggleBtn = mockEl.querySelector('.chr-tile-refs-toggle-btn');
       expect(toggleBtn).not.toBeNull();
+      expect(toggleBtn?.getAttribute('aria-expanded')).toBe('false');
       expect(toggleBtn?.textContent).toContain('Show all (10)');
 
       toggleBtn?.click();
+      const expandedToggleBtn = mockEl.querySelector(
+        '.chr-tile-refs-toggle-btn',
+      );
+      expect(expandedToggleBtn?.getAttribute('aria-expanded')).toBe('true');
       items = mockEl.querySelectorAll('.chr-tile-ref-item');
       expect(items.length).toBe(10);
     });
