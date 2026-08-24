@@ -6,16 +6,21 @@ import {
   analyzeBaseChrOccupancy,
   classifyChrSlots,
   collectChrHighlightTileIndices,
-  collectPhysicalTileReferences,
+  buildPhysicalTileReferenceIndex,
+  calculateTileUsageDiagnostics,
+  calculateChrUsageHeatmapSummary,
   createPatternTableSlots,
   encodePatternTableSlots,
   NES_CHR_ROM_SIZE,
   NES_CHR_ROM_TILE_COUNT,
   NES_PATTERN_TABLE_SIZE,
   NES_PATTERN_TABLE_TILE_COUNT,
+  type ChrHeatmapBucket,
   type ChrHighlightScope,
   type ChrSlotClassification,
   type ChrSlotOccupancy,
+  type ChrTileUsageDiagnostic,
+  type ChrUsageHeatmapSummary,
   type SpritePatternTable,
 } from '../core/chr-pattern-table';
 import {
@@ -75,6 +80,8 @@ export interface ChrWorkspaceOptions {
   readonly onSelectFrame?: (frameIndex: number) => void;
   readonly selectedEntity?: string | null;
   readonly onSelectEntity?: (entity: string) => void;
+  readonly heatmapEnabled?: boolean;
+  readonly onToggleHeatmap?: (enabled: boolean) => void;
   readonly paletteSet?: NesPaletteSet;
   readonly palettes?: readonly PaletteDefinition[];
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
@@ -440,10 +447,25 @@ export function renderPatternTableToCanvas(
   context.putImageData(imageData, 0, 0);
 }
 
+function getBucketLabelKey(bucket: ChrHeatmapBucket): string {
+  switch (bucket) {
+    case 'unused':
+      return 'chrWorkspaceHeatmapBucketUnused';
+    case 'single':
+      return 'chrWorkspaceHeatmapBucketSingle';
+    case 'moderate':
+      return 'chrWorkspaceHeatmapBucketModerate';
+    case 'high':
+      return 'chrWorkspaceHeatmapBucketHigh';
+    case 'very-high':
+      return 'chrWorkspaceHeatmapBucketVeryHigh';
+  }
+}
+
 function createPatternTableView(
   patternTable: SpritePatternTable,
   finalChrBytes: Uint8Array,
-  activeSpritePt: SpritePatternTable,
+  activeSpritePatternTable: SpritePatternTable,
   zoom: number,
   selectedTileIndex: number | null,
   previewColors: readonly {
@@ -455,6 +477,8 @@ function createPatternTableView(
   highlightedIndices: ReadonlySet<number>,
   highlightScope: ChrHighlightScope,
   highlightScopeLabel: string,
+  usageDiagnostics: readonly ChrTileUsageDiagnostic[],
+  heatmapEnabled: boolean,
   onSelectTile?: (tileIndex: number | null) => void,
 ): HTMLElement {
   const card = document.createElement('div');
@@ -505,7 +529,7 @@ function createPatternTableView(
   });
 
   const role = document.createElement('span');
-  const isSprite = activeSpritePt === patternTable;
+  const isSprite = activeSpritePatternTable === patternTable;
   role.className = `chr-pt-role-badge${isSprite ? ' is-sprite-pt' : ''}`;
   role.textContent = isSprite
     ? t('chrWorkspacePtRoleSprite')
@@ -544,7 +568,10 @@ function createPatternTableView(
     highlightScope !== 'none' && highlightedIndices.size > 0;
 
   const gridOverlay = document.createElement('div');
-  gridOverlay.className = `chr-pt-grid-overlay${hasActiveHighlight ? ' has-highlight' : ''}`;
+  let gridOverlayClass = 'chr-pt-grid-overlay';
+  if (hasActiveHighlight) gridOverlayClass += ' has-highlight';
+  if (heatmapEnabled) gridOverlayClass += ' has-heatmap';
+  gridOverlay.className = gridOverlayClass;
   gridOverlay.setAttribute('role', 'grid');
   gridOverlay.setAttribute(
     'aria-label',
@@ -581,6 +608,10 @@ function createPatternTableView(
       occupancyLabel = t('chrWorkspaceSlotOccupancyReserved');
     }
 
+    const diag = usageDiagnostics[physicalIndex];
+    const bucket = diag?.bucket ?? 'unused';
+    const refCount = diag?.referenceCount ?? 0;
+
     let slotClass = `chr-tile-slot is-occupancy-${occupancy}`;
     if (isHighlighted) slotClass += ' is-highlighted';
     if (isDimmed) slotClass += ' is-dimmed';
@@ -593,6 +624,8 @@ function createPatternTableView(
     slot.setAttribute('data-local-index', String(localIndex));
     slot.setAttribute('data-pattern-table', String(patternTable));
     slot.setAttribute('data-occupancy', occupancy);
+    slot.setAttribute('data-heatmap-bucket', bucket);
+    slot.setAttribute('data-ref-count', String(refCount));
     slot.setAttribute('data-highlighted', isHighlighted ? 'true' : 'false');
     slot.setAttribute('data-row', String(row));
     slot.setAttribute('data-col', String(col));
@@ -603,22 +636,61 @@ function createPatternTableView(
       ? `${occupancyLabel} · ${t('chrWorkspaceSlotHighlighted', { scope: highlightScopeLabel })}`
       : occupancyLabel;
 
-    slot.setAttribute(
-      'aria-label',
-      t('chrWorkspaceTileAriaLabel', {
+    const bucketKey = getBucketLabelKey(bucket) as
+      | 'chrWorkspaceHeatmapBucketUnused'
+      | 'chrWorkspaceHeatmapBucketSingle'
+      | 'chrWorkspaceHeatmapBucketModerate'
+      | 'chrWorkspaceHeatmapBucketHigh'
+      | 'chrWorkspaceHeatmapBucketVeryHigh';
+    const bucketText = t(bucketKey);
+
+    if (heatmapEnabled) {
+      if (refCount > 0) {
+        const countBadge = document.createElement('span');
+        countBadge.className = `chr-slot-ref-badge bucket-${bucket}`;
+        countBadge.textContent = refCount >= 100 ? '99+' : String(refCount);
+        countBadge.setAttribute('aria-hidden', 'true');
+        slot.append(countBadge);
+      }
+
+      slot.setAttribute(
+        'aria-label',
+        t('chrWorkspaceTileHeatmapAriaLabel', {
+          pt: patternTable,
+          hex: hexLocal,
+          id: physicalIndex,
+          state: stateAndHighlight,
+          refs: refCount,
+          bucket: bucketText,
+        }),
+      );
+      slot.title = t('chrWorkspaceTileHeatmapTooltip', {
         pt: patternTable,
         hex: hexLocal,
         id: physicalIndex,
         state: stateAndHighlight,
-      }),
-    );
-    slot.title = t('chrWorkspaceTileTooltip', {
-      pt: patternTable,
-      hex: hexLocal,
-      id: physicalIndex,
-      state: stateAndHighlight,
-      addr: addrHex,
-    });
+        refs: refCount,
+        bucket: bucketText,
+        addr: addrHex,
+      });
+    } else {
+      slot.setAttribute(
+        'aria-label',
+        t('chrWorkspaceTileAriaLabel', {
+          pt: patternTable,
+          hex: hexLocal,
+          id: physicalIndex,
+          state: stateAndHighlight,
+        }),
+      );
+      slot.title = t('chrWorkspaceTileTooltip', {
+        pt: patternTable,
+        hex: hexLocal,
+        id: physicalIndex,
+        state: stateAndHighlight,
+        addr: addrHex,
+      });
+    }
 
     slot.addEventListener('click', () => {
       if (onSelectTile) {
@@ -667,7 +739,6 @@ function resolveAnimationEntityName(
   }
   return null;
 }
-
 function createViewerPanel(
   options: ChrWorkspaceOptions,
   metrics: ComputedChrMetrics,
@@ -685,6 +756,9 @@ function createViewerPanel(
   activeFrameIndex: number,
   activeEntity: string | null,
   uniqueEntities: readonly string[],
+  usageDiagnostics: readonly ChrTileUsageDiagnostic[],
+  heatmapSummary: ChrUsageHeatmapSummary,
+  heatmapEnabled: boolean,
 ): HTMLElement {
   const viewerPanel = document.createElement('section');
   viewerPanel.className = 'panel chr-viewer-panel';
@@ -705,7 +779,7 @@ function createViewerPanel(
 
   titleGroup.append(heading, hint);
 
-  // Controls container (Palette + Highlight + Legend + Zoom)
+  // Controls container (Palette + Highlight + Heatmap + Legend + Zoom)
   const toolbarControls = document.createElement('div');
   toolbarControls.className = 'chr-viewer-toolbar-controls';
 
@@ -728,7 +802,6 @@ function createViewerPanel(
     options.palettes,
     options.activeSpritePaletteSlots,
   );
-
   const selectedPaletteId = options.previewPalette ?? 'grayscale';
 
   const groupMap = new Map<string, HTMLOptGroupElement>();
@@ -783,17 +856,16 @@ function createViewerPanel(
   const swatches = document.createElement('div');
   swatches.className = 'chr-palette-swatches';
   swatches.setAttribute('aria-hidden', 'true');
-  previewColors.forEach((color, idx) => {
+  previewColors.forEach((col) => {
     const swatch = document.createElement('span');
     swatch.className = 'chr-palette-swatch';
-    swatch.style.backgroundColor = `rgb(${String(color.red)} ${String(color.green)} ${String(color.blue)})`;
-    swatch.title = `Color ${String(idx)}`;
+    swatch.style.backgroundColor = `rgb(${String(col.red)}, ${String(col.green)}, ${String(col.blue)})`;
     swatches.append(swatch);
   });
 
   paletteControls.append(paletteLabel, paletteSelect, swatches);
 
-  // Usage Highlight controls
+  // Highlight controls
   const highlightControls = document.createElement('div');
   highlightControls.className = 'chr-highlight-controls';
 
@@ -807,65 +879,52 @@ function createViewerPanel(
   highlightSelect.className = 'chr-highlight-select';
   highlightSelect.setAttribute('aria-label', t('chrWorkspaceHighlightLabel'));
 
-  const noneOpt = document.createElement('option');
-  noneOpt.value = 'none';
-  noneOpt.textContent = t('chrWorkspaceHighlightScopeNone');
-  if (highlightScope === 'none') noneOpt.selected = true;
-  highlightSelect.append(noneOpt);
+  const scopes: readonly {
+    readonly scope: ChrHighlightScope;
+    readonly label: string;
+  }[] = [
+    { scope: 'none', label: t('chrWorkspaceHighlightScopeNone') },
+    ...(options.mode === 'animation'
+      ? ([
+          {
+            scope: 'frame',
+            label: t('chrWorkspaceHighlightScopeFrame', {
+              info: `#${String(activeFrameIndex)}`,
+            }),
+          },
+          {
+            scope: 'animation',
+            label: t('chrWorkspaceHighlightScopeAnimation', {
+              name: targetAnim?.name ?? 'Active',
+            }),
+          },
+          ...(uniqueEntities.length > 0
+            ? [
+                {
+                  scope: 'entity' as const,
+                  label: t('chrWorkspaceHighlightScopeEntity', {
+                    name: activeEntity ?? 'Entity',
+                  }),
+                },
+              ]
+            : []),
+        ] as const)
+      : []),
+    ...(options.baseChr
+      ? [{ scope: 'base' as const, label: t('chrWorkspaceHighlightScopeBase') }]
+      : []),
+    { scope: 'all', label: t('chrWorkspaceHighlightScopeAll') },
+  ];
 
-  if (
-    options.mode === 'animation' &&
-    options.animationModel &&
-    options.animationModel.animations.length > 0
-  ) {
-    const frameOpt = document.createElement('option');
-    frameOpt.value = 'frame';
-    frameOpt.textContent = t('chrWorkspaceHighlightScopeFrame', {
-      info: `#${String(activeFrameIndex)}`,
-    });
-    if (highlightScope === 'frame') frameOpt.selected = true;
-    highlightSelect.append(frameOpt);
-
-    if (targetAnim) {
-      const animOpt = document.createElement('option');
-      animOpt.value = 'animation';
-      animOpt.textContent = t('chrWorkspaceHighlightScopeAnimation', {
-        name: targetAnim.name,
-      });
-      if (highlightScope === 'animation') animOpt.selected = true;
-      highlightSelect.append(animOpt);
-
-      if (activeEntity) {
-        const entityOpt = document.createElement('option');
-        entityOpt.value = 'entity';
-        entityOpt.textContent = t('chrWorkspaceHighlightScopeEntity', {
-          name: activeEntity,
-        });
-        if (highlightScope === 'entity') entityOpt.selected = true;
-        highlightSelect.append(entityOpt);
-      }
+  scopes.forEach((s) => {
+    const optionEl = document.createElement('option');
+    optionEl.value = s.scope;
+    optionEl.textContent = s.label;
+    if (s.scope === highlightScope) {
+      optionEl.selected = true;
     }
-  }
-
-  const hasBaseTiles = classifications.some((c) => c.occupancy === 'base');
-  if (hasBaseTiles) {
-    const baseOpt = document.createElement('option');
-    baseOpt.value = 'base';
-    baseOpt.textContent = t('chrWorkspaceHighlightScopeBase');
-    if (highlightScope === 'base') baseOpt.selected = true;
-    highlightSelect.append(baseOpt);
-  }
-
-  const hasProjectTiles = classifications.some(
-    (c) => c.occupancy === 'project',
-  );
-  if (hasProjectTiles) {
-    const allOpt = document.createElement('option');
-    allOpt.value = 'all';
-    allOpt.textContent = t('chrWorkspaceHighlightScopeAll');
-    if (highlightScope === 'all') allOpt.selected = true;
-    highlightSelect.append(allOpt);
-  }
+    highlightSelect.append(optionEl);
+  });
 
   highlightSelect.addEventListener('change', () => {
     if (options.onHighlightScopeChange) {
@@ -876,8 +935,7 @@ function createViewerPanel(
   });
 
   highlightControls.append(highlightLabel, highlightSelect);
-
-  // Direct Animation and Frame Selection subcontrols for independent CHR viewer usability
+  // Sub-selectors when animation scope is active
   if (
     options.mode === 'animation' &&
     options.animationModel &&
@@ -951,49 +1009,92 @@ function createViewerPanel(
         'aria-label',
         t('chrWorkspaceHighlightEntityLabel'),
       );
-
-      for (const ent of uniqueEntities) {
-        const opt = document.createElement('option');
-        opt.value = ent;
-        opt.textContent = ent;
+      uniqueEntities.forEach((ent) => {
+        const optionEl = document.createElement('option');
+        optionEl.value = ent;
+        optionEl.textContent = ent;
         if (ent === activeEntity) {
-          opt.selected = true;
+          optionEl.selected = true;
         }
-        entitySelect.append(opt);
-      }
-
+        entitySelect.append(optionEl);
+      });
       entitySelect.addEventListener('change', () => {
         if (options.onSelectEntity) {
           options.onSelectEntity(entitySelect.value);
         }
       });
-
       highlightControls.append(entitySelect);
     }
   }
 
-  if (highlightScope !== 'none') {
+  // Highlight Summary Badge (when highlighting is active)
+  if (highlightScope !== 'none' && highlightedIndices.size > 0) {
     let pt0Count = 0;
     let pt1Count = 0;
-    for (const idx of highlightedIndices) {
-      if (idx < NES_PATTERN_TABLE_TILE_COUNT) pt0Count += 1;
-      else pt1Count += 1;
-    }
-    const summaryEl = document.createElement('span');
-    summaryEl.className = 'chr-highlight-summary';
-    const summaryKey =
-      highlightedIndices.size === 1
-        ? 'chrWorkspaceHighlightSummarySingle'
-        : 'chrWorkspaceHighlightSummary';
-    summaryEl.textContent = t(summaryKey, {
-      count: highlightedIndices.size,
-      pt0: pt0Count,
-      pt1: pt1Count,
+    highlightedIndices.forEach((idx) => {
+      if (idx < NES_PATTERN_TABLE_TILE_COUNT) {
+        pt0Count += 1;
+      } else {
+        pt1Count += 1;
+      }
     });
-    highlightControls.append(summaryEl);
+    const summaryBadge = document.createElement('span');
+    summaryBadge.className = 'chr-highlight-summary';
+    const totalCount = highlightedIndices.size;
+    summaryBadge.textContent =
+      totalCount === 1
+        ? t('chrWorkspaceHighlightSummarySingle', {
+            count: totalCount,
+            pt0: pt0Count,
+            pt1: pt1Count,
+          })
+        : t('chrWorkspaceHighlightSummary', {
+            count: totalCount,
+            pt0: pt0Count,
+            pt1: pt1Count,
+          });
+    highlightControls.append(summaryBadge);
   }
 
-  // Occupancy legend
+  // Heatmap View Controls
+  const heatmapControls = document.createElement('div');
+  heatmapControls.className = 'chr-heatmap-controls';
+
+  const heatmapLabel = document.createElement('span');
+  heatmapLabel.className = 'chr-heatmap-label';
+  heatmapLabel.textContent = t('chrWorkspaceHeatmapLabel');
+
+  const heatmapSegmented = document.createElement('div');
+  heatmapSegmented.className = 'segmented-control chr-heatmap-segmented';
+  heatmapSegmented.setAttribute('role', 'group');
+  heatmapSegmented.setAttribute('aria-label', t('chrWorkspaceHeatmapToggle'));
+
+  const normalBtn = document.createElement('button');
+  normalBtn.type = 'button';
+  normalBtn.className = `segmented-button${!heatmapEnabled ? ' is-active' : ''}`;
+  normalBtn.setAttribute('aria-pressed', String(!heatmapEnabled));
+  normalBtn.textContent = t('chrWorkspaceHeatmapOff');
+  normalBtn.addEventListener('click', () => {
+    if (heatmapEnabled && options.onToggleHeatmap) {
+      options.onToggleHeatmap(false);
+    }
+  });
+
+  const heatmapBtn = document.createElement('button');
+  heatmapBtn.type = 'button';
+  heatmapBtn.className = `segmented-button${heatmapEnabled ? ' is-active' : ''}`;
+  heatmapBtn.setAttribute('aria-pressed', String(heatmapEnabled));
+  heatmapBtn.textContent = t('chrWorkspaceHeatmapOn');
+  heatmapBtn.addEventListener('click', () => {
+    if (!heatmapEnabled && options.onToggleHeatmap) {
+      options.onToggleHeatmap(true);
+    }
+  });
+
+  heatmapSegmented.append(normalBtn, heatmapBtn);
+  heatmapControls.append(heatmapLabel, heatmapSegmented);
+
+  // Occupancy / Heatmap Legend
   const legend = document.createElement('div');
   legend.className = 'chr-occupancy-legend';
   legend.setAttribute('role', 'group');
@@ -1008,18 +1109,51 @@ function createViewerPanel(
   legendItems.forEach((item) => {
     const itemEl = document.createElement('span');
     itemEl.className = `chr-legend-item is-${item.key}`;
-
     const indicator = document.createElement('span');
     indicator.className = 'chr-legend-indicator';
     indicator.setAttribute('aria-hidden', 'true');
-
     const label = document.createElement('span');
     label.className = 'chr-legend-label';
     label.textContent = item.label;
-
     itemEl.append(indicator, label);
     legend.append(itemEl);
   });
+
+  let activeLegend: HTMLElement = legend;
+  if (heatmapEnabled) {
+    const heatmapLegend = document.createElement('div');
+    heatmapLegend.className = 'chr-heatmap-legend';
+    heatmapLegend.setAttribute('role', 'group');
+    heatmapLegend.setAttribute(
+      'aria-label',
+      t('chrWorkspaceHeatmapLegendTitle'),
+    );
+
+    const buckets: readonly { key: ChrHeatmapBucket; label: string }[] = [
+      { key: 'unused', label: t('chrWorkspaceHeatmapBucketUnused') },
+      { key: 'single', label: t('chrWorkspaceHeatmapBucketSingle') },
+      { key: 'moderate', label: t('chrWorkspaceHeatmapBucketModerate') },
+      { key: 'high', label: t('chrWorkspaceHeatmapBucketHigh') },
+      { key: 'very-high', label: t('chrWorkspaceHeatmapBucketVeryHigh') },
+    ];
+
+    buckets.forEach((b) => {
+      const itemEl = document.createElement('span');
+      itemEl.className = `chr-heatmap-legend-item is-${b.key}`;
+
+      const indicator = document.createElement('span');
+      indicator.className = 'chr-heatmap-legend-indicator';
+      indicator.setAttribute('aria-hidden', 'true');
+
+      const label = document.createElement('span');
+      label.className = 'chr-heatmap-legend-label';
+      label.textContent = b.label;
+
+      itemEl.append(indicator, label);
+      heatmapLegend.append(itemEl);
+    });
+    activeLegend = heatmapLegend;
+  }
 
   // Zoom controls
   const zoomControls = document.createElement('div');
@@ -1053,7 +1187,8 @@ function createViewerPanel(
   toolbarControls.append(
     paletteControls,
     highlightControls,
-    legend,
+    heatmapControls,
+    activeLegend,
     zoomControls,
   );
   toolbar.append(titleGroup, toolbarControls);
@@ -1074,6 +1209,8 @@ function createViewerPanel(
     highlightedIndices,
     highlightScope,
     highlightScopeLabel,
+    usageDiagnostics,
+    heatmapEnabled,
     options.onSelectTile,
   );
   const pt1Card = createPatternTableView(
@@ -1087,11 +1224,36 @@ function createViewerPanel(
     highlightedIndices,
     highlightScope,
     highlightScopeLabel,
+    usageDiagnostics,
+    heatmapEnabled,
     options.onSelectTile,
   );
 
   ptContainer.append(pt0Card, pt1Card);
-  viewerPanel.append(toolbar, ptContainer);
+
+  if (heatmapEnabled) {
+    const summaryBar = document.createElement('div');
+    summaryBar.className = 'chr-heatmap-summary-bar';
+    const maxHex =
+      heatmapSummary.mostReferencedTileIndex !== null
+        ? heatmapSummary.mostReferencedTileIndex
+            .toString(16)
+            .toUpperCase()
+            .padStart(2, '0')
+        : '—';
+    summaryBar.textContent = t('chrWorkspaceHeatmapSummaryBar', {
+      referenced: heatmapSummary.referencedTileCount,
+      occupied: metrics.totalOccupiedTiles,
+      reused: heatmapSummary.reusedTileCount,
+      unreferenced: heatmapSummary.unreferencedOccupiedTileCount,
+      maxHex,
+      maxRefs: heatmapSummary.maxReferenceCount,
+      ratio: heatmapSummary.averageReuseRatio,
+    });
+    viewerPanel.append(toolbar, summaryBar, ptContainer);
+  } else {
+    viewerPanel.append(toolbar, ptContainer);
+  }
 
   return viewerPanel;
 }
@@ -1102,28 +1264,25 @@ function createProgressBar(
   label: string,
 ): HTMLElement {
   const container = document.createElement('div');
-  container.className = 'chr-progress-container';
+  container.className = 'progress-bar-container';
 
-  const percent = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  const track = document.createElement('div');
+  track.className = 'progress-bar-track';
 
-  const barTrack = document.createElement('div');
-  barTrack.className = 'chr-progress-track';
-  barTrack.setAttribute('role', 'progressbar');
-  barTrack.setAttribute('aria-valuenow', String(value));
-  barTrack.setAttribute('aria-valuemin', '0');
-  barTrack.setAttribute('aria-valuemax', String(max));
-  barTrack.setAttribute('aria-label', label);
+  const fill = document.createElement('div');
+  fill.className = 'progress-bar-fill';
+  const percentage = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  fill.style.width = `${percentage.toFixed(1)}%`;
 
-  const barFill = document.createElement('div');
-  barFill.className = 'chr-progress-fill';
-  barFill.style.width = `${String(percent)}%`;
+  track.append(fill);
+  container.append(track);
 
-  if (percent >= 90) {
-    barFill.classList.add('is-high-occupancy');
-  }
+  container.setAttribute('role', 'progressbar');
+  container.setAttribute('aria-valuenow', String(value));
+  container.setAttribute('aria-valuemin', '0');
+  container.setAttribute('aria-valuemax', String(max));
+  container.setAttribute('aria-label', label);
 
-  barTrack.append(barFill);
-  container.append(barTrack);
   return container;
 }
 
@@ -1131,53 +1290,26 @@ export function createChrWorkspace(
   options: ChrWorkspaceOptions,
 ): ChrWorkspaceElement {
   const workspace = document.createElement('div');
-  workspace.className = 'workspace chr-workspace';
-
+  workspace.className = 'chr-workspace';
   let diagnostics: HTMLElement | null = null;
-  if (options.error !== null && options.error !== undefined) {
-    const errorSection = document.createElement('section');
-    errorSection.className = 'panel error-panel chr-error-panel';
-    const heading = document.createElement('h2');
-    heading.textContent = t('errorTitle');
-    const message = document.createElement('p');
-    message.textContent = t(options.error.key, options.error.variables);
-    errorSection.append(heading, message);
-    diagnostics = errorSection;
+  if (options.loading) {
+    diagnostics = document.createElement('div');
+    diagnostics.className = 'loading-banner';
+    diagnostics.textContent = t('loadingStatus');
+    workspace.append(diagnostics);
+  } else if (options.error) {
+    diagnostics = document.createElement('div');
+    diagnostics.className = 'error-banner';
+    diagnostics.textContent = t(options.error.key, options.error.variables);
+    workspace.append(diagnostics);
   }
 
   const metrics = computeMetrics(options);
   const zoom = options.zoom ?? 2;
+  const highlightScope = options.highlightScope ?? 'none';
+  const heatmapEnabled = options.heatmapEnabled ?? false;
 
-  // 1. Overview Panel (#section-chr-intro)
-  const introPanel = document.createElement('section');
-  introPanel.className = 'panel chr-intro-panel';
-  introPanel.id = 'section-chr-intro';
-
-  const headerGroup = document.createElement('div');
-  headerGroup.className = 'chr-header-group';
-
-  const heading = document.createElement('h2');
-  heading.textContent = t('chrWorkspaceTitle');
-  const hint = document.createElement('p');
-  hint.className = 'muted';
-  hint.textContent = t('chrWorkspaceHint');
-  headerGroup.append(heading, hint);
-
-  const baseStatus = document.createElement('div');
-  baseStatus.className = 'chr-base-status-badge';
-  if (options.baseChr && options.baseChr.length > 0) {
-    baseStatus.textContent = t('chrWorkspaceBaseChrLoaded', {
-      name: options.baseChrName ?? 'base.chr',
-      size: options.baseChr.length,
-      slots: options.baseChr.length / 16,
-      occupied: metrics.pt0BaseTiles + metrics.pt1BaseTiles,
-    });
-  } else {
-    baseStatus.textContent = t('chrWorkspaceNoBaseChr');
-  }
-
-  introPanel.append(headerGroup, baseStatus);
-
+  // Resolve palette colors for rendering preview
   const previewColors = resolveChrPreviewPaletteColors(
     options.previewPalette,
     options.paletteSet,
@@ -1185,35 +1317,82 @@ export function createChrWorkspace(
     options.activeSpritePaletteSlots,
   );
 
+  // Compute classifications for all 512 physical slots
   const classifications = classifyChrSlots({
+    finalChrBytes: metrics.finalChrBytes,
     mode: options.mode,
     animationModel: options.animationModel,
     baseChr: options.baseChr,
-    baseChrName: options.baseChrName,
     destinationPatternTable: options.destinationPatternTable,
     tiles: options.tiles,
     deduplicationEnabled: options.deduplicationEnabled,
     flipDeduplicationEnabled: options.flipDeduplicationEnabled,
   });
 
-  const animations = options.animationModel?.animations ?? [];
+  // Calculate pre-indexed physical tile references & usage diagnostics
+  const referenceIndex = buildPhysicalTileReferenceIndex({
+    mode: options.mode,
+    animationModel: options.animationModel,
+    playfieldNametable: options.playfieldNametable,
+    destinationPatternTable: options.destinationPatternTable,
+    tiles: options.tiles,
+    deduplicationEnabled: options.deduplicationEnabled,
+    flipDeduplicationEnabled: options.flipDeduplicationEnabled,
+  });
+
+  const usageDiagnostics = calculateTileUsageDiagnostics({
+    referenceIndex,
+  });
+
+  const heatmapSummary = calculateChrUsageHeatmapSummary(
+    usageDiagnostics,
+    classifications,
+  );
+
+  // 1. Introduction Panel (#section-chr-intro)
+  const introPanel = document.createElement('section');
+  introPanel.className = 'panel chr-intro-panel';
+  introPanel.id = 'section-chr-intro';
+
+  const headerGroup = document.createElement('div');
+  headerGroup.className = 'chr-header-group';
+
+  const introTitle = document.createElement('h2');
+  introTitle.textContent = t('chrWorkspaceTitle');
+
+  const introHint = document.createElement('p');
+  introHint.className = 'muted';
+  introHint.textContent = t('chrWorkspaceHint');
+
+  headerGroup.append(introTitle, introHint);
+
+  const baseStatusBadge = document.createElement('div');
+  baseStatusBadge.className = 'chr-base-status-badge';
+  if (options.baseChr) {
+    const baseOccupancy = analyzeBaseChrOccupancy(options.baseChr);
+    baseStatusBadge.textContent = t('chrWorkspaceBaseChrLoaded', {
+      name: options.baseChrName ?? 'base.chr',
+      size: options.baseChr.length,
+      slots: baseOccupancy.fileTileSlots,
+      occupied: baseOccupancy.occupiedTiles,
+    });
+  } else {
+    baseStatusBadge.textContent = t('chrWorkspaceNoBaseChr');
+  }
+
+  introPanel.append(headerGroup, baseStatusBadge);
+
+  // Animation contextual targeting
+  const animList = options.animationModel?.animations ?? [];
   const targetAnim =
-    (options.selectedAnimationId && options.animationModel
-      ? animations.find(
-          (a) =>
-            a.id === options.selectedAnimationId ||
-            a.name === options.selectedAnimationId,
-        )
-      : null) ??
-    animations[0] ??
-    null;
+    options.selectedAnimationId !== null &&
+    options.selectedAnimationId !== undefined
+      ? (animList.find((a) => a.id === options.selectedAnimationId) ??
+        animList[0] ??
+        null)
+      : (animList[0] ?? null);
 
-  const frameCount = targetAnim?.frames.length ?? 0;
-  const activeFrameIndex =
-    frameCount > 0
-      ? Math.min(Math.max(0, options.selectedFrameIndex ?? 0), frameCount - 1)
-      : 0;
-
+  const activeFrameIndex = Math.max(0, options.selectedFrameIndex ?? 0);
   const activeEntity = resolveAnimationEntityName(
     options.selectedEntity,
     targetAnim,
@@ -1221,18 +1400,18 @@ export function createChrWorkspace(
 
   const uniqueEntities = Array.from(
     new Set(
-      animations
+      animList
         .map((a) => resolveAnimationEntityName(null, a))
-        .filter((e): e is string => Boolean(e && e.length > 0)),
+        .filter((ent): ent is string => ent !== null && ent.length > 0),
     ),
   );
 
-  const highlightScope: ChrHighlightScope = options.highlightScope ?? 'none';
+  // Collect highlighted indices
   const highlightedIndices = collectChrHighlightTileIndices({
     scope: highlightScope,
     mode: options.mode,
     animationModel: options.animationModel,
-    selectedAnimationId: targetAnim?.id ?? targetAnim?.name ?? null,
+    selectedAnimationId: targetAnim?.id ?? null,
     selectedFrameIndex: activeFrameIndex,
     selectedEntity: activeEntity,
     classifications,
@@ -1271,7 +1450,71 @@ export function createChrWorkspace(
     activeFrameIndex,
     activeEntity,
     uniqueEntities,
+    usageDiagnostics,
+    heatmapSummary,
+    heatmapEnabled,
   );
+
+  // Contextual Tile Inspector (#section-chr-tile-inspector)
+  const isSelectedTileHighlighted =
+    options.selectedTileIndex !== null &&
+    options.selectedTileIndex !== undefined &&
+    highlightedIndices.has(options.selectedTileIndex);
+
+  const selectedReferences =
+    options.selectedTileIndex !== null &&
+    options.selectedTileIndex !== undefined
+      ? (referenceIndex.get(options.selectedTileIndex) ?? [])
+      : [];
+
+  const selectedDiagnostic =
+    options.selectedTileIndex !== null &&
+    options.selectedTileIndex !== undefined
+      ? (usageDiagnostics[options.selectedTileIndex] ?? null)
+      : null;
+
+  const tileInspector = createChrTileInspector({
+    selectedTileIndex: options.selectedTileIndex ?? null,
+    finalChrBytes: metrics.finalChrBytes,
+    mode: options.mode,
+    animationModel: options.animationModel,
+    baseChr: options.baseChr,
+    baseChrName: options.baseChrName,
+    destinationPatternTable: options.destinationPatternTable,
+    tiles: options.tiles,
+    colors: previewColors,
+    isHighlighted: isSelectedTileHighlighted,
+    highlightScopeLabel: highlightScope !== 'none' ? highlightScopeLabel : null,
+    references: selectedReferences,
+    diagnostic: selectedDiagnostic,
+    heatmapEnabled,
+    onNavigateToReference: (ref) => {
+      if (ref.type === 'animation') {
+        if (options.onNavigateToAnimation) {
+          options.onNavigateToAnimation(ref.animationId, ref.frameIndex);
+        } else if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('animation');
+        }
+      } else if (ref.type === 'playfield') {
+        if (options.onNavigateToPlayfield) {
+          options.onNavigateToPlayfield(ref.column, ref.row);
+        } else if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('playfield');
+        }
+      } else {
+        if (options.onNavigateToTileset) {
+          options.onNavigateToTileset(ref.tileIndex);
+        } else if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('tileset');
+        }
+      }
+    },
+    onDeselect: () => {
+      if (options.onSelectTile) {
+        options.onSelectTile(null);
+      }
+    },
+  });
 
   // 3. Physical Occupancy & Pattern Tables Panel (#section-chr-occupancy)
   const occupancyPanel = document.createElement('section');
@@ -1507,68 +1750,6 @@ export function createChrWorkspace(
 
     actions.append(gotoAnimBtn, gotoPalettesBtn);
   }
-
-  // Contextual Tile Inspector (#section-chr-tile-inspector)
-  const isSelectedTileHighlighted =
-    options.selectedTileIndex !== null &&
-    options.selectedTileIndex !== undefined &&
-    highlightedIndices.has(options.selectedTileIndex);
-
-  const selectedReferences =
-    options.selectedTileIndex !== null &&
-    options.selectedTileIndex !== undefined
-      ? collectPhysicalTileReferences({
-          physicalTileIndex: options.selectedTileIndex,
-          mode: options.mode,
-          animationModel: options.animationModel,
-          playfieldNametable: options.playfieldNametable,
-          destinationPatternTable: options.destinationPatternTable,
-          tiles: options.tiles,
-          deduplicationEnabled: options.deduplicationEnabled,
-          flipDeduplicationEnabled: options.flipDeduplicationEnabled,
-        })
-      : [];
-
-  const tileInspector = createChrTileInspector({
-    selectedTileIndex: options.selectedTileIndex ?? null,
-    finalChrBytes: metrics.finalChrBytes,
-    mode: options.mode,
-    animationModel: options.animationModel,
-    baseChr: options.baseChr,
-    baseChrName: options.baseChrName,
-    destinationPatternTable: options.destinationPatternTable,
-    tiles: options.tiles,
-    colors: previewColors,
-    isHighlighted: isSelectedTileHighlighted,
-    highlightScopeLabel: highlightScope !== 'none' ? highlightScopeLabel : null,
-    references: selectedReferences,
-    onNavigateToReference: (ref) => {
-      if (ref.type === 'animation') {
-        if (options.onNavigateToAnimation) {
-          options.onNavigateToAnimation(ref.animationId, ref.frameIndex);
-        } else if (options.onNavigateToWorkspace) {
-          options.onNavigateToWorkspace('animation');
-        }
-      } else if (ref.type === 'playfield') {
-        if (options.onNavigateToPlayfield) {
-          options.onNavigateToPlayfield(ref.column, ref.row);
-        } else if (options.onNavigateToWorkspace) {
-          options.onNavigateToWorkspace('playfield');
-        }
-      } else {
-        if (options.onNavigateToTileset) {
-          options.onNavigateToTileset(ref.tileIndex);
-        } else if (options.onNavigateToWorkspace) {
-          options.onNavigateToWorkspace('tileset');
-        }
-      }
-    },
-    onDeselect: () => {
-      if (options.onSelectTile) {
-        options.onSelectTile(null);
-      }
-    },
-  });
 
   exportPanel.append(exportHeader, actions);
 

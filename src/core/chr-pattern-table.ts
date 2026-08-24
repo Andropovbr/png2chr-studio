@@ -1028,3 +1028,157 @@ export function buildPhysicalTileReferenceIndex(
 
   return index;
 }
+
+export type ChrHeatmapBucket =
+  'unused' | 'single' | 'moderate' | 'high' | 'very-high';
+
+export interface ChrTileUsageDiagnostic {
+  readonly physicalTileIndex: number;
+  readonly referenceCount: number;
+  readonly resourceCount: number;
+  readonly frameCount: number;
+  readonly animationCount: number;
+  readonly entityCount: number;
+  readonly bucket: ChrHeatmapBucket;
+}
+
+export interface ChrUsageHeatmapSummary {
+  readonly totalReferences: number;
+  readonly referencedTileCount: number;
+  readonly reusedTileCount: number;
+  readonly unreferencedOccupiedTileCount: number;
+  readonly maxReferenceCount: number;
+  readonly mostReferencedTileIndex: number | null;
+  readonly averageReuseRatio: number;
+}
+
+export function classifyHeatmapBucket(
+  referenceCount: number,
+): ChrHeatmapBucket {
+  if (referenceCount <= 0) return 'unused';
+  if (referenceCount === 1) return 'single';
+  if (referenceCount <= 3) return 'moderate';
+  if (referenceCount <= 7) return 'high';
+  return 'very-high';
+}
+
+export interface CalculateTileUsageDiagnosticsOptions extends Omit<
+  CollectChrTileReferencesOptions,
+  'physicalTileIndex'
+> {
+  readonly physicalTileCount?: number;
+  readonly referenceIndex?: Map<number, readonly ChrTileReference[]>;
+}
+
+export function calculateTileUsageDiagnostics(
+  options: CalculateTileUsageDiagnosticsOptions,
+): readonly ChrTileUsageDiagnostic[] {
+  const totalTiles = options.physicalTileCount ?? NES_CHR_ROM_TILE_COUNT;
+  const refIndex =
+    options.referenceIndex ?? buildPhysicalTileReferenceIndex(options);
+
+  const result: ChrTileUsageDiagnostic[] = [];
+
+  for (let i = 0; i < totalTiles; i += 1) {
+    const refs = refIndex.get(i) ?? [];
+    const referenceCount = refs.length;
+
+    let frameCount = 0;
+    let animationCount = 0;
+    let entityCount = 0;
+    let resourceCount = 0;
+
+    if (referenceCount > 0) {
+      const distinctFrames = new Set<string>();
+      const distinctAnimations = new Set<string>();
+      const distinctEntities = new Set<string>();
+      let hasPlayfield = false;
+      let hasTileset = false;
+
+      for (const ref of refs) {
+        switch (ref.type) {
+          case 'animation':
+            distinctFrames.add(`${ref.animationId}:${String(ref.frameIndex)}`);
+            distinctAnimations.add(ref.animationId);
+            if (ref.entity) {
+              distinctEntities.add(ref.entity);
+            }
+            break;
+          case 'playfield':
+            hasPlayfield = true;
+            break;
+          case 'tileset':
+            hasTileset = true;
+            break;
+        }
+      }
+
+      frameCount = distinctFrames.size;
+      animationCount = distinctAnimations.size;
+      entityCount = distinctEntities.size;
+      resourceCount =
+        animationCount + (hasPlayfield ? 1 : 0) + (hasTileset ? 1 : 0);
+    }
+
+    const bucket = classifyHeatmapBucket(referenceCount);
+
+    result.push({
+      physicalTileIndex: i,
+      referenceCount,
+      resourceCount,
+      frameCount,
+      animationCount,
+      entityCount,
+      bucket,
+    });
+  }
+
+  return result;
+}
+
+export function calculateChrUsageHeatmapSummary(
+  diagnostics: readonly ChrTileUsageDiagnostic[],
+  classifications?: readonly ChrSlotClassification[],
+): ChrUsageHeatmapSummary {
+  let totalReferences = 0;
+  let referencedTileCount = 0;
+  let reusedTileCount = 0;
+  let unreferencedOccupiedTileCount = 0;
+  let maxReferenceCount = 0;
+  let mostReferencedTileIndex: number | null = null;
+
+  for (const diag of diagnostics) {
+    const refs = diag.referenceCount;
+    totalReferences += refs;
+    if (refs > 0) {
+      referencedTileCount += 1;
+      if (refs >= 2) {
+        reusedTileCount += 1;
+      }
+      if (refs > maxReferenceCount) {
+        maxReferenceCount = refs;
+        mostReferencedTileIndex = diag.physicalTileIndex;
+      }
+    } else if (classifications) {
+      const cls = classifications[diag.physicalTileIndex];
+      if (cls && (cls.occupancy === 'project' || cls.occupancy === 'base')) {
+        unreferencedOccupiedTileCount += 1;
+      }
+    }
+  }
+
+  const averageReuseRatio =
+    referencedTileCount > 0
+      ? Math.round((totalReferences / referencedTileCount) * 100) / 100
+      : 0;
+
+  return {
+    totalReferences,
+    referencedTileCount,
+    reusedTileCount,
+    unreferencedOccupiedTileCount,
+    maxReferenceCount,
+    mostReferencedTileIndex,
+    averageReuseRatio,
+  };
+}

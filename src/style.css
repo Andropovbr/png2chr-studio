@@ -3186,6 +3186,95 @@ input:focus-visible + label {
   background: transparent;
 }
 
+/* CHR Heatmap Controls */
+.chr-heatmap-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.chr-heatmap-label {
+  font-size: 0.8rem;
+  color: var(--muted, #8b9bb4);
+  font-weight: 600;
+}
+
+.chr-heatmap-segmented {
+  display: inline-flex;
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.35rem;
+  overflow: hidden;
+}
+
+/* CHR Heatmap Legend */
+.chr-heatmap-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.chr-heatmap-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text, #eaf0f5);
+  font-size: 0.75rem;
+  font-family: var(--font-mono, monospace);
+}
+
+.chr-heatmap-legend-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.chr-heatmap-legend-item.is-unused .chr-heatmap-legend-indicator {
+  border: 1px dashed rgb(100 116 139 / 60%);
+  background: rgb(100 116 139 / 20%);
+}
+
+.chr-heatmap-legend-item.is-single .chr-heatmap-legend-indicator {
+  border: 1px solid rgb(96 165 250 / 80%);
+  background: rgb(96 165 250 / 40%);
+}
+
+.chr-heatmap-legend-item.is-moderate .chr-heatmap-legend-indicator {
+  border: 1px solid rgb(245 158 11 / 80%);
+  background: rgb(245 158 11 / 50%);
+}
+
+.chr-heatmap-legend-item.is-high .chr-heatmap-legend-indicator {
+  border: 1px solid rgb(249 115 22 / 85%);
+  background: rgb(249 115 22 / 60%);
+}
+
+.chr-heatmap-legend-item.is-very-high .chr-heatmap-legend-indicator {
+  border: 1px solid rgb(239 68 68 / 90%);
+  background: rgb(239 68 68 / 70%);
+}
+
+/* CHR Heatmap Summary Bar */
+.chr-heatmap-summary-bar {
+  background: rgb(56 189 248 / 8%);
+  border: 1px solid rgb(56 189 248 / 25%);
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.82rem;
+  color: var(--text, #eaf0f5);
+  font-family: var(--font-mono, monospace);
+  line-height: 1.4;
+}
+
 .chr-pattern-tables-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
@@ -3445,6 +3534,66 @@ input:focus-visible + label {
   font-weight: 600;
 }
 
+/* Heatmap Active Overlay on Pattern Table Slots */
+.chr-pt-grid-overlay.has-heatmap .chr-tile-slot[data-heatmap-bucket='single'] {
+  background-color: rgb(96 165 250 / 14%);
+  border-color: rgb(96 165 250 / 45%);
+}
+
+.chr-pt-grid-overlay.has-heatmap
+  .chr-tile-slot[data-heatmap-bucket='moderate'] {
+  background-color: rgb(245 158 11 / 20%);
+  border-color: rgb(245 158 11 / 60%);
+}
+
+.chr-pt-grid-overlay.has-heatmap .chr-tile-slot[data-heatmap-bucket='high'] {
+  background-color: rgb(249 115 22 / 28%);
+  border-color: rgb(249 115 22 / 75%);
+}
+
+.chr-pt-grid-overlay.has-heatmap
+  .chr-tile-slot[data-heatmap-bucket='very-high'] {
+  background-color: rgb(239 68 68 / 35%);
+  border-color: rgb(239 68 68 / 90%);
+  box-shadow: inset 0 0 4px rgb(239 68 68 / 40%);
+}
+
+/* Reference Count Badge on Slots */
+.chr-slot-ref-badge {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  font-family: var(--font-mono, monospace);
+  line-height: 1;
+  padding: 1px 2px;
+  border-radius: 2px;
+  pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+  z-index: 2;
+}
+
+.chr-slot-ref-badge.bucket-single {
+  background: rgb(96 165 250 / 85%);
+  color: #000;
+}
+
+.chr-slot-ref-badge.bucket-moderate {
+  background: rgb(245 158 11 / 85%);
+  color: #000;
+}
+
+.chr-slot-ref-badge.bucket-high {
+  background: rgb(249 115 22 / 90%);
+  color: #fff;
+}
+
+.chr-slot-ref-badge.bucket-very-high {
+  background: rgb(239 68 68 / 95%);
+  color: #fff;
+}
+
 /* CHR Tile Inspector Panel */
 .chr-tile-inspector-panel {
   display: flex;
@@ -3625,6 +3774,97 @@ input:focus-visible + label {
 .chr-attribution-text {
   word-break: break-word;
   font-size: 0.85rem;
+}
+
+/* CHR Tile Inspector Usage Diagnostics */
+.chr-tile-usage-section {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: rgb(0 0 0 / 25%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.4rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.chr-tile-usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chr-tile-usage-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.chr-tile-usage-badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+}
+
+.chr-tile-usage-badge.bucket-unused {
+  background: rgb(100 116 139 / 15%);
+  border: 1px solid rgb(100 116 139 / 35%);
+  color: #94a3b8;
+}
+
+.chr-tile-usage-badge.bucket-single {
+  background: rgb(96 165 250 / 15%);
+  border: 1px solid rgb(96 165 250 / 40%);
+  color: #60a5fa;
+}
+
+.chr-tile-usage-badge.bucket-moderate {
+  background: rgb(245 158 11 / 15%);
+  border: 1px solid rgb(245 158 11 / 40%);
+  color: #f59e0b;
+}
+
+.chr-tile-usage-badge.bucket-high {
+  background: rgb(249 115 22 / 15%);
+  border: 1px solid rgb(249 115 22 / 40%);
+  color: #f97316;
+}
+
+.chr-tile-usage-badge.bucket-very-high {
+  background: rgb(239 68 68 / 15%);
+  border: 1px solid rgb(239 68 68 / 40%);
+  color: #ef4444;
+}
+
+.chr-tile-usage-badge.is-unreferenced-occupied {
+  background: rgb(56 189 248 / 12%);
+  border: 1px solid rgb(56 189 248 / 30%);
+  color: #38bdf8;
+}
+
+.chr-tile-usage-badge.is-unreferenced-base {
+  background: rgb(245 158 11 / 12%);
+  border: 1px solid rgb(245 158 11 / 30%);
+  color: #f59e0b;
+}
+
+.chr-tile-usage-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chr-tile-usage-chip {
+  font-size: 0.75rem;
+  font-family: var(--font-mono, monospace);
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  color: var(--text, #eaf0f5);
 }
 
 /* CHR Tile Inspector "Used by" Section */
