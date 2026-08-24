@@ -7,7 +7,12 @@ import {
   type SpritePatternTable,
   type TileAddressingMetadata,
 } from '../core/chr-pattern-table';
-import { decodeChrTileToPixels } from '../core/chr-tile-editor';
+import {
+  areTilePixelsEqual,
+  cloneTilePixels,
+  createTileHistory,
+  decodeChrTileToPixels,
+} from '../core/chr-tile-editor';
 import { createChrTileEditor, type ChrDrawingTool } from './chr-tile-editor';
 import type { Tile } from '../core/types';
 import { t } from '../i18n';
@@ -287,6 +292,11 @@ export function createChrTileInspector(
     let localSelectedColor = 1;
     let localShowGrid = true;
     let localShiftWrap = false;
+    const localHistory = createTileHistory(
+      cloneTilePixels(localTilePixels),
+      50,
+      areTilePixelsEqual,
+    );
 
     const editorContainer = document.createElement('div');
     editorContainer.className = 'chr-tile-inspector-editor-container';
@@ -300,6 +310,7 @@ export function createChrTileInspector(
         paletteColors: options.colors ?? NEUTRAL_NES_GRAYSCALE,
         showGrid: localShowGrid,
         shiftWrap: localShiftWrap,
+        history: localHistory,
         onPixelsChange: (nextPixels) => {
           localTilePixels = nextPixels;
           renderLocalEditor();
@@ -318,6 +329,12 @@ export function createChrTileInspector(
         },
         onToggleShiftWrap: (wrapState) => {
           localShiftWrap = wrapState;
+          renderLocalEditor();
+        },
+        onUndo: () => {
+          renderLocalEditor();
+        },
+        onRedo: () => {
           renderLocalEditor();
         },
       });

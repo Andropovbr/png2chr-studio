@@ -4752,9 +4752,22 @@ input:focus-visible + label {
   position: relative;
 }
 
-.chr-tile-editor-canvas {
+.chr-tile-editor-canvas-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   width: 256px;
   height: 256px;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.chr-tile-editor-canvas {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   aspect-ratio: 1 / 1;
   image-rendering: pixelated;
@@ -4762,6 +4775,24 @@ input:focus-visible + label {
   cursor: crosshair;
   touch-action: none;
   border-radius: 0.25rem;
+  display: block;
+}
+
+.chr-tile-editor-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  background-size: 12.5% 12.5%;
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 22%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 22%) 1px, transparent 1px);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 25%);
+}
+
+.chr-tile-editor-canvas-wrapper.has-grid .chr-tile-editor-grid-overlay,
+.chr-tile-editor-grid-overlay.is-visible {
+  display: block;
 }
 
 .chr-tile-editor-status-bar {
@@ -4781,6 +4812,7 @@ input:focus-visible + label {
   margin-top: 0.1rem;
 }
 
+.chr-editor-history-group,
 .chr-editor-transform-group,
 .chr-editor-shift-group,
 .chr-editor-actions-group {
