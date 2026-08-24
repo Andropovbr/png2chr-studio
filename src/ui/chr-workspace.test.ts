@@ -85,8 +85,13 @@ class MockElement {
 
   click() {
     const handlers = this.eventListeners.get('click') ?? [];
+    const event = {
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+      target: this,
+    };
     handlers.forEach((fn) => {
-      fn();
+      fn(event);
     });
   }
 
@@ -1672,6 +1677,86 @@ describe('ChrWorkspace component', () => {
       expect(result.value.chr.selectedAnimationId).toBe('hero-walk');
       expect(result.value.chr.selectedFrameIndex).toBe(1);
       expect(initialState.chr.highlightScope).toBe('none');
+    });
+
+    it('wires reverse lookup references in Tile Inspector and triggers onNavigateToAnimation callback', () => {
+      const mockImage = createMockIndexedImage(16, 16);
+      const model = buildAnimationProjectModel({
+        name: 'Hero',
+        animations: [
+          {
+            name: 'Hero_walk',
+            entity: 'Hero',
+            sourceImageName: 'hero.png',
+            image: mockImage,
+            playback: 'loop',
+            allowHorizontalFlip: false,
+            allowVerticalFlip: false,
+            flipH: false,
+            flipV: false,
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      const onNavigateToAnimation = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+        onNavigateToAnimation,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const inspector = mockWs.querySelector('.chr-tile-inspector-panel');
+      expect(inspector).not.toBeNull();
+
+      const jumpBtn = mockWs.querySelector('.chr-tile-ref-jump-btn');
+      expect(jumpBtn).not.toBeNull();
+      jumpBtn?.click();
+
+      expect(onNavigateToAnimation).toHaveBeenCalled();
+    });
+
+    it('collects playfield nametable references and wires onNavigateToPlayfield', () => {
+      const onNavigateToPlayfield = vi.fn();
+      const nametable = new Uint8Array(960);
+      nametable[10] = 5; // (10, 0) -> tile 5
+
+      const workspace = createChrWorkspace({
+        mode: 'playfield',
+        animationModel: null,
+        playfieldNametable: nametable,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 5,
+        onNavigateToPlayfield,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const refItem = mockWs.querySelector('.chr-tile-ref-item');
+      expect(refItem).not.toBeNull();
+      expect(refItem?.textContent).toContain('(10, 0) · tile $05');
+
+      const jumpBtn = mockWs.querySelector('.chr-tile-ref-jump-btn');
+      jumpBtn?.click();
+
+      expect(onNavigateToPlayfield).toHaveBeenCalledWith(10, 0);
     });
   });
 });

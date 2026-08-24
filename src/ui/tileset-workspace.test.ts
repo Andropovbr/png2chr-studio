@@ -96,8 +96,13 @@ class MockElement {
 
   click() {
     const handlers = this.eventListeners.get('click') ?? [];
+    const event = {
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+      target: this,
+    };
     handlers.forEach((fn) => {
-      fn();
+      fn(event);
     });
   }
 
@@ -446,5 +451,21 @@ describe('TilesetWorkspace composition and byte-compatibility', () => {
     if (chrCall) {
       expect((chrCall[0] as Uint8Array).length).toBe(8192);
     }
+  });
+
+  it('renders Inspect in CHR buttons on tile cards and invokes onInspectInChr callback', () => {
+    const onInspectInChr = vi.fn();
+    const options = defaultOptions({
+      onInspectInChr,
+    });
+
+    const workspace = createTilesetWorkspace(options);
+    const mockRoot = workspace as unknown as MockElement;
+
+    const inspectBtn = mockRoot.querySelector('.tile-inspect-chr-btn');
+    expect(inspectBtn).not.toBeNull();
+    inspectBtn?.click();
+
+    expect(onInspectInChr).toHaveBeenCalledWith(0);
   });
 });

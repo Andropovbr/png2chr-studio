@@ -3627,6 +3627,113 @@ input:focus-visible + label {
   font-size: 0.85rem;
 }
 
+/* CHR Tile Inspector "Used by" Section */
+.chr-tile-used-by-section {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.45rem;
+  padding: 0.85rem;
+}
+
+.chr-tile-used-by-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chr-tile-used-by-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.chr-tile-used-by-empty {
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+}
+
+.chr-tile-used-by-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.chr-tile-ref-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgb(0 0 0 / 25%);
+  border: 1px solid rgb(255 255 255 / 6%);
+  border-radius: 0.35rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.chr-tile-ref-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chr-tile-ref-badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.2rem;
+}
+
+.chr-tile-ref-badge.badge-animation {
+  background: rgb(56 189 248 / 15%);
+  color: #38bdf8;
+  border: 1px solid rgb(56 189 248 / 35%);
+}
+
+.chr-tile-ref-badge.badge-playfield {
+  background: rgb(34 197 94 / 15%);
+  color: #4ade80;
+  border: 1px solid rgb(34 197 94 / 35%);
+}
+
+.chr-tile-ref-badge.badge-tileset {
+  background: rgb(245 158 11 / 15%);
+  color: #fbbf24;
+  border: 1px solid rgb(245 158 11 / 35%);
+}
+
+.chr-tile-ref-desc {
+  font-family: var(--font-mono, monospace);
+  color: var(--text, #eaf0f5);
+}
+
+.chr-tile-ref-jump-btn {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chr-tile-refs-toggle-btn {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.animation-inspect-chr-btn,
+.tile-inspect-chr-btn {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+  margin-top: 0.25rem;
+  width: 100%;
+}
+
 .chr-occupancy-panel,
 .chr-sprite-context-panel,
 .chr-reuse-panel,

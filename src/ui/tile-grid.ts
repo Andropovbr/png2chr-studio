@@ -47,6 +47,7 @@ export function createTileGrid(
   paletteSet: NesPaletteSet,
   paletteAssignments: Uint8Array,
   paletteRegionSize: number,
+  onInspectInChr?: (physicalTileIndex: number) => void,
 ): HTMLElement {
   const section = document.createElement('section');
   section.className = 'panel tiles-panel';
@@ -141,6 +142,22 @@ export function createTileGrid(
       row: tile.row,
     });
     card.append(canvas, ids, position);
+
+    if (onInspectInChr) {
+      const inspectBtn = document.createElement('button');
+      inspectBtn.type = 'button';
+      inspectBtn.className = 'button secondary-button tile-inspect-chr-btn';
+      inspectBtn.textContent = t('chrInspectInChrAction');
+      inspectBtn.title = t('chrInspectInChrTitle', {
+        hex: tile.id.toString(16).toUpperCase().padStart(2, '0'),
+      });
+      inspectBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onInspectInChr(tile.id);
+      });
+      card.append(inspectBtn);
+    }
+
     grid.append(card);
   });
   section.append(grid);

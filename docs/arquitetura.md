@@ -257,12 +257,19 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
     - _Offsets de Bytes na CHR-ROM:_ Offset inicial do tile na ROM (`$0000..$1FF0`, fórmula `physicalIndex * 16`), Offset do Bitplane 0 (`+0`) e Offset do Bitplane 1 (`+8`, fórmula `physicalIndex * 16 + 8`).
     - _Diagnóstico de Estado do Slot:_ Identificação visual precisa entre `Vazio (Não alocado)`, `Tile do Projeto (Ocupado)` e `CHR-Base (Importada)`.
     - _Atribuição de Origem:_ Rastreamento do asset, animação e frame de origem associados ao tile físico no modelo de animação ou metadados de tileset.
+    - _Consulta Reversa de Uso ("Usado por" / "Used by"):_ Lista exaustiva e dinâmica de todas as referências lógicas do projeto associadas ao tile físico selecionado (`collectPhysicalTileReferences` em `src/core/chr-pattern-table.ts`), categorizadas com badges por tipo:
+      - _Animação:_ Nome da entidade, nome da animação, índice do frame, índice do sprite, coordenadas locais `(x, y)` e flags de espelhamento (`Flip H`, `Flip V`).
+      - _Playfield:_ Coordenadas na nametable `(col, row)` e índice local do tile `$XX`.
+      - _Tileset:_ Identificador e índice do tile no conjunto extraído/deduplicado.
+      - _Tratamento de Volume e Truncamento:_ Agrupamento compacto e botão expansível ("Mostrar todas (N)" / "Mostrar menos") quando a contagem de referências ultrapassa o limite inicial de visualização, prevenindo sobrecarga de layout.
+      - _Ação de Salto Direto para Origem ("Ir para origem"):_ Cada referência lógica possui botão interativo que navega imediatamente para o workspace de origem (selecionando a animação e o frame exato no Editor de Animação, a célula no Playfield ou o tile no Tileset), de forma puramente transiente via `WorkspaceState`.
+  - **Ações Contextuais de Inspeção nos Workspaces de Origem ("Inspecionar na CHR"):** Botões contextuais nos cartões de tiles (Modo Tileset/Playfield) e nas células de mapeamento de metasprites (Modo Animação) que direcionam o usuário diretamente para o CHR Viewer com o tile físico `0..511` selecionado, rolagem automática suave para visibilidade do slot correspondente e preservação dos níveis de zoom e paletas ativas.
   - **Pré-visualização Ampliada (16× / 128×128 px):** Exibição ampliada dos 64 pixels do tile com renderização 2bpp nítida e sobreposição opcional da grade de pixels 8×8 com controle liga/desliga.
   - **Ocupação Física Total e Isolamento de Tabelas:** Exibe o total ocupado (`Total = PT0 + PT1`), detalhando a ocupação física das tabelas PT0 ($0000..$0FFF, 4 KiB, 256 tiles) e PT1 ($1000..$1FFF, 4 KiB, 256 tiles).
   - **Diferenciação Hardware (Índice Físico vs. Índice Local OAM):** Esclarece a distinção entre a posição física na ROM (0..511) e o índice de 8 bits gravado na OAM (0..255), determinado pelo registrador PPUCTRL (`$2000` bit 3).
   - **Capacidade Local de Sprites:** Exibe a capacidade da tabela de padrões ativa de sprites (256 tiles) e a contagem de tiles restantes para entidades.
   - **Detalhamento de Reúso e CHR-Base:** Discrimina tiles mantidos de CHR-base (4 KiB / 8 KiB / esparsos), tiles reutilizados por deduplicação/espelhamento e novos tiles alocados.
-  - **Estado Transiente Isolado:** A seleção de tiles, zoom e paleta de preview são preservadas em `WorkspaceState.chr` via `applyWorkspaceUpdate` sem marcar o projeto como modificado (`dirty`).
+  - **Estado Transiente Isolado:** A seleção de tiles, zoom, paleta de preview e contexto de navegação cruzada são preservados exclusivamente em `WorkspaceState` via `applyWorkspaceUpdate` sem marcar o projeto como modificado (`dirty: false`).
   - **Links e Ações:** Acesso direto para download da CHR de 8 KiB (`.chr`) e atalhos de navegação para o Mapeamento de Metasprites, Editor de Animação e Workspace de Paletas.
 
 ### 6.6 Workspace de Entrega e Exportação (`src/ui/delivery-workspace.ts`)

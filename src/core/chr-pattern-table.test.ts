@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { AnimationProjectModel } from './animation-model';
 import { encodeChr } from './chr-encoder';
 import {
   analyzeBaseChrOccupancy,
@@ -8,6 +9,8 @@ import {
   collectChrHighlightTileIndices,
   collectEntityPhysicalTileUsage,
   collectFramePhysicalTileUsage,
+  collectPhysicalTileReferences,
+  buildPhysicalTileReferenceIndex,
   createPatternTableSlots,
   encodePatternTableSlots,
   localPatternTableTileIndex,
@@ -535,6 +538,208 @@ describe('NES sprite pattern tables', () => {
           classifications,
         }),
       ).toEqual(new Set([0]));
+    });
+  });
+
+  describe('collectPhysicalTileReferences and buildPhysicalTileReferenceIndex', () => {
+    const animationModel = {
+      animations: [
+        {
+          id: 'hero-walk',
+          name: 'Hero_walk',
+          entity: 'Hero',
+          frames: [
+            {
+              sprites: [
+                {
+                  physicalTileIndex: 5,
+                  tile: 5,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+                {
+                  physicalTileIndex: 6,
+                  tile: 6,
+                  x: 8,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+              ],
+            },
+            {
+              sprites: [
+                {
+                  physicalTileIndex: 5,
+                  tile: 5,
+                  x: 8,
+                  y: 16,
+                  horizontalFlip: true,
+                  verticalFlip: false,
+                },
+                {
+                  physicalTileIndex: 260,
+                  tile: 4,
+                  x: 0,
+                  y: 16,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'hero-attack',
+          name: 'Hero_attack',
+          entity: 'Hero',
+          frames: [
+            {
+              sprites: [
+                {
+                  physicalTileIndex: 5,
+                  tile: 5,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } as unknown as AnimationProjectModel;
+
+    it('collects all logical animation references to a shared physical tile across frames and animations', () => {
+      const refs = collectPhysicalTileReferences({
+        physicalTileIndex: 5,
+        animationModel,
+      });
+
+      expect(refs.length).toBe(3);
+      expect(refs[0]).toEqual({
+        type: 'animation',
+        entity: 'Hero',
+        animationId: 'hero-walk',
+        animationName: 'Hero_walk',
+        frameIndex: 0,
+        spriteIndex: 0,
+        x: 0,
+        y: 0,
+        horizontalFlip: false,
+        verticalFlip: false,
+        physicalTileIndex: 5,
+      });
+      expect(refs[1]).toEqual({
+        type: 'animation',
+        entity: 'Hero',
+        animationId: 'hero-walk',
+        animationName: 'Hero_walk',
+        frameIndex: 1,
+        spriteIndex: 0,
+        x: 8,
+        y: 16,
+        horizontalFlip: true,
+        verticalFlip: false,
+        physicalTileIndex: 5,
+      });
+      expect(refs[2]).toEqual({
+        type: 'animation',
+        entity: 'Hero',
+        animationId: 'hero-attack',
+        animationName: 'Hero_attack',
+        frameIndex: 0,
+        spriteIndex: 0,
+        x: 0,
+        y: 0,
+        horizontalFlip: false,
+        verticalFlip: false,
+        physicalTileIndex: 5,
+      });
+    });
+
+    it('collects PT1 physical tile references (>= 256) correctly', () => {
+      const refs = collectPhysicalTileReferences({
+        physicalTileIndex: 260,
+        animationModel,
+      });
+
+      expect(refs.length).toBe(1);
+      expect(refs[0]).toEqual({
+        type: 'animation',
+        entity: 'Hero',
+        animationId: 'hero-walk',
+        animationName: 'Hero_walk',
+        frameIndex: 1,
+        spriteIndex: 1,
+        x: 0,
+        y: 16,
+        horizontalFlip: false,
+        verticalFlip: false,
+        physicalTileIndex: 260,
+      });
+    });
+
+    it('returns empty array for an unreferenced or out-of-range physical tile', () => {
+      expect(
+        collectPhysicalTileReferences({
+          physicalTileIndex: 100,
+          animationModel,
+        }),
+      ).toEqual([]);
+
+      expect(
+        collectPhysicalTileReferences({
+          physicalTileIndex: 999,
+          animationModel,
+        }),
+      ).toEqual([]);
+    });
+
+    it('collects playfield nametable cell references', () => {
+      const nametable = new Uint8Array(960);
+      nametable[0] = 10; // (0,0) -> tile 10
+      nametable[33] = 10; // (1,1) -> tile 10
+      nametable[100] = 20;
+
+      const refs = collectPhysicalTileReferences({
+        physicalTileIndex: 10,
+        mode: 'playfield',
+        playfieldNametable: nametable,
+        destinationPatternTable: 0,
+      });
+
+      expect(refs.length).toBe(2);
+      expect(refs[0]).toEqual({
+        type: 'playfield',
+        column: 0,
+        row: 0,
+        nametableIndex: 0,
+        tileIndex: 10,
+        physicalTileIndex: 10,
+      });
+      expect(refs[1]).toEqual({
+        type: 'playfield',
+        column: 1,
+        row: 1,
+        nametableIndex: 33,
+        tileIndex: 10,
+        physicalTileIndex: 10,
+      });
+    });
+
+    it('builds a full physical tile reference index map', () => {
+      const index = buildPhysicalTileReferenceIndex({
+        animationModel,
+      });
+
+      expect(index.get(5)?.length).toBe(3);
+      expect(index.get(6)?.length).toBe(1);
+      expect(index.get(260)?.length).toBe(1);
+      expect(index.get(99)).toBeUndefined();
     });
   });
 });

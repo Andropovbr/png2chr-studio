@@ -2,6 +2,7 @@ import type { AnimationProjectModel } from '../core/animation-model';
 import {
   classifyChrSlots,
   computeTileAddressingMetadata,
+  type ChrTileReference,
   type SpritePatternTable,
   type TileAddressingMetadata,
 } from '../core/chr-pattern-table';
@@ -40,6 +41,8 @@ export interface ChrTileInspectorOptions {
   }[];
   readonly isHighlighted?: boolean;
   readonly highlightScopeLabel?: string | null;
+  readonly references?: readonly ChrTileReference[];
+  readonly onNavigateToReference?: (reference: ChrTileReference) => void;
   readonly onDeselect?: () => void;
 }
 
@@ -378,7 +381,132 @@ export function createChrTileInspector(
       addMetric(t('chrWorkspaceHighlightLabel'), highlightBadge);
     }
 
-    content.append(previewSection, metricsList);
+    // 3. Reverse Lookup: "Used by" Section
+    const usedBySection = document.createElement('div');
+    usedBySection.className = 'chr-tile-used-by-section';
+
+    const usedByHeader = document.createElement('div');
+    usedByHeader.className = 'chr-tile-used-by-header';
+
+    const usedByTitle = document.createElement('h4');
+    usedByTitle.className = 'chr-tile-used-by-title';
+    const references = options.references ?? [];
+    usedByTitle.textContent = t('chrTileInspectorUsedBy', {
+      count: references.length,
+    });
+    usedByHeader.append(usedByTitle);
+    usedBySection.append(usedByHeader);
+
+    if (references.length === 0) {
+      const emptyRefs = document.createElement('p');
+      emptyRefs.className = 'empty-message chr-tile-used-by-empty';
+      emptyRefs.textContent = t('chrTileInspectorUsedByEmpty');
+      usedBySection.append(emptyRefs);
+    } else {
+      const refList = document.createElement('div');
+      refList.className = 'chr-tile-used-by-list';
+
+      const INITIAL_VISIBLE_COUNT = 6;
+      let showAll = false;
+
+      const renderRefs = (): void => {
+        const visibleRefs = showAll
+          ? references
+          : references.slice(0, INITIAL_VISIBLE_COUNT);
+
+        const itemNodes: HTMLElement[] = [];
+
+        visibleRefs.forEach((ref) => {
+          const item = document.createElement('div');
+          item.className = `chr-tile-ref-item ref-type-${ref.type}`;
+
+          const infoWrap = document.createElement('div');
+          infoWrap.className = 'chr-tile-ref-info';
+
+          const typeBadge = document.createElement('span');
+          typeBadge.className = `status-badge chr-tile-ref-badge badge-${ref.type}`;
+          typeBadge.textContent =
+            ref.type === 'animation'
+              ? 'Animation'
+              : ref.type === 'playfield'
+                ? 'Playfield'
+                : 'Tileset';
+
+          const desc = document.createElement('span');
+          desc.className = 'chr-tile-ref-desc';
+
+          if (ref.type === 'animation') {
+            const flips: string[] = [];
+            if (ref.horizontalFlip) flips.push('Flip H');
+            if (ref.verticalFlip) flips.push('Flip V');
+            const flipText = flips.length > 0 ? ` [${flips.join(', ')}]` : '';
+            const entityPrefix = ref.entity ? `${ref.entity} · ` : '';
+            desc.textContent = `${entityPrefix}${ref.animationName} · Frame #${String(ref.frameIndex)} · sprite (${String(ref.x)}, ${String(ref.y)})${flipText}`;
+          } else if (ref.type === 'playfield') {
+            desc.textContent = `(${String(ref.column)}, ${String(ref.row)}) · tile $${ref.tileIndex.toString(16).toUpperCase().padStart(2, '0')}`;
+          } else {
+            desc.textContent = `tile #${String(ref.tileIndex)}${ref.sourceIndex !== undefined ? ` (src: ${String(ref.sourceIndex)})` : ''}`;
+          }
+
+          infoWrap.append(typeBadge, desc);
+
+          if (options.onNavigateToReference) {
+            const jumpBtn = document.createElement('button');
+            jumpBtn.type = 'button';
+            jumpBtn.className = 'button secondary-button chr-tile-ref-jump-btn';
+            jumpBtn.textContent = t('chrTileInspectorJumpAction');
+            if (ref.type === 'animation') {
+              jumpBtn.title = t('chrTileInspectorJumpAnimation', {
+                name: ref.animationName,
+                frame: ref.frameIndex,
+              });
+            } else if (ref.type === 'playfield') {
+              jumpBtn.title = t('chrTileInspectorJumpPlayfield', {
+                col: ref.column,
+                row: ref.row,
+              });
+            } else {
+              jumpBtn.title = t('chrTileInspectorJumpTileset', {
+                index: ref.tileIndex,
+              });
+            }
+            jumpBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              options.onNavigateToReference?.(ref);
+            });
+            item.append(infoWrap, jumpBtn);
+          } else {
+            item.append(infoWrap);
+          }
+
+          itemNodes.push(item);
+        });
+
+        if (references.length > INITIAL_VISIBLE_COUNT) {
+          const toggleMoreBtn = document.createElement('button');
+          toggleMoreBtn.type = 'button';
+          toggleMoreBtn.className =
+            'button secondary-button chr-tile-refs-toggle-btn';
+          toggleMoreBtn.textContent = showAll
+            ? t('chrTileInspectorShowLessRefs')
+            : t('chrTileInspectorShowAllRefs', {
+                count: references.length,
+              });
+          toggleMoreBtn.addEventListener('click', () => {
+            showAll = !showAll;
+            renderRefs();
+          });
+          itemNodes.push(toggleMoreBtn);
+        }
+
+        refList.replaceChildren(...itemNodes);
+      };
+
+      renderRefs();
+      usedBySection.append(refList);
+    }
+
+    content.append(previewSection, metricsList, usedBySection);
     panel.append(content);
   } else {
     panel.append(header);

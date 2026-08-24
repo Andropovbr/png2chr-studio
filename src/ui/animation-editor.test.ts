@@ -968,4 +968,23 @@ describe('Animation Editor Split Architecture', () => {
     const allBtns = exportPanel.querySelectorAll('.export-actions button');
     expect(allBtns.length).toBe(7);
   });
+
+  it('renders Inspect in CHR button on metasprite mapping cells and invokes onInspectInChr', () => {
+    const onInspectInChr = vi.fn();
+    const options = createOptions({
+      activeTab: 'mapping',
+      onInspectInChr,
+    });
+    const panels = createAnimationEditor(options);
+    const editorPanel = panels.find(
+      (p) => p.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    expect(editorPanel).not.toBeNull();
+
+    const inspectBtn = editorPanel.querySelector('.animation-inspect-chr-btn');
+    expect(inspectBtn).not.toBeNull();
+    inspectBtn?.click();
+
+    expect(onInspectInChr).toHaveBeenCalled();
+  });
 });

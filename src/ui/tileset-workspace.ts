@@ -85,6 +85,7 @@ export interface TilesetWorkspaceOptions {
   ) => void;
   readonly onDeduplicationChange: (enabled: boolean) => void;
   readonly onFlipDeduplicationChange: (enabled: boolean) => void;
+  readonly onInspectInChr?: (physicalTileIndex: number) => void;
   readonly onDownloadBytes: (bytes: Uint8Array, fileName: string) => void;
 }
 
@@ -251,6 +252,7 @@ export function createTilesetWorkspace(
     options.paletteSet,
     options.paletteAssignments,
     regionSize,
+    options.onInspectInChr,
   );
   tileGrid.id = 'section-tiles';
 
