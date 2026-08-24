@@ -39,6 +39,7 @@ import {
 } from '../core/tile-deduplication';
 import { encodeChr } from '../core/chr-encoder';
 import { padChrRom } from '../core/chr-rom';
+import type { TileHistory } from '../core/chr-tile-editor';
 import type { Tile } from '../core/types';
 import { t } from '../i18n';
 import { createChrTileInspector } from './chr-tile-inspector';
@@ -96,6 +97,11 @@ export interface ChrWorkspaceOptions {
   readonly onNavigateToTileset?: (tileIndex: number) => void;
   readonly onDownloadBytes?: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText?: (text: string, fileName: string) => void;
+  readonly onTilePixelsChange?: (
+    physicalIndex: number,
+    newPixels: Uint8Array,
+  ) => void;
+  readonly history?: TileHistory<Uint8Array>;
 }
 
 export type ChrWorkspaceElement = HTMLElement & {
@@ -1572,6 +1578,8 @@ export function createChrWorkspace(
     references: selectedReferences,
     diagnostic: selectedDiagnostic,
     heatmapEnabled,
+    history: options.history,
+    onTilePixelsChange: options.onTilePixelsChange,
     onNavigateToReference: (ref) => {
       if (ref.type === 'animation') {
         if (options.onNavigateToAnimation) {

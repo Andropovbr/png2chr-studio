@@ -231,7 +231,7 @@ function validateBaseChr(baseChr: Uint8Array): void {
   }
 }
 
-function baseChrPhysicalStart(
+export function baseChrPhysicalStart(
   fileTileSlots: number,
   destinationPatternTable: SpritePatternTable,
 ): number {
@@ -805,6 +805,8 @@ export interface AnimationTileReference {
   readonly horizontalFlip: boolean;
   readonly verticalFlip: boolean;
   readonly physicalTileIndex: number;
+  readonly sourceTileColumn?: number;
+  readonly sourceTileRow?: number;
 }
 
 export interface PlayfieldTileReference {
@@ -875,6 +877,8 @@ export function collectPhysicalTileReferences(
               horizontalFlip: sprite.horizontalFlip,
               verticalFlip: sprite.verticalFlip,
               physicalTileIndex: targetIndex,
+              sourceTileColumn: sprite.sourceTileColumn,
+              sourceTileRow: sprite.sourceTileRow,
             });
           }
         }

@@ -121,21 +121,35 @@ class MockElement {
   querySelectorAll(selector: string): MockElement[] {
     const results: MockElement[] = [];
     const match = (el: MockElement): boolean => {
+      if (selector.includes('[')) {
+        const attrMatch = /\[([^=\]]+)(?:=['"]?([^'"\]]+)['"]?)?\]/.exec(
+          selector,
+        );
+        if (attrMatch) {
+          const attr = attrMatch[1]?.trim();
+          const val = attrMatch[2]?.trim();
+          if (attr) {
+            const hasAttr = el.attributes.has(attr);
+            if (!hasAttr) return false;
+            if (val !== undefined) {
+              if (el.attributes.get(attr) !== val) return false;
+            }
+          }
+        }
+        const baseSelector = selector.split('[')[0]?.trim();
+        if (!baseSelector) return true;
+        if (baseSelector.startsWith('.')) {
+          const classes = baseSelector.split('.').filter(Boolean);
+          return classes.every((cls) => el.classList.contains(cls));
+        }
+        return el.tagName.toLowerCase() === baseSelector.toLowerCase();
+      }
       if (selector.startsWith('.')) {
         const classes = selector.split('.').filter(Boolean);
         return classes.every((cls) => el.classList.contains(cls));
       }
       if (selector.startsWith('#')) {
         return el.id === selector.slice(1);
-      }
-      if (selector.startsWith('[') && selector.endsWith(']')) {
-        const inner = selector.slice(1, -1);
-        if (inner.includes('=')) {
-          const [attr, rawVal] = inner.split('=');
-          const val = rawVal ? rawVal.replace(/^["']|["']$/g, '') : '';
-          return el.getAttribute(attr?.trim() ?? '') === val;
-        }
-        return el.attributes.has(inner.trim());
       }
       return el.tagName.toLowerCase() === selector.toLowerCase();
     };
@@ -2156,6 +2170,38 @@ describe('ChrWorkspace component', () => {
 
       const canvasContainer = mockWs.querySelector('.chr-pt-canvas-container');
       expect(canvasContainer?.getAttribute('data-zoom')).toBe('4');
+    });
+
+    it('forwards onTilePixelsChange to the embedded tile inspector', () => {
+      const onTilePixelsChange = vi.fn();
+      const testPixels = new Uint8Array(64);
+      testPixels[0] = 3;
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [{ id: 0, column: 0, row: 0, pixels: testPixels }],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+        onTilePixelsChange,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const rotateBtn = mockWs.querySelector(
+        '.chr-editor-action-btn[data-action="rotate-cw"]',
+      );
+      expect(rotateBtn).not.toBeNull();
+      rotateBtn?.click();
+
+      expect(onTilePixelsChange).toHaveBeenCalledTimes(1);
+      expect(onTilePixelsChange).toHaveBeenCalledWith(
+        0,
+        expect.any(Uint8Array),
+      );
     });
   });
 });
