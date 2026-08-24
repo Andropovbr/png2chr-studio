@@ -474,6 +474,17 @@ const en = {
   tilePixelReset: 'Reset Tile',
   tilePixelResetHint: 'Restore automatic generated pixels for this 8×8 tile',
   tilePixelSelectPrompt: 'Select a frame and tile below to edit its pixels.',
+  chrEditorTitle: 'CHR Tile Editor',
+  chrEditorToolsLabel: 'Drawing Tools',
+  chrEditorToolPencil: 'Pencil (Draw active color index)',
+  chrEditorToolEraser: 'Eraser (Draw color index 0)',
+  chrEditorToolEyedropper: 'Eyedropper (Pick color index from tile)',
+  chrEditorToolFill: 'Flood Fill (Fill contiguous region)',
+  chrEditorColorIndexSelector: 'Color Index',
+  chrEditorColorIndexLabel: 'Color Index {index}',
+  chrEditorCoordsLabel: 'X: {x}, Y: {y}',
+  chrEditorGridToggle: 'Toggle Pixel Grid',
+  chrEditorCanvasAriaLabel: '8×8 NES CHR Tile Pixel Editor Canvas',
   animationErrorDuplicateName:
     'Animation names must be unique within the asset.',
   animationErrorDuplicateIdentifier:
@@ -1218,6 +1229,17 @@ const ptBr = {
     'Restaurar os pixels gerados automaticamente para este tile 8×8',
   tilePixelSelectPrompt:
     'Selecione um frame e um tile abaixo para editar seus pixels.',
+  chrEditorTitle: 'Editor de Tile CHR',
+  chrEditorToolsLabel: 'Ferramentas de Desenho',
+  chrEditorToolPencil: 'Lápis (Desenhar índice de cor ativo)',
+  chrEditorToolEraser: 'Borracha (Desenhar índice de cor 0)',
+  chrEditorToolEyedropper: 'Conta-gotas (Capturar índice de cor do tile)',
+  chrEditorToolFill: 'Preenchimento (Preencher região contígua)',
+  chrEditorColorIndexSelector: 'Índice de Cor',
+  chrEditorColorIndexLabel: 'Índice de Cor {index}',
+  chrEditorCoordsLabel: 'X: {x}, Y: {y}',
+  chrEditorGridToggle: 'Alternar Grade de Pixels',
+  chrEditorCanvasAriaLabel: 'Canvas de Edição de Pixels do Tile CHR NES 8×8',
   animationErrorDuplicateName:
     'Os nomes das animações devem ser exclusivos no asset.',
   animationErrorDuplicateIdentifier:

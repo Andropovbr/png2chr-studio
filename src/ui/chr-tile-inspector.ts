@@ -7,6 +7,8 @@ import {
   type SpritePatternTable,
   type TileAddressingMetadata,
 } from '../core/chr-pattern-table';
+import { decodeChrTileToPixels } from '../core/chr-tile-editor';
+import { createChrTileEditor, type ChrDrawingTool } from './chr-tile-editor';
 import type { Tile } from '../core/types';
 import { t } from '../i18n';
 import type { ProjectMode } from './types';
@@ -274,7 +276,50 @@ export function createChrTileInspector(
       }
     });
 
-    previewSection.append(previewWrapper, gridToggle);
+    // Interactive 8×8 CHR Tile Pixel Editor (Isolated local demo host for visual validation)
+    const startByte = options.selectedTileIndex * 16;
+    const tileBytes =
+      options.finalChrBytes.length >= startByte + 16
+        ? options.finalChrBytes.subarray(startByte, startByte + 16)
+        : new Uint8Array(16);
+    let localTilePixels = decodeChrTileToPixels(tileBytes);
+    let localActiveTool: ChrDrawingTool = 'pencil';
+    let localSelectedColor = 1;
+    let localShowGrid = true;
+
+    const editorContainer = document.createElement('div');
+    editorContainer.className = 'chr-tile-inspector-editor-container';
+
+    const renderLocalEditor = (): void => {
+      editorContainer.replaceChildren();
+      const editor = createChrTileEditor({
+        pixels: localTilePixels,
+        selectedColorIndex: localSelectedColor,
+        activeTool: localActiveTool,
+        paletteColors: options.colors ?? NEUTRAL_NES_GRAYSCALE,
+        showGrid: localShowGrid,
+        onPixelsChange: (nextPixels) => {
+          localTilePixels = nextPixels;
+          renderLocalEditor();
+        },
+        onSelectColorIndex: (colorIdx) => {
+          localSelectedColor = colorIdx;
+          renderLocalEditor();
+        },
+        onSelectTool: (tool) => {
+          localActiveTool = tool;
+          renderLocalEditor();
+        },
+        onToggleGrid: (gridState) => {
+          localShowGrid = gridState;
+          renderLocalEditor();
+        },
+      });
+      editorContainer.append(editor);
+    };
+
+    renderLocalEditor();
+    previewSection.append(previewWrapper, gridToggle, editorContainer);
 
     // 2. Metadata Metrics List
     const diagnosis = resolveTileSlotDiagnosis(
