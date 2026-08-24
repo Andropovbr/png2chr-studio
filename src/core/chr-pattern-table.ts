@@ -1,5 +1,9 @@
 import { decodeChrTile } from './chr-decoder';
 import { encodeTile } from './chr-encoder';
+import {
+  deduplicateTiles,
+  deduplicateTilesConsideringFlips,
+} from './tile-deduplication';
 import type { Tile } from './types';
 
 export const NES_PATTERN_TABLE_TILE_COUNT = 256;
@@ -9,6 +13,36 @@ export const NES_CHR_ROM_SIZE = NES_CHR_ROM_TILE_COUNT * 16;
 
 export type SpritePatternTable = 0 | 1;
 export type PatternTableTileSource = 'destination' | 'imported';
+export type ChrSlotOccupancy = 'empty' | 'project' | 'base' | 'reserved';
+
+export interface ChrSlotClassification {
+  readonly physicalIndex: number;
+  readonly localIndex: number;
+  readonly patternTable: SpritePatternTable;
+  readonly occupancy: ChrSlotOccupancy;
+  readonly attribution?: string;
+}
+
+export interface ClassifyChrSlotsOptions {
+  readonly mode?: 'tileset' | 'playfield' | 'animation';
+  readonly animationModel?: {
+    readonly animations: readonly {
+      readonly name: string;
+      readonly frames: readonly {
+        readonly sprites: readonly {
+          readonly physicalTileIndex: number;
+        }[];
+      }[];
+    }[];
+  } | null;
+  readonly baseChr?: Uint8Array | null;
+  readonly baseChrName?: string | null;
+  readonly destinationPatternTable?: SpritePatternTable;
+  readonly tiles?: readonly Tile[];
+  readonly deduplicationEnabled?: boolean;
+  readonly flipDeduplicationEnabled?: boolean;
+  readonly finalChrBytes?: Uint8Array | null;
+}
 
 export interface PatternTableSlot {
   readonly physicalTileIndex: number;
@@ -228,6 +262,7 @@ export function createPatternTableSlots(
       source: 'destination',
     };
   }
+
   return slots;
 }
 
@@ -289,4 +324,266 @@ export function encodePatternTableSlots(
     }
   });
   return bytes;
+}
+
+export function classifyChrSlots(
+  options: ClassifyChrSlotsOptions = {},
+): readonly ChrSlotClassification[] {
+  const result: ChrSlotClassification[] = [];
+  const baseChr = options.baseChr;
+  const destinationPt = options.destinationPatternTable ?? 0;
+  const mode = options.mode ?? 'tileset';
+  const finalChrBytes = options.finalChrBytes;
+
+  // Animation mode
+  if (
+    mode === 'animation' &&
+    options.animationModel !== null &&
+    options.animationModel !== undefined
+  ) {
+    const model = options.animationModel;
+    const baseHasDataMap = new Uint8Array(NES_CHR_ROM_TILE_COUNT);
+    if (baseChr && baseChr.length > 0) {
+      const fileTileSlots = Math.floor(baseChr.length / 16);
+      const baseStart =
+        fileTileSlots <= NES_PATTERN_TABLE_TILE_COUNT
+          ? destinationPt * NES_PATTERN_TABLE_TILE_COUNT
+          : 0;
+      for (let i = 0; i < fileTileSlots; i += 1) {
+        const physicalIdx = baseStart + i;
+        if (physicalIdx < NES_CHR_ROM_TILE_COUNT) {
+          const rawOffset = i * 16;
+          const hasData = baseChr
+            .subarray(rawOffset, rawOffset + 16)
+            .some((b) => b !== 0);
+          if (hasData) {
+            baseHasDataMap[physicalIdx] = 1;
+          }
+        }
+      }
+    }
+
+    const projectAttributionMap = new Map<number, string[]>();
+    for (const anim of model.animations) {
+      anim.frames.forEach((frame, frameIdx) => {
+        for (const sprite of frame.sprites) {
+          const pIdx = sprite.physicalTileIndex;
+          if (pIdx >= 0 && pIdx < NES_CHR_ROM_TILE_COUNT) {
+            const frameLabel = `${anim.name} (#${String(frameIdx)})`;
+            const current = projectAttributionMap.get(pIdx) ?? [];
+            if (!current.includes(frameLabel)) {
+              current.push(frameLabel);
+              projectAttributionMap.set(pIdx, current);
+            }
+          }
+        }
+      });
+    }
+
+    for (
+      let physicalIndex = 0;
+      physicalIndex < NES_CHR_ROM_TILE_COUNT;
+      physicalIndex += 1
+    ) {
+      const localIndex = localPatternTableTileIndex(physicalIndex);
+      const patternTable = patternTableForPhysicalTile(physicalIndex);
+
+      if (baseHasDataMap[physicalIndex] === 1) {
+        result.push({
+          physicalIndex,
+          localIndex,
+          patternTable,
+          occupancy: 'base',
+          attribution: options.baseChrName
+            ? `Base CHR: ${options.baseChrName}`
+            : 'Base CHR',
+        });
+      } else {
+        const refs = projectAttributionMap.get(physicalIndex);
+        if (refs && refs.length > 0) {
+          result.push({
+            physicalIndex,
+            localIndex,
+            patternTable,
+            occupancy: 'project',
+            attribution: refs.join(', '),
+          });
+        } else {
+          const startByte = physicalIndex * 16;
+          const isNonZero =
+            finalChrBytes && finalChrBytes.length >= startByte + 16
+              ? finalChrBytes
+                  .subarray(startByte, startByte + 16)
+                  .some((b: number) => b !== 0)
+              : false;
+
+          if (isNonZero) {
+            result.push({
+              physicalIndex,
+              localIndex,
+              patternTable,
+              occupancy: 'project',
+              attribution: 'Project Tile',
+            });
+          } else {
+            result.push({
+              physicalIndex,
+              localIndex,
+              patternTable,
+              occupancy: 'empty',
+            });
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // Tileset or Playfield mode with Base CHR
+  if (baseChr && baseChr.length > 0) {
+    const slots = createPatternTableSlots(baseChr, destinationPt);
+    const deduplicated = options.flipDeduplicationEnabled
+      ? deduplicateTilesConsideringFlips(options.tiles ?? [])
+      : options.deduplicationEnabled !== false
+        ? deduplicateTiles(options.tiles ?? [])
+        : (options.tiles ?? []);
+
+    let insertIndex = 0;
+    for (const tile of deduplicated) {
+      while (insertIndex < slots.length && slots[insertIndex]?.tile !== null) {
+        insertIndex += 1;
+      }
+      if (insertIndex < slots.length) {
+        slots[insertIndex] = {
+          physicalTileIndex: insertIndex,
+          tile,
+          source: 'imported',
+        };
+        insertIndex += 1;
+      }
+    }
+
+    for (
+      let physicalIndex = 0;
+      physicalIndex < NES_CHR_ROM_TILE_COUNT;
+      physicalIndex += 1
+    ) {
+      const localIndex = localPatternTableTileIndex(physicalIndex);
+      const patternTable = patternTableForPhysicalTile(physicalIndex);
+      const slot = slots[physicalIndex];
+
+      if (slot?.source === 'destination') {
+        result.push({
+          physicalIndex,
+          localIndex,
+          patternTable,
+          occupancy: 'base',
+          attribution: options.baseChrName
+            ? `Base CHR: ${options.baseChrName}`
+            : 'Base CHR',
+        });
+      } else if (slot?.source === 'imported') {
+        const matchedTile =
+          (options.tiles ?? []).find((tItem) => tItem.id === physicalIndex) ??
+          slot.tile;
+        const attribution = matchedTile
+          ? `Tile #${String(matchedTile.id)} (Col ${String(matchedTile.column)}, Row ${String(matchedTile.row)})`
+          : 'Project Tile';
+
+        result.push({
+          physicalIndex,
+          localIndex,
+          patternTable,
+          occupancy: 'project',
+          attribution,
+        });
+      } else {
+        const startByte = physicalIndex * 16;
+        const isNonZero =
+          finalChrBytes && finalChrBytes.length >= startByte + 16
+            ? finalChrBytes
+                .subarray(startByte, startByte + 16)
+                .some((b: number) => b !== 0)
+            : false;
+
+        if (isNonZero) {
+          result.push({
+            physicalIndex,
+            localIndex,
+            patternTable,
+            occupancy: 'project',
+            attribution: 'Project Tile',
+          });
+        } else {
+          result.push({
+            physicalIndex,
+            localIndex,
+            patternTable,
+            occupancy: 'empty',
+          });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // Tileset or Playfield mode without Base CHR
+  const deduplicated = options.flipDeduplicationEnabled
+    ? deduplicateTilesConsideringFlips(options.tiles ?? [])
+    : options.deduplicationEnabled !== false
+      ? deduplicateTiles(options.tiles ?? [])
+      : (options.tiles ?? []);
+
+  const totalOccupied = Math.min(NES_CHR_ROM_TILE_COUNT, deduplicated.length);
+
+  for (
+    let physicalIndex = 0;
+    physicalIndex < NES_CHR_ROM_TILE_COUNT;
+    physicalIndex += 1
+  ) {
+    const localIndex = localPatternTableTileIndex(physicalIndex);
+    const patternTable = patternTableForPhysicalTile(physicalIndex);
+
+    const matchedDirect = (options.tiles ?? []).find(
+      (tItem) => tItem.id === physicalIndex,
+    );
+
+    const startByte = physicalIndex * 16;
+    const isNonZero =
+      finalChrBytes && finalChrBytes.length >= startByte + 16
+        ? finalChrBytes
+            .subarray(startByte, startByte + 16)
+            .some((b: number) => b !== 0)
+        : false;
+
+    if (
+      physicalIndex < totalOccupied ||
+      matchedDirect !== undefined ||
+      isNonZero
+    ) {
+      const matchedTile = matchedDirect ?? deduplicated[physicalIndex];
+      const attribution = matchedTile
+        ? `Tile #${String(matchedTile.id)} (Col ${String(matchedTile.column)}, Row ${String(matchedTile.row)})`
+        : 'Project Tile';
+
+      result.push({
+        physicalIndex,
+        localIndex,
+        patternTable,
+        occupancy: 'project',
+        attribution,
+      });
+    } else {
+      result.push({
+        physicalIndex,
+        localIndex,
+        patternTable,
+        occupancy: 'empty',
+      });
+    }
+  }
+
+  return result;
 }

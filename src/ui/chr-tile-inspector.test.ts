@@ -202,6 +202,31 @@ describe('ChrTileInspector component and utilities', () => {
       expect(diagnosis.attribution).toContain('Col 2, Row 1');
     });
 
+    it('diagnoses an intentionally allocated blank tile (16 zero bytes) as project, NOT empty', () => {
+      const finalChr = new Uint8Array(8192); // all zeroes
+      const blankTile: Tile = {
+        id: 0,
+        column: 0,
+        row: 0,
+        pixels: new Uint8Array(64).fill(0),
+      };
+
+      const diagnosis = resolveTileSlotDiagnosis(
+        0,
+        finalChr,
+        'tileset',
+        null,
+        null,
+        null,
+        0,
+        [blankTile],
+      );
+
+      expect(diagnosis.state).toBe('project');
+      expect(diagnosis.stateLabel).toBe('Project Tile (Occupied)');
+      expect(diagnosis.attribution).toContain('Tile #0');
+    });
+
     it('diagnoses Base CHR slot when tile data originates from imported base CHR', () => {
       const baseChr = new Uint8Array(4096);
       baseChr[5 * 16] = 0xff; // local slot 5 in PT0

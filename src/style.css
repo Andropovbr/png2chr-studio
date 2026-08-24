@@ -3092,6 +3092,49 @@ input:focus-visible + label {
   overflow: hidden;
 }
 
+/* CHR Occupancy Legend */
+.chr-occupancy-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.chr-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text, #eaf0f5);
+}
+
+.chr-legend-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.chr-legend-item.is-project .chr-legend-indicator {
+  border: 1px solid rgb(56 189 248 / 60%);
+  background: rgb(56 189 248 / 25%);
+  box-shadow: 0 0 4px rgb(56 189 248 / 40%);
+}
+
+.chr-legend-item.is-base .chr-legend-indicator {
+  border: 1px solid rgb(245 158 11 / 70%);
+  background: rgb(245 158 11 / 25%);
+  box-shadow: 0 0 4px rgb(245 158 11 / 40%);
+}
+
+.chr-legend-item.is-empty .chr-legend-indicator {
+  border: 1px dashed rgb(255 255 255 / 35%);
+  background: transparent;
+}
+
 .chr-pattern-tables-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
@@ -3115,6 +3158,30 @@ input:focus-visible + label {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.chr-pt-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chr-pt-occupancy-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.25rem;
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  color: var(--muted, #8b9bb4);
+}
+
+.chr-pt-occupancy-badge.is-full {
+  background: rgb(239 68 68 / 15%);
+  border-color: rgb(239 68 68 / 30%);
+  color: #f87171;
 }
 
 .chr-pt-view-title-group {
@@ -3184,27 +3251,107 @@ input:focus-visible + label {
   outline: 1px solid transparent;
   transition:
     outline-color 0.1s ease,
-    background-color 0.1s ease;
+    background-color 0.1s ease,
+    border-color 0.1s ease;
 }
 
+/* Empty / Unallocated Slot */
+.chr-tile-slot[data-occupancy='empty'],
+.chr-tile-slot.is-occupancy-empty {
+  border: 1px dashed rgb(255 255 255 / 12%);
+  background-image: radial-gradient(
+    circle,
+    rgb(255 255 255 / 7%) 1px,
+    transparent 1px
+  );
+  background-size: 4px 4px;
+}
+
+/* Project-Occupied Slot */
+.chr-tile-slot[data-occupancy='project'],
+.chr-tile-slot.is-occupancy-project {
+  border: 1px solid rgb(56 189 248 / 30%);
+}
+
+.chr-tile-slot[data-occupancy='project']::before,
+.chr-tile-slot.is-occupancy-project::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 3px;
+  height: 3px;
+  background: #38bdf8;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Base CHR Occupied Slot */
+.chr-tile-slot[data-occupancy='base'],
+.chr-tile-slot.is-occupancy-base {
+  border: 1px solid rgb(245 158 11 / 45%);
+}
+
+.chr-tile-slot[data-occupancy='base']::before,
+.chr-tile-slot.is-occupancy-base::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 3px;
+  height: 3px;
+  background: #f59e0b;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* Reserved Slot */
+.chr-tile-slot[data-occupancy='reserved'],
+.chr-tile-slot.is-occupancy-reserved {
+  border: 1px dashed rgb(168 85 247 / 50%);
+  background-color: rgb(168 85 247 / 10%);
+}
+
+.chr-tile-slot[data-occupancy='reserved']::before,
+.chr-tile-slot.is-occupancy-reserved::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 3px;
+  height: 3px;
+  background: #a855f7;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* Hover State */
 .chr-tile-slot:hover {
   outline: 1px solid var(--accent, #57d3a4);
   background: rgb(87 211 164 / 15%);
-  z-index: 2;
+  z-index: 5;
 }
 
 .chr-tile-slot:focus-visible {
   outline: 2px solid #38bdf8;
-  z-index: 3;
+  z-index: 6;
 }
 
+/* Selected Slot - Priority over occupancy markers */
 .chr-tile-slot.is-selected {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid #38bdf8 !important;
   box-shadow:
     inset 0 0 0 1px #ffffff,
-    0 0 4px rgb(56 189 248 / 60%);
-  background: rgb(56 189 248 / 25%);
-  z-index: 4;
+    0 0 6px rgb(56 189 248 / 80%) !important;
+  background: rgb(56 189 248 / 25%) !important;
+  z-index: 10 !important;
+}
+
+.chr-tile-slot.is-selected::before {
+  display: none;
 }
 
 .chr-tile-slot.is-selected::after {
