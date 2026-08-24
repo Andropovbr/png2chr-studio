@@ -32,6 +32,9 @@ class MockElement {
   height = 0;
   style: Record<string, string> = {};
   open = false;
+  tabIndex = -1;
+  focus = vi.fn();
+  scrollIntoView = vi.fn();
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
@@ -1883,6 +1886,276 @@ describe('ChrWorkspace component', () => {
 
       expect(update.value.chr.heatmapEnabled).toBe(true);
       expect(update.marksProjectDirty).toBe(false);
+    });
+  });
+
+  describe('Issue #45 — CHR Viewer Polish, Keyboard Navigation, and Accessibility', () => {
+    it('implements roving tabindex and accessible grid ARIA on pattern table slots', () => {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: null,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const gridOverlay = mockWs.querySelector('.chr-pt-grid-overlay');
+      expect(gridOverlay).not.toBeNull();
+      expect(gridOverlay?.getAttribute('role')).toBe('grid');
+      expect(gridOverlay?.getAttribute('aria-rowcount')).toBe('16');
+      expect(gridOverlay?.getAttribute('aria-colcount')).toBe('16');
+
+      const slots = gridOverlay?.querySelectorAll('.chr-tile-slot') ?? [];
+      expect(slots.length).toBe(256);
+
+      // Without selection, first slot (0) has tabIndex 0, others have -1
+      expect(slots[0]?.tabIndex).toBe(0);
+      expect(slots[1]?.tabIndex).toBe(-1);
+      expect(slots[255]?.tabIndex).toBe(-1);
+
+      // Gridcell ARIA attributes
+      expect(slots[0]?.getAttribute('role')).toBe('gridcell');
+      expect(slots[0]?.getAttribute('aria-rowindex')).toBe('1');
+      expect(slots[0]?.getAttribute('aria-colindex')).toBe('1');
+      expect(slots[0]?.getAttribute('aria-selected')).toBe('false');
+
+      expect(slots[17]?.getAttribute('aria-rowindex')).toBe('2');
+      expect(slots[17]?.getAttribute('aria-colindex')).toBe('2');
+    });
+
+    it('sets roving tabIndex to selected tile when selectedTileIndex is provided', () => {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 10,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const slot0 = mockWs.querySelector('[data-physical-index="0"]');
+      const slot10 = mockWs.querySelector('[data-physical-index="10"]');
+
+      expect(slot0?.tabIndex).toBe(-1);
+      expect(slot10?.tabIndex).toBe(0);
+      expect(slot10?.getAttribute('aria-selected')).toBe('true');
+      expect(slot10?.focus).toHaveBeenCalled();
+      expect(slot10?.scrollIntoView).toHaveBeenCalled();
+    });
+
+    it('handles keyboard navigation across rows and columns via Arrow keys', () => {
+      const onSelectTile = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: null,
+        onSelectTile,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const slot0 = mockWs.querySelector('[data-local-index="0"]');
+      const slot1 = mockWs.querySelector('[data-local-index="1"]');
+      const slot16 = mockWs.querySelector('[data-local-index="16"]');
+      const slot255 = mockWs.querySelector('[data-local-index="255"]');
+
+      expect(slot0?.tabIndex).toBe(0);
+
+      // ArrowRight from slot 0 moves to slot 1
+      const preventDefault = vi.fn();
+      slot0?.dispatchEvent({
+        type: 'keydown',
+        key: 'ArrowRight',
+        preventDefault,
+      });
+      expect(preventDefault).toHaveBeenCalled();
+      expect(slot0?.tabIndex).toBe(-1);
+      expect(slot1?.tabIndex).toBe(0);
+      expect(slot1?.focus).toHaveBeenCalled();
+
+      // ArrowDown from slot 0 moves to slot 16
+      slot0?.dispatchEvent({
+        type: 'keydown',
+        key: 'ArrowDown',
+        preventDefault,
+      });
+      expect(slot16?.tabIndex).toBe(0);
+      expect(slot16?.focus).toHaveBeenCalled();
+
+      // ArrowLeft from slot 0 wraps to slot 255
+      slot0?.dispatchEvent({
+        type: 'keydown',
+        key: 'ArrowLeft',
+        preventDefault,
+      });
+      expect(slot255?.tabIndex).toBe(0);
+      expect(slot255?.focus).toHaveBeenCalled();
+    });
+
+    it('handles Home, End, PageUp, PageDown, Enter, Space, and Escape keys', () => {
+      const onSelectTile = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: null,
+        onSelectTile,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const slot20 = mockWs.querySelector('[data-local-index="20"]'); // Row 1, Col 4
+      const slot16 = mockWs.querySelector('[data-local-index="16"]'); // Row 1, Col 0
+      const slot31 = mockWs.querySelector('[data-local-index="31"]'); // Row 1, Col 15
+      const slot4 = mockWs.querySelector('[data-local-index="4"]'); // Row 0, Col 4
+      const slot244 = mockWs.querySelector('[data-local-index="244"]'); // Row 15, Col 4
+
+      const preventDefault = vi.fn();
+
+      // Home moves to start of row (slot 16)
+      slot20?.dispatchEvent({
+        type: 'keydown',
+        key: 'Home',
+        ctrlKey: false,
+        preventDefault,
+      });
+      expect(slot16?.tabIndex).toBe(0);
+      expect(slot16?.focus).toHaveBeenCalled();
+
+      // End moves to end of row (slot 31)
+      slot20?.dispatchEvent({
+        type: 'keydown',
+        key: 'End',
+        ctrlKey: false,
+        preventDefault,
+      });
+      expect(slot31?.tabIndex).toBe(0);
+      expect(slot31?.focus).toHaveBeenCalled();
+
+      // PageUp moves to top of column (slot 4)
+      slot20?.dispatchEvent({
+        type: 'keydown',
+        key: 'PageUp',
+        preventDefault,
+      });
+      expect(slot4?.tabIndex).toBe(0);
+      expect(slot4?.focus).toHaveBeenCalled();
+
+      // PageDown moves to bottom of column (slot 244)
+      slot20?.dispatchEvent({
+        type: 'keydown',
+        key: 'PageDown',
+        preventDefault,
+      });
+      expect(slot244?.tabIndex).toBe(0);
+      expect(slot244?.focus).toHaveBeenCalled();
+
+      // Enter selects tile
+      slot20?.dispatchEvent({
+        type: 'keydown',
+        key: 'Enter',
+        preventDefault,
+      });
+      expect(onSelectTile).toHaveBeenCalledWith(20);
+
+      // Escape deselects
+      slot20?.dispatchEvent({
+        type: 'keydown',
+        key: 'Escape',
+        preventDefault,
+      });
+      expect(onSelectTile).toHaveBeenCalledWith(null);
+    });
+
+    it('updates roving tabIndex when clicking on a slot', () => {
+      const onSelectTile = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: null,
+        onSelectTile,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const slot0 = mockWs.querySelector('[data-local-index="0"]');
+      const slot45 = mockWs.querySelector('[data-local-index="45"]');
+
+      expect(slot0?.tabIndex).toBe(0);
+      expect(slot45?.tabIndex).toBe(-1);
+
+      slot45?.click();
+      expect(slot45?.tabIndex).toBe(0);
+      expect(slot0?.tabIndex).toBe(-1);
+      expect(onSelectTile).toHaveBeenCalledWith(45);
+    });
+
+    it('groups toolbar controls into semantic viewGroup and contextGroup with zoom data attribute', () => {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        zoom: 4,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const viewGroup = mockWs.querySelector(
+        '.chr-toolbar-group.is-view-group',
+      );
+      expect(viewGroup).not.toBeNull();
+      expect(viewGroup?.getAttribute('role')).toBe('group');
+      expect(viewGroup?.querySelector('.chr-zoom-controls')).not.toBeNull();
+      expect(viewGroup?.querySelector('.chr-palette-controls')).not.toBeNull();
+      expect(viewGroup?.querySelector('.chr-heatmap-controls')).not.toBeNull();
+
+      const contextGroup = mockWs.querySelector(
+        '.chr-toolbar-group.is-context-group',
+      );
+      expect(contextGroup).not.toBeNull();
+      expect(contextGroup?.getAttribute('role')).toBe('group');
+      expect(
+        contextGroup?.querySelector('.chr-highlight-controls'),
+      ).not.toBeNull();
+      expect(
+        contextGroup?.querySelector('.chr-occupancy-legend'),
+      ).not.toBeNull();
+
+      const canvasContainer = mockWs.querySelector('.chr-pt-canvas-container');
+      expect(canvasContainer?.getAttribute('data-zoom')).toBe('4');
     });
   });
 });

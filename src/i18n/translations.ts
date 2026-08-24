@@ -83,6 +83,8 @@ const en = {
   chrWorkspaceViewerTitle: 'Pattern Tables ($0000..$1FFF)',
   chrWorkspaceViewerHint:
     'Visual 8 KiB CHR-ROM inspection. Pattern Table 0 ($0000..$0FFF) and Pattern Table 1 ($1000..$1FFF), 256 tiles each.',
+  chrWorkspaceViewGroupLabel: 'View Controls',
+  chrWorkspaceContextGroupLabel: 'Context & Legend Controls',
   chrWorkspacePaletteLabel: 'Palette',
   chrWorkspacePaletteGrayscale: 'Neutral Grayscale',
   chrWorkspacePaletteGroupBg: 'Background Subpalettes',
@@ -818,6 +820,8 @@ const ptBr = {
   chrWorkspaceViewerTitle: 'Tabelas de Padrões ($0000..$1FFF)',
   chrWorkspaceViewerHint:
     'Inspeção visual da memória CHR-ROM de 8 KiB. Tabela de Padrões 0 ($0000..$0FFF) e Tabela de Padrões 1 ($1000..$1FFF), 256 tiles cada.',
+  chrWorkspaceViewGroupLabel: 'Controles de visualização',
+  chrWorkspaceContextGroupLabel: 'Controles de contexto e legenda',
   chrWorkspacePaletteLabel: 'Paleta',
   chrWorkspacePaletteGrayscale: 'Escala de Cinza Neutra',
   chrWorkspacePaletteGroupBg: 'Subpaletas de Background',

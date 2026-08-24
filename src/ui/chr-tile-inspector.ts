@@ -550,6 +550,10 @@ export function createChrTileInspector(
                 index: ref.tileIndex,
               });
             }
+            jumpBtn.setAttribute(
+              'aria-label',
+              jumpBtn.title || t('chrTileInspectorJumpAction'),
+            );
             jumpBtn.addEventListener('click', (e) => {
               e.stopPropagation();
               options.onNavigateToReference?.(ref);
@@ -572,6 +576,7 @@ export function createChrTileInspector(
             : t('chrTileInspectorShowAllRefs', {
                 count: references.length,
               });
+          toggleMoreBtn.setAttribute('aria-expanded', String(showAll));
           toggleMoreBtn.addEventListener('click', () => {
             showAll = !showAll;
             renderRefs();
