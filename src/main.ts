@@ -2927,6 +2927,14 @@ function renderChrWorkspace(): void {
       });
       render();
     },
+    heatmapEnabled: workspace.chr.heatmapEnabled ?? false,
+    onToggleHeatmap: (heatmapEnabled) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, heatmapEnabled },
+      });
+      render();
+    },
     paletteSet: project.paletteSet,
     palettes: project.palettes,
     activeSpritePaletteSlots: project.activeSpritePaletteSlots,

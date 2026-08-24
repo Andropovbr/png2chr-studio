@@ -29,6 +29,7 @@ export interface ChrWorkspaceState {
   readonly selectedAnimationId?: string | null;
   readonly selectedFrameIndex?: number | null;
   readonly selectedEntity?: string | null;
+  readonly heatmapEnabled?: boolean;
 }
 
 export interface WorkspaceState {
@@ -82,6 +83,7 @@ export function createWorkspaceState(
       selectedAnimationId: null,
       selectedFrameIndex: 0,
       selectedEntity: null,
+      heatmapEnabled: false,
     },
   };
 }

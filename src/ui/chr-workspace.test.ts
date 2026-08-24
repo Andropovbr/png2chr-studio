@@ -1759,4 +1759,130 @@ describe('ChrWorkspace component', () => {
       expect(onNavigateToPlayfield).toHaveBeenCalledWith(10, 0);
     });
   });
+
+  describe('CHR Usage Heatmap and Reuse Diagnostics', () => {
+    const rawImage: IndexedImage = {
+      width: 16,
+      height: 16,
+      pixels: new Uint8Array(256),
+      colors: [
+        { red: 0, green: 0, blue: 0 },
+        { red: 255, green: 255, blue: 255 },
+        { red: 128, green: 128, blue: 128 },
+        { red: 64, green: 64, blue: 64 },
+      ],
+      transparentIndex: 0,
+      colorCount: 4,
+    };
+    rawImage.pixels.fill(1);
+
+    const animationInput: AnimationDefinitionInput[] = [
+      {
+        id: 'hero_idle',
+        name: 'Hero_idle',
+        entity: 'Hero',
+        image: rawImage,
+        frameWidth: 16,
+        frameHeight: 16,
+        originX: 8,
+        originY: 16,
+        frameIndices: [0],
+        frameDuration: 8,
+      },
+    ];
+
+    it('renders heatmap toggle and triggers onToggleHeatmap callback', () => {
+      const onToggleHeatmap = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        heatmapEnabled: false,
+        onToggleHeatmap,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const heatmapControls = mockWs.querySelector('.chr-heatmap-controls');
+      expect(heatmapControls).not.toBeNull();
+
+      const buttons = heatmapControls?.querySelectorAll('.segmented-button');
+      expect(buttons?.length).toBe(2);
+
+      // Click "Heatmap" button to activate
+      buttons?.[1]?.click();
+      expect(onToggleHeatmap).toHaveBeenCalledWith(true);
+    });
+
+    it('renders heatmap legend, summary bar, and slot badges when heatmapEnabled is true', () => {
+      const model = buildAnimationProjectModel({
+        name: 'Hero_project',
+        animations: animationInput,
+        patternTable: 0,
+        destinationPatternTable: 0,
+      });
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        heatmapEnabled: true,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+
+      // Heatmap legend rendered
+      const heatmapLegend = mockWs.querySelector('.chr-heatmap-legend');
+      expect(heatmapLegend).not.toBeNull();
+      const legendItems = heatmapLegend?.querySelectorAll(
+        '.chr-heatmap-legend-item',
+      );
+      expect(legendItems?.length).toBe(5);
+
+      // Summary bar rendered
+      const summaryBar = mockWs.querySelector('.chr-heatmap-summary-bar');
+      expect(summaryBar).not.toBeNull();
+      expect(summaryBar?.textContent).toContain('Reuse:');
+
+      // Grid overlay has .has-heatmap
+      const gridOverlays = mockWs.querySelectorAll('.chr-pt-grid-overlay');
+      expect(gridOverlays[0]?.classList.contains('has-heatmap')).toBe(true);
+
+      // Referenced slots have badges and attributes
+      const slot0 = mockWs.querySelector('[data-physical-index="0"]');
+      expect(slot0).not.toBeNull();
+      expect(slot0?.getAttribute('data-heatmap-bucket')).not.toBeNull();
+      expect(slot0?.getAttribute('data-ref-count')).not.toBeNull();
+
+      const badge = slot0?.querySelector('.chr-slot-ref-badge');
+      expect(badge).not.toBeNull();
+    });
+
+    it('preserves transient state purity without marking project dirty when toggling heatmap', () => {
+      const initialState = createWorkspaceState();
+      expect(initialState.chr.heatmapEnabled).toBe(false);
+
+      const update = applyWorkspaceUpdate(initialState, {
+        ...initialState,
+        chr: {
+          ...initialState.chr,
+          heatmapEnabled: true,
+        },
+      });
+
+      expect(update.value.chr.heatmapEnabled).toBe(true);
+      expect(update.marksProjectDirty).toBe(false);
+    });
+  });
 });

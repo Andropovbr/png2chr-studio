@@ -3,6 +3,7 @@ import {
   classifyChrSlots,
   computeTileAddressingMetadata,
   type ChrTileReference,
+  type ChrTileUsageDiagnostic,
   type SpritePatternTable,
   type TileAddressingMetadata,
 } from '../core/chr-pattern-table';
@@ -42,6 +43,8 @@ export interface ChrTileInspectorOptions {
   readonly isHighlighted?: boolean;
   readonly highlightScopeLabel?: string | null;
   readonly references?: readonly ChrTileReference[];
+  readonly diagnostic?: ChrTileUsageDiagnostic | null;
+  readonly heatmapEnabled?: boolean;
   readonly onNavigateToReference?: (reference: ChrTileReference) => void;
   readonly onDeselect?: () => void;
 }
@@ -381,7 +384,84 @@ export function createChrTileInspector(
       addMetric(t('chrWorkspaceHighlightLabel'), highlightBadge);
     }
 
-    // 3. Reverse Lookup: "Used by" Section
+    // 3. Reuse & Usage Diagnostics Section
+    const diag = options.diagnostic;
+    let usageSection: HTMLElement | null = null;
+    if (diag !== undefined && diag !== null) {
+      usageSection = document.createElement('div');
+      usageSection.className = 'chr-tile-usage-section';
+
+      const usageHeader = document.createElement('div');
+      usageHeader.className = 'chr-tile-usage-header';
+
+      const usageTitle = document.createElement('h4');
+      usageTitle.className = 'chr-tile-usage-title';
+      usageTitle.textContent = t('chrTileInspectorUsageTitle');
+
+      let badgeText: string;
+      let badgeClass = `status-badge chr-tile-usage-badge bucket-${diag.bucket}`;
+
+      if (diag.referenceCount === 0) {
+        if (diagnosis.state === 'project') {
+          badgeText = t('chrTileInspectorUnreferencedProject');
+          badgeClass += ' is-unreferenced-occupied';
+        } else if (diagnosis.state === 'base') {
+          badgeText = t('chrTileInspectorUnreferencedBase');
+          badgeClass += ' is-unreferenced-base';
+        } else {
+          badgeText = t('chrTileInspectorUsageBucketUnused');
+        }
+      } else if (diag.referenceCount === 1) {
+        badgeText = t('chrTileInspectorUsageBucketSingle');
+      } else if (diag.referenceCount <= 3) {
+        badgeText = t('chrTileInspectorUsageBucketModerate', {
+          count: diag.referenceCount,
+        });
+      } else if (diag.referenceCount <= 7) {
+        badgeText = t('chrTileInspectorUsageBucketHigh', {
+          count: diag.referenceCount,
+        });
+      } else {
+        badgeText = t('chrTileInspectorUsageBucketVeryHigh', {
+          count: diag.referenceCount,
+        });
+      }
+
+      const usageBadge = document.createElement('span');
+      usageBadge.className = badgeClass;
+      usageBadge.textContent = badgeText;
+
+      usageHeader.append(usageTitle, usageBadge);
+      usageSection.append(usageHeader);
+
+      if (diag.referenceCount > 0) {
+        const chipsGrid = document.createElement('div');
+        chipsGrid.className = 'chr-tile-usage-chips';
+
+        const addChip = (label: string, value: number | string): void => {
+          const chip = document.createElement('span');
+          chip.className = 'chr-tile-usage-chip';
+          chip.textContent = `${label}: ${String(value)}`;
+          chipsGrid.append(chip);
+        };
+
+        addChip(t('chrTileInspectorReferenceCount'), diag.referenceCount);
+
+        if (options.mode === 'animation' || diag.frameCount > 0) {
+          addChip(t('chrTileInspectorDistinctFrames'), diag.frameCount);
+          addChip(t('chrTileInspectorDistinctAnimations'), diag.animationCount);
+          if (diag.entityCount > 0) {
+            addChip(t('chrTileInspectorDistinctEntities'), diag.entityCount);
+          }
+        } else if (diag.resourceCount > 0) {
+          addChip(t('chrTileInspectorResourceCount'), diag.resourceCount);
+        }
+
+        usageSection.append(chipsGrid);
+      }
+    }
+
+    // 4. Reverse Lookup: "Used by" Section
     const usedBySection = document.createElement('div');
     usedBySection.className = 'chr-tile-used-by-section';
 
@@ -506,7 +586,11 @@ export function createChrTileInspector(
       usedBySection.append(refList);
     }
 
-    content.append(previewSection, metricsList, usedBySection);
+    if (usageSection) {
+      content.append(previewSection, metricsList, usageSection, usedBySection);
+    } else {
+      content.append(previewSection, metricsList, usedBySection);
+    }
     panel.append(content);
   } else {
     panel.append(header);

@@ -500,5 +500,65 @@ describe('ChrTileInspector component and utilities', () => {
       items = mockEl.querySelectorAll('.chr-tile-ref-item');
       expect(items.length).toBe(10);
     });
+
+    it('renders reuse diagnostics section with badges and metrics chips', () => {
+      const diagnostic = {
+        physicalTileIndex: 5,
+        referenceCount: 3,
+        resourceCount: 2,
+        frameCount: 2,
+        animationCount: 2,
+        entityCount: 1,
+        bucket: 'moderate' as const,
+      };
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        diagnostic,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const usageSection = mockEl.querySelector('.chr-tile-usage-section');
+      expect(usageSection).not.toBeNull();
+
+      const badge = mockEl.querySelector('.chr-tile-usage-badge');
+      expect(badge?.textContent).toContain('Moderate reuse (3 references)');
+      expect(badge?.classList.contains('bucket-moderate')).toBe(true);
+
+      const chips = mockEl.querySelectorAll('.chr-tile-usage-chip');
+      expect(chips.length).toBe(4);
+      expect(chips[0]?.textContent).toContain('Logical References: 3');
+      expect(chips[1]?.textContent).toContain('Distinct Frames: 2');
+      expect(chips[2]?.textContent).toContain('Distinct Animations: 2');
+      expect(chips[3]?.textContent).toContain('Distinct Entities: 1');
+    });
+
+    it('diagnoses unreferenced project tiles with neutral non-judgmental badge', () => {
+      const finalChr = new Uint8Array(8192);
+      finalChr[5 * 16] = 0xff; // non-zero project tile
+      const diagnostic = {
+        physicalTileIndex: 5,
+        referenceCount: 0,
+        resourceCount: 0,
+        frameCount: 0,
+        animationCount: 0,
+        entityCount: 0,
+        bucket: 'unused' as const,
+      };
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: finalChr,
+        diagnostic,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const badge = mockEl.querySelector('.chr-tile-usage-badge');
+      expect(badge?.textContent).toContain(
+        'Occupied · no known project references',
+      );
+      expect(badge?.classList.contains('is-unreferenced-occupied')).toBe(true);
+    });
   });
 });

@@ -5,6 +5,9 @@ import { encodeChr } from './chr-encoder';
 import {
   analyzeBaseChrOccupancy,
   classifyChrSlots,
+  classifyHeatmapBucket,
+  calculateTileUsageDiagnostics,
+  calculateChrUsageHeatmapSummary,
   collectAnimationPhysicalTileUsage,
   collectChrHighlightTileIndices,
   collectEntityPhysicalTileUsage,
@@ -21,6 +24,7 @@ import {
   tileBitplaneOffsets,
   tileStartByteOffset,
   computeTileAddressingMetadata,
+  type ChrSlotClassification,
 } from './chr-pattern-table';
 import type { Tile } from './types';
 
@@ -740,6 +744,174 @@ describe('NES sprite pattern tables', () => {
       expect(index.get(6)?.length).toBe(1);
       expect(index.get(260)?.length).toBe(1);
       expect(index.get(99)).toBeUndefined();
+    });
+  });
+
+  describe('classifyHeatmapBucket', () => {
+    it('classifies reference counts into discrete predictable buckets', () => {
+      expect(classifyHeatmapBucket(0)).toBe('unused');
+      expect(classifyHeatmapBucket(-1)).toBe('unused');
+      expect(classifyHeatmapBucket(1)).toBe('single');
+      expect(classifyHeatmapBucket(2)).toBe('moderate');
+      expect(classifyHeatmapBucket(3)).toBe('moderate');
+      expect(classifyHeatmapBucket(4)).toBe('high');
+      expect(classifyHeatmapBucket(7)).toBe('high');
+      expect(classifyHeatmapBucket(8)).toBe('very-high');
+      expect(classifyHeatmapBucket(50)).toBe('very-high');
+    });
+  });
+
+  describe('calculateTileUsageDiagnostics and calculateChrUsageHeatmapSummary', () => {
+    const complexAnimationModel = {
+      animations: [
+        {
+          id: 'hero-walk',
+          name: 'Hero_walk',
+          entity: 'Hero',
+          frames: [
+            {
+              sprites: [
+                {
+                  physicalTileIndex: 12,
+                  tile: 12,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+                {
+                  physicalTileIndex: 12, // same frame, second occurrence!
+                  tile: 12,
+                  x: 8,
+                  y: 0,
+                  horizontalFlip: true,
+                  verticalFlip: false,
+                },
+                {
+                  physicalTileIndex: 15,
+                  tile: 15,
+                  x: 0,
+                  y: 8,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+              ],
+            },
+            {
+              sprites: [
+                {
+                  physicalTileIndex: 12, // second frame
+                  tile: 12,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'enemy-walk',
+          name: 'Enemy_walk',
+          entity: 'Enemy',
+          frames: [
+            {
+              sprites: [
+                {
+                  physicalTileIndex: 12, // shared tile across entities!
+                  tile: 12,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+                {
+                  physicalTileIndex: 268, // PT1 tile ($1000 + 12 = physical 268)
+                  tile: 12,
+                  x: 8,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } as unknown as AnimationProjectModel;
+
+    it('derives accurate reference counts, frame counts, animation counts, and entity counts', () => {
+      const diagnostics = calculateTileUsageDiagnostics({
+        animationModel: complexAnimationModel,
+      });
+
+      expect(diagnostics.length).toBe(512);
+
+      // Tile 12 is used 4 times total:
+      // Hero_walk frame 0 (2 times)
+      // Hero_walk frame 1 (1 time)
+      // Enemy_walk frame 0 (1 time)
+      const tile12 = diagnostics[12];
+      expect(tile12).toBeDefined();
+      expect(tile12?.referenceCount).toBe(4);
+      expect(tile12?.frameCount).toBe(3); // 3 distinct (anim, frame) pairs
+      expect(tile12?.animationCount).toBe(2); // Hero_walk, Enemy_walk
+      expect(tile12?.entityCount).toBe(2); // Hero, Enemy
+      expect(tile12?.resourceCount).toBe(2);
+      expect(tile12?.bucket).toBe('high'); // 4 refs -> 'high'
+
+      // Tile 15 is used once in Hero_walk
+      const tile15 = diagnostics[15];
+      expect(tile15?.referenceCount).toBe(1);
+      expect(tile15?.frameCount).toBe(1);
+      expect(tile15?.animationCount).toBe(1);
+      expect(tile15?.entityCount).toBe(1);
+      expect(tile15?.bucket).toBe('single');
+
+      // Tile 268 is in PT1 (independent of PT0 tile 12!)
+      const tile268 = diagnostics[268];
+      expect(tile268?.referenceCount).toBe(1);
+      expect(tile268?.animationCount).toBe(1);
+      expect(tile268?.bucket).toBe('single');
+
+      // Tile 0 is unreferenced
+      const tile0 = diagnostics[0];
+      expect(tile0?.referenceCount).toBe(0);
+      expect(tile0?.frameCount).toBe(0);
+      expect(tile0?.bucket).toBe('unused');
+    });
+
+    it('calculates comprehensive project reuse summary metrics', () => {
+      const diagnostics = calculateTileUsageDiagnostics({
+        animationModel: complexAnimationModel,
+      });
+
+      // Classify slots to verify unreferenced occupied tiles
+      const mockClassifications: ChrSlotClassification[] = Array.from(
+        { length: 512 },
+        (_, i) => ({
+          physicalIndex: i,
+          localIndex: i % 256,
+          patternTable: i < 256 ? 0 : 1,
+          occupancy:
+            i === 12 || i === 15 || i === 268 || i === 50 ? 'project' : 'empty',
+        }),
+      );
+
+      const summary = calculateChrUsageHeatmapSummary(
+        diagnostics,
+        mockClassifications,
+      );
+
+      // Tile 12 (4 refs) + Tile 15 (1 ref) + Tile 268 (1 ref) = 6 total references
+      expect(summary.totalReferences).toBe(6);
+      expect(summary.referencedTileCount).toBe(3);
+      expect(summary.reusedTileCount).toBe(1); // tile 12 (4 refs >= 2)
+      expect(summary.unreferencedOccupiedTileCount).toBe(1); // tile 50 is project occupied but has 0 refs!
+      expect(summary.maxReferenceCount).toBe(4);
+      expect(summary.mostReferencedTileIndex).toBe(12);
+      expect(summary.averageReuseRatio).toBe(2); // 6 / 3 = 2.0
     });
   });
 });
