@@ -221,9 +221,13 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 ### 6.5 Workspace de Memória CHR e Tabelas de Padrões (`src/ui/chr-workspace.ts`)
 
 - Espaço visual e projetado de inspeção do modelo canônico de memória CHR-ROM (8 KiB / 512 slots de tiles):
-  - **Visualização Completa das Pattern Tables (PT0 e PT1):** Renderização pixel-perfect das duas tabelas de padrões em grades 16×16 de 256 tiles cada (PT0: `$0000..$0FFF`, índices físicos 0..255; PT1: `$1000..$1FFF`, índices físicos 256..511), totalizando os 512 slots da CHR-ROM física em escala neutral/grayscale (2bpp NES).
+  - **Visualização Completa das Pattern Tables (PT0 e PT1):** Renderização pixel-perfect das duas tabelas de padrões em grades 16×16 de 256 tiles cada (PT0: `$0000..$0FFF`, índices físicos 0..255; PT1: `$1000..$1FFF`, índices físicos 256..511), totalizando os 512 slots da CHR-ROM física.
+  - **Pré-visualização Consciente de Paletas (Palette-Aware Preview):** Modo de visualização configurável no toolbar do viewer permitindo inspecionar as Pattern Tables em escala de cinza neutra (`grayscale`) ou interpretadas através de qualquer subpaleta ativa do projeto:
+    - _Subpaletas de Background (BG 0..3):_ Mapeamento 2bpp das cores de cenário definidas em `paletteSet` via paleta master NES (`NES_MASTER_PALETTE`), respeitando a cor universal de fundo (`$3F00`) no índice 0.
+    - _Subpaletas de Sprite (SP 0..3) e Personalizadas:_ Mapeamento das 4 cores dos slots ativos de sprite configurados no `palette-manager` com exibição da amostra de cores (_swatches_) em tempo real.
+    - _Modo Estritamente Visual:_ A seleção de paleta no CHR Viewer é mantida de forma transiente em `WorkspaceState.chr.previewPalette` (`marksProjectDirty: false`), não alterando bytes da CHR, dados de paleta persistidos, atribuições de animação ou artefatos exportados.
   - **Controles de Zoom Pixel-Perfect:** Controles de ampliação (1×, 2×, 3×, 4×, 8×) com renderização nearest-neighbor (`image-rendering: pixelated`), gerenciados como estado transiente em `WorkspaceState` sem mutação do projeto.
-  - **Seleção Interativa e Inspetor de Tile (`src/ui/chr-tile-inspector.ts`):** Seleção interativa de qualquer slot 8×8 em PT0 e PT1 via mouse/touch ou teclado (Enter, Espaço, Setas e Escape para desmarcar) com destaque visual acessível e de alto contraste (outline duplo, borda interna de contraste, marcador e `aria-selected`).
+  - **Seleção Interativa e Inspetor de Tile (`src/ui/chr-tile-inspector.ts`):** Seleção interativa de qualquer slot 8×8 em PT0 e PT1 via mouse/touch ou teclado (Enter, Espaço, Setas e Escape para desmarcar) com destaque visual acessível e de alto contraste (outline duplo, borda interna de contraste, marcador e `aria-selected`). O preview ampliado de 16× (128×128 px) do tile selecionado sincroniza imediatamente com a paleta de visualização ativa no CHR Viewer.
   - **Metadados de Endereçamento de Hardware da PPU:** Painel contextual com cálculo determinístico e em tempo real de:
     - _Índice Físico Global:_ Decimal 0..511 e Hexadecimal `$000..$1FF`.
     - _Índice Local na Tabela:_ Decimal 0..255 e Hexadecimal `$00..$FF`.
@@ -237,7 +241,7 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
   - **Diferenciação Hardware (Índice Físico vs. Índice Local OAM):** Esclarece a distinção entre a posição física na ROM (0..511) e o índice de 8 bits gravado na OAM (0..255), determinado pelo registrador PPUCTRL (`$2000` bit 3).
   - **Capacidade Local de Sprites:** Exibe a capacidade da tabela de padrões ativa de sprites (256 tiles) e a contagem de tiles restantes para entidades.
   - **Detalhamento de Reúso e CHR-Base:** Discrimina tiles mantidos de CHR-base (4 KiB / 8 KiB / esparsos), tiles reutilizados por deduplicação/espelhamento e novos tiles alocados.
-  - **Estado Transiente Isolado:** A seleção de tiles é preservada em `WorkspaceState.chr.selectedTileIndex` via `applyWorkspaceUpdate` sem marcar o projeto como modificado (`dirty`).
+  - **Estado Transiente Isolado:** A seleção de tiles e a paleta de preview são preservadas em `WorkspaceState.chr` via `applyWorkspaceUpdate` sem marcar o projeto como modificado (`dirty`).
   - **Links e Ações:** Acesso direto para download da CHR de 8 KiB (`.chr`) e atalhos de navegação para o Mapeamento de Metasprites, Editor de Animação e Workspace de Paletas.
 
 ### 6.6 Workspace de Entrega e Exportação (`src/ui/delivery-workspace.ts`)
@@ -260,6 +264,7 @@ O gerenciamento de paletas no Studio replica com fidelidade a arquitetura de cor
 - **Paletas de Background vs Sprites:** Quatro subpaletas de 4 cores para background e quatro para sprites.
 - **Cor Universal de Fundo:** O índice 0 de todas as paletas é compartilhado globalmente (espelhado na PPU em `$3F00`), preenchendo o fundo de telas e previews.
 - **Gerenciador de Paletas do Projeto (`src/core/palette-manager.ts`):** Permite criar paletas nomeadas independentes e associá-las aos 4 slots ativos de sprites (`activeSpritePaletteSlots`).
+- **Pré-visualização Dinâmica no CHR Viewer:** O visualizador de Pattern Tables mapeia dinamicamente os valores de 2bpp `0..3` das tabelas PT0 e PT1 para as 4 cores de qualquer subpaleta de cenário ou sprite selecionada pelo usuário, com fallback seguro para escala de cinza neutra.
 - **Hierarquia de Resolução:** A paleta de um sprite é determinada na seguinte ordem de precedência:
   `frame.paletteId` ➔ `animation.paletteId` ➔ `asset.defaultPaletteId` (Slot 0).
 

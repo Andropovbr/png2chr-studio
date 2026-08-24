@@ -4,9 +4,17 @@ import {
   buildAnimationProjectModel,
   type AnimationDefinitionInput,
 } from '../core/animation-model';
+import { NES_MASTER_PALETTE, type NesPaletteSet } from '../core/nes-palette';
+import type { PaletteDefinition } from '../core/palette-manager';
 import type { IndexedImage, Tile } from '../core/types';
 import { setLocale } from '../i18n';
-import { CHR_ZOOM_LEVELS, createChrWorkspace } from './chr-workspace';
+import {
+  CHR_ZOOM_LEVELS,
+  createChrWorkspace,
+  getChrPreviewPaletteOptions,
+  NEUTRAL_NES_GRAYSCALE,
+  resolveChrPreviewPaletteColors,
+} from './chr-workspace';
 import { applyWorkspaceUpdate } from './state-update';
 import { createWorkspaceState } from './workspace-state';
 
@@ -923,5 +931,237 @@ describe('ChrWorkspace component', () => {
 
     expect(updateResult.value.chr.zoom).toBe(8);
     expect(updateResult.marksProjectDirty).toBe(false);
+  });
+
+  describe('palette-aware CHR preview resolution and UI', () => {
+    const paletteSet: NesPaletteSet = [
+      [0x0f, 0x11, 0x21, 0x30], // BG 0
+      [0x0f, 0x06, 0x16, 0x26], // BG 1
+      [0x0f, 0x09, 0x19, 0x29], // BG 2
+      [0x0f, 0x03, 0x13, 0x23], // BG 3
+    ];
+
+    const palettes: readonly PaletteDefinition[] = [
+      {
+        id: 'pal_hero',
+        name: 'Hero Palette',
+        colors: [0x0f, 0x16, 0x27, 0x38],
+      },
+      {
+        id: 'pal_enemy',
+        name: 'Enemy Palette',
+        colors: [0x0f, 0x05, 0x15, 0x25],
+      },
+      {
+        id: 'pal_item',
+        name: 'Item Palette',
+        colors: [0x0f, 0x18, 0x28, 0x38],
+      },
+    ];
+
+    const activeSlots: readonly (string | null)[] = [
+      'pal_hero',
+      'pal_enemy',
+      null,
+      null,
+    ];
+
+    it('resolves grayscale palette colors correctly', () => {
+      const colors = resolveChrPreviewPaletteColors(
+        'grayscale',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(colors).toEqual(NEUTRAL_NES_GRAYSCALE);
+
+      const defaultColors = resolveChrPreviewPaletteColors();
+      expect(defaultColors).toEqual(NEUTRAL_NES_GRAYSCALE);
+    });
+
+    it('resolves background subpalettes 0..3 to exact NES master RGB colors', () => {
+      // BG 0: [0x0f, 0x11, 0x21, 0x30]
+      const bg0 = resolveChrPreviewPaletteColors(
+        'bg-0',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(bg0.length).toBe(4);
+      expect(bg0[0]).toEqual(NES_MASTER_PALETTE[0x0f]);
+      expect(bg0[1]).toEqual(NES_MASTER_PALETTE[0x11]);
+      expect(bg0[2]).toEqual(NES_MASTER_PALETTE[0x21]);
+      expect(bg0[3]).toEqual(NES_MASTER_PALETTE[0x30]);
+
+      // BG 1: [0x0f, 0x06, 0x16, 0x26]
+      const bg1 = resolveChrPreviewPaletteColors(
+        'bg-1',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(bg1[1]).toEqual(NES_MASTER_PALETTE[0x06]);
+      expect(bg1[2]).toEqual(NES_MASTER_PALETTE[0x16]);
+      expect(bg1[3]).toEqual(NES_MASTER_PALETTE[0x26]);
+    });
+
+    it('resolves active sprite subpalettes using assigned definition colors', () => {
+      // SP 0 -> pal_hero: [0x0f, 0x16, 0x27, 0x38]
+      const sp0 = resolveChrPreviewPaletteColors(
+        'sp-0',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(sp0.length).toBe(4);
+      expect(sp0[0]).toEqual(NES_MASTER_PALETTE[0x0f]);
+      expect(sp0[1]).toEqual(NES_MASTER_PALETTE[0x16]);
+      expect(sp0[2]).toEqual(NES_MASTER_PALETTE[0x27]);
+      expect(sp0[3]).toEqual(NES_MASTER_PALETTE[0x38]);
+
+      // SP 1 -> pal_enemy: [0x0f, 0x05, 0x15, 0x25]
+      const sp1 = resolveChrPreviewPaletteColors(
+        'sp-1',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(sp1[1]).toEqual(NES_MASTER_PALETTE[0x05]);
+      expect(sp1[2]).toEqual(NES_MASTER_PALETTE[0x15]);
+      expect(sp1[3]).toEqual(NES_MASTER_PALETTE[0x25]);
+
+      // SP 2 (unassigned) -> fallback palette
+      const sp2 = resolveChrPreviewPaletteColors(
+        'sp-2',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(sp2.length).toBe(4);
+    });
+
+    it('resolves named palette definitions by ID directly', () => {
+      const custom = resolveChrPreviewPaletteColors(
+        'pal_item',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(custom.length).toBe(4);
+      expect(custom[1]).toEqual(NES_MASTER_PALETTE[0x18]);
+      expect(custom[2]).toEqual(NES_MASTER_PALETTE[0x28]);
+      expect(custom[3]).toEqual(NES_MASTER_PALETTE[0x38]);
+    });
+
+    it('falls back safely to neutral grayscale when palette references are invalid or missing', () => {
+      const invalidBg = resolveChrPreviewPaletteColors(
+        'bg-99',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(invalidBg).toEqual(NEUTRAL_NES_GRAYSCALE);
+
+      const invalidSp = resolveChrPreviewPaletteColors(
+        'sp-99',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(invalidSp).toEqual(NEUTRAL_NES_GRAYSCALE);
+
+      const missingId = resolveChrPreviewPaletteColors(
+        'non_existent_palette_id',
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(missingId).toEqual(NEUTRAL_NES_GRAYSCALE);
+
+      const nullPalettes = resolveChrPreviewPaletteColors(
+        'bg-0',
+        undefined,
+        undefined,
+        undefined,
+      );
+      expect(nullPalettes.length).toBe(4);
+    });
+
+    it('generates structured preview palette options with groups and swatches', () => {
+      const options = getChrPreviewPaletteOptions(
+        paletteSet,
+        palettes,
+        activeSlots,
+      );
+      expect(options.length).toBeGreaterThanOrEqual(9); // grayscale + 4 bg + 4 sp + custom
+
+      const grayscaleOpt = options.find((o) => o.id === 'grayscale');
+      expect(grayscaleOpt).toBeDefined();
+      expect(grayscaleOpt?.group).toBe('grayscale');
+
+      const bg0Opt = options.find((o) => o.id === 'bg-0');
+      expect(bg0Opt).toBeDefined();
+      expect(bg0Opt?.group).toBe('background');
+
+      const sp0Opt = options.find((o) => o.id === 'sp-0');
+      expect(sp0Opt).toBeDefined();
+      expect(sp0Opt?.group).toBe('sprite');
+      expect(sp0Opt?.label).toContain('Hero Palette');
+
+      // pal_item is not in active slots, so it should appear under custom group
+      const customOpt = options.find((o) => o.id === 'pal_item');
+      expect(customOpt).toBeDefined();
+      expect(customOpt?.group).toBe('custom');
+      expect(customOpt?.label).toBe('Item Palette');
+    });
+
+    it('renders palette selection controls in the toolbar and triggers onPreviewPaletteChange', () => {
+      const onPreviewPaletteChange = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        paletteSet,
+        palettes,
+        activeSpritePaletteSlots: activeSlots,
+        previewPalette: 'bg-1',
+        onPreviewPaletteChange,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const paletteControls = mockWs.querySelector('.chr-palette-controls');
+      expect(paletteControls).not.toBeNull();
+
+      const paletteSelect = paletteControls?.querySelector(
+        '.chr-palette-select',
+      );
+      expect(paletteSelect).not.toBeNull();
+
+      const swatches = paletteControls?.querySelectorAll('.chr-palette-swatch');
+      expect(swatches?.length).toBe(4);
+
+      // Simulate palette change event
+      paletteSelect?.dispatchEvent({ type: 'change' });
+      expect(onPreviewPaletteChange).toHaveBeenCalled();
+    });
+
+    it('guarantees that preview palette updates are workspace-only and do not mark project dirty', () => {
+      const initialWorkspace = createWorkspaceState();
+      expect(initialWorkspace.chr.previewPalette).toBe('grayscale');
+
+      const updateResult = applyWorkspaceUpdate(initialWorkspace, (prev) => ({
+        ...prev,
+        chr: { ...prev.chr, previewPalette: 'bg-2' },
+      }));
+
+      expect(updateResult.value.chr.previewPalette).toBe('bg-2');
+      expect(updateResult.marksProjectDirty).toBe(false);
+    });
   });
 });
