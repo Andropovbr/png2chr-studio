@@ -4610,12 +4610,181 @@ input:focus-visible + label {
   padding: 0.4rem 0.85rem;
 }
 
+/* --- CHR Tile Pixel Editor --- */
+.chr-tile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  background: #080b12;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+}
+
+.chr-tile-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.chr-editor-tools-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #0f1620;
+  padding: 0.2rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--panel-border);
+}
+
+.chr-editor-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1rem;
+  border-radius: 0.3rem;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.chr-editor-tool-btn:hover {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 15%);
+}
+
+.chr-editor-tool-btn.is-active {
+  background: #172435;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.chr-editor-palette-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #0f1620;
+  padding: 0.2rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--panel-border);
+}
+
+.chr-editor-color-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.3rem;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: inherit;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.chr-editor-color-btn:hover {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 15%);
+}
+
+.chr-editor-color-btn.is-active {
+  background: #172435;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.chr-editor-color-swatch {
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 0.2rem;
+  border: 1px solid rgb(255 255 255 / 30%);
+  flex-shrink: 0;
+}
+
+.chr-editor-grid-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1.1rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--panel-border);
+  background: #0f1620;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.chr-editor-grid-btn:hover {
+  border-color: rgb(255 255 255 / 20%);
+}
+
+.chr-editor-grid-btn.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: #172435;
+}
+
+.chr-tile-editor-canvas-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.5rem;
+  background: #04060a;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 0.4rem;
+  position: relative;
+}
+
+.chr-tile-editor-canvas {
+  width: 256px;
+  height: 256px;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: crosshair;
+  touch-action: none;
+  border-radius: 0.25rem;
+}
+
+.chr-tile-editor-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 0 0.2rem;
+}
+
+.chr-tile-editor-coords {
+  font-family: var(--font-mono, monospace);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chr-tile-slot,
   .chr-pt-view-card,
   .chr-tile-inspector-panel,
   .chr-highlight-summary,
   .chr-slot-ref-badge,
+  .chr-editor-tool-btn,
+  .chr-editor-color-btn,
   .segmented-button {
     transition: none !important;
     animation: none !important;
