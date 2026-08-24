@@ -2212,6 +2212,7 @@ function resolveAnimationProjectModel(prj: ProjectView): {
         definitions.push({
           id: anim.id,
           name: compositeName,
+          entity: entityName,
           sourceImageName: anim.source.fileName,
           image: anim.source.indexedImage,
           paletteIndex: anim.paletteIndex ?? null,
@@ -2830,6 +2831,16 @@ function renderChrWorkspace(): void {
       });
       render();
     },
+    highlightScope: workspace.chr.highlightScope ?? 'none',
+    onHighlightScopeChange: (highlightScope) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, highlightScope },
+      });
+      render();
+    },
+    selectedAnimationId: workspace.animation.selectedAnimationId,
+    selectedFrameIndex: workspace.animation.selectedFrameIndex ?? 0,
     paletteSet: project.paletteSet,
     palettes: project.palettes,
     activeSpritePaletteSlots: project.activeSpritePaletteSlots,

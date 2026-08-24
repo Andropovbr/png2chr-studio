@@ -44,6 +44,7 @@ export interface AnimationDefinitionInput {
   /** Stable identity of the editor animation that produced this definition. */
   readonly id?: string;
   readonly name: string;
+  readonly entity?: string;
   readonly sourceImageName?: string;
   readonly image?: IndexedImage;
   readonly paletteIndex?: number | null;
@@ -118,6 +119,7 @@ export interface AnimationModel {
   /** Stable identity of the source definition; generated variants share it. */
   readonly id?: string;
   readonly name: string;
+  readonly entity?: string;
   readonly sourceFile: string;
   readonly playback: AnimationPlayback;
   readonly allowHorizontalFlip: boolean;
@@ -675,6 +677,7 @@ export function buildAnimationProjectModel(
     return {
       id: animation.id,
       name: animation.name,
+      entity: animation.entity,
       sourceFile,
       playback,
       allowHorizontalFlip,

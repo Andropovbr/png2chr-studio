@@ -365,5 +365,20 @@ describe('ChrTileInspector component and utilities', () => {
       const canvas = mockEl.querySelector('.chr-tile-inspector-canvas');
       expect(canvas).not.toBeNull();
     });
+
+    it('renders contextual highlight badge when tile is highlighted in active scope', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        isHighlighted: true,
+        highlightScopeLabel: 'Current Frame (#0)',
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const badge = mockEl.querySelector('.chr-tile-highlight-badge');
+      expect(badge).not.toBeNull();
+      expect(badge?.classList.contains('is-highlighted')).toBe(true);
+      expect(badge?.textContent).toContain('Highlighted in Current Frame (#0)');
+    });
   });
 });

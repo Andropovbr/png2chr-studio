@@ -38,6 +38,8 @@ export interface ChrTileInspectorOptions {
     readonly green: number;
     readonly blue: number;
   }[];
+  readonly isHighlighted?: boolean;
+  readonly highlightScopeLabel?: string | null;
   readonly onDeselect?: () => void;
 }
 
@@ -364,6 +366,17 @@ export function createChrTileInspector(
     attrText.className = 'chr-attribution-text';
     attrText.textContent = diagnosis.attribution;
     addMetric(t('chrTileInspectorAttribution'), attrText);
+
+    // Active Highlight Status (if highlighted in active scope)
+    if (options.isHighlighted && options.highlightScopeLabel) {
+      const highlightBadge = document.createElement('span');
+      highlightBadge.className =
+        'status-badge chr-tile-highlight-badge is-highlighted';
+      highlightBadge.textContent = t('chrTileInspectorHighlightedBadge', {
+        scope: options.highlightScopeLabel,
+      });
+      addMetric(t('chrWorkspaceHighlightLabel'), highlightBadge);
+    }
 
     content.append(previewSection, metricsList);
     panel.append(content);

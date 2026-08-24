@@ -3092,6 +3092,51 @@ input:focus-visible + label {
   overflow: hidden;
 }
 
+/* CHR Highlight Controls */
+.chr-highlight-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--panel-surface, #0f1620);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.chr-highlight-label {
+  font-size: 0.8rem;
+  color: var(--muted, #8b9bb4);
+  font-weight: 600;
+}
+
+.chr-highlight-select {
+  background: #090d14;
+  color: var(--text, #eaf0f5);
+  border: 1px solid var(--panel-border, #1f2937);
+  border-radius: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chr-highlight-select:focus {
+  outline: 2px solid #38bdf8;
+  border-color: #38bdf8;
+}
+
+.chr-highlight-summary {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.25rem;
+  background: rgb(56 189 248 / 12%);
+  border: 1px solid rgb(56 189 248 / 30%);
+  color: #38bdf8;
+  white-space: nowrap;
+}
+
 /* CHR Occupancy Legend */
 .chr-occupancy-legend {
   display: inline-flex;
@@ -3340,12 +3385,33 @@ input:focus-visible + label {
   z-index: 6;
 }
 
-/* Selected Slot - Priority over occupancy markers */
+/* Active Highlight Mode */
+.chr-pt-grid-overlay.has-highlight .chr-tile-slot.is-dimmed {
+  opacity: 0.35;
+}
+
+/* Highlighted Slot */
+.chr-tile-slot.is-highlighted {
+  box-shadow:
+    0 0 0 1.5px #38bdf8,
+    0 0 8px rgb(56 189 248 / 60%) !important;
+  border-color: #38bdf8 !important;
+  z-index: 4;
+  opacity: 1 !important;
+}
+
+.chr-tile-slot.is-highlighted::before {
+  box-shadow: 0 0 6px #38bdf8;
+  opacity: 1;
+}
+
+/* Selected Slot - Priority over highlight, dimming, and occupancy markers */
 .chr-tile-slot.is-selected {
+  opacity: 1 !important;
   outline: 2px solid #38bdf8 !important;
   box-shadow:
     inset 0 0 0 1px #ffffff,
-    0 0 6px rgb(56 189 248 / 80%) !important;
+    0 0 10px rgb(56 189 248 / 90%) !important;
   background: rgb(56 189 248 / 25%) !important;
   z-index: 10 !important;
 }
@@ -3364,6 +3430,13 @@ input:focus-visible + label {
   background: #38bdf8;
   border-radius: 1px;
   pointer-events: none;
+}
+
+.status-badge.chr-tile-highlight-badge.is-highlighted {
+  background: rgb(56 189 248 / 15%);
+  border: 1px solid rgb(56 189 248 / 40%);
+  color: #38bdf8;
+  font-weight: 600;
 }
 
 /* CHR Tile Inspector Panel */
