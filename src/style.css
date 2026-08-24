@@ -4773,8 +4773,60 @@ input:focus-visible + label {
   padding: 0 0.2rem;
 }
 
-.chr-tile-editor-coords {
-  font-family: var(--font-mono, monospace);
+.chr-tile-editor-actions-toolbar {
+  justify-content: flex-start;
+  gap: 0.5rem;
+  border-top: 1px solid rgb(255 255 255 / 6%);
+  padding-top: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+.chr-editor-transform-group,
+.chr-editor-shift-group,
+.chr-editor-actions-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #0f1620;
+  padding: 0.2rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--panel-border);
+}
+
+.chr-editor-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1rem;
+  border-radius: 0.3rem;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.chr-editor-action-btn:hover:not(:disabled) {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 15%);
+}
+
+.chr-editor-action-btn:disabled,
+.chr-editor-action-btn[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chr-editor-wrap-btn.is-active {
+  background: #172435;
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4785,6 +4837,7 @@ input:focus-visible + label {
   .chr-slot-ref-badge,
   .chr-editor-tool-btn,
   .chr-editor-color-btn,
+  .chr-editor-action-btn,
   .segmented-button {
     transition: none !important;
     animation: none !important;

@@ -286,6 +286,7 @@ export function createChrTileInspector(
     let localActiveTool: ChrDrawingTool = 'pencil';
     let localSelectedColor = 1;
     let localShowGrid = true;
+    let localShiftWrap = false;
 
     const editorContainer = document.createElement('div');
     editorContainer.className = 'chr-tile-inspector-editor-container';
@@ -298,6 +299,7 @@ export function createChrTileInspector(
         activeTool: localActiveTool,
         paletteColors: options.colors ?? NEUTRAL_NES_GRAYSCALE,
         showGrid: localShowGrid,
+        shiftWrap: localShiftWrap,
         onPixelsChange: (nextPixels) => {
           localTilePixels = nextPixels;
           renderLocalEditor();
@@ -312,6 +314,10 @@ export function createChrTileInspector(
         },
         onToggleGrid: (gridState) => {
           localShowGrid = gridState;
+          renderLocalEditor();
+        },
+        onToggleShiftWrap: (wrapState) => {
+          localShiftWrap = wrapState;
           renderLocalEditor();
         },
       });

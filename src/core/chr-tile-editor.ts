@@ -381,3 +381,37 @@ export function createTileHistory<T>(
     },
   };
 }
+
+/**
+ * Internal CHR tile clipboard storage.
+ * Retains an independent copy of 64 tile pixel color indices (0..3).
+ */
+let activeTileClipboard: Uint8Array | null = null;
+
+export function copyTileToClipboard(pixels: Uint8Array): Uint8Array {
+  validateTilePixels(pixels);
+  activeTileClipboard = cloneTilePixels(pixels);
+  return cloneTilePixels(activeTileClipboard);
+}
+
+export function pasteTileFromClipboard(): Uint8Array | null {
+  if (!activeTileClipboard) {
+    return null;
+  }
+  return cloneTilePixels(activeTileClipboard);
+}
+
+export function hasClipboardTile(): boolean {
+  return activeTileClipboard !== null;
+}
+
+export function clearTileClipboard(): void {
+  activeTileClipboard = null;
+}
+
+export function getClipboardTile(): Uint8Array | null {
+  if (!activeTileClipboard) {
+    return null;
+  }
+  return cloneTilePixels(activeTileClipboard);
+}
