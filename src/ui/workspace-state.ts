@@ -5,6 +5,7 @@ export type AnimationWorkspaceTab = 'frames' | 'pixels' | 'mapping' | 'scene';
 export interface AnimationWorkspaceState {
   /** Presentation and selection state projected onto the animation editor at render time. */
   readonly selectedAnimationId?: string | null;
+  readonly selectedFrameIndex?: number | null;
   readonly selectedSceneInstanceId?: string | null;
   readonly activeTab?: AnimationWorkspaceTab;
   readonly collapsedAnimationIds?: readonly string[];
@@ -17,10 +18,17 @@ export interface AnimationWorkspaceState {
 export type WorkspaceView =
   'tileset' | 'playfield' | 'animation' | 'palette' | 'chr' | 'deliver';
 
+export type ChrHighlightScope =
+  'none' | 'frame' | 'animation' | 'entity' | 'base' | 'all';
+
 export interface ChrWorkspaceState {
   readonly zoom: number;
   readonly selectedTileIndex: number | null;
   readonly previewPalette?: string;
+  readonly highlightScope?: ChrHighlightScope;
+  readonly selectedAnimationId?: string | null;
+  readonly selectedFrameIndex?: number | null;
+  readonly selectedEntity?: string | null;
 }
 
 export interface WorkspaceState {
@@ -58,6 +66,7 @@ export function createWorkspaceState(
     quantizationCollapsed: false,
     animation: {
       selectedAnimationId: null,
+      selectedFrameIndex: 0,
       activeTab: 'frames',
       collapsedAnimationIds: [],
       configCollapsed: false,
@@ -69,6 +78,10 @@ export function createWorkspaceState(
       zoom: 2,
       selectedTileIndex: null,
       previewPalette: 'grayscale',
+      highlightScope: 'none',
+      selectedAnimationId: null,
+      selectedFrameIndex: 0,
+      selectedEntity: null,
     },
   };
 }

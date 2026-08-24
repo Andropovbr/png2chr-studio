@@ -14,6 +14,8 @@ export const NES_CHR_ROM_SIZE = NES_CHR_ROM_TILE_COUNT * 16;
 export type SpritePatternTable = 0 | 1;
 export type PatternTableTileSource = 'destination' | 'imported';
 export type ChrSlotOccupancy = 'empty' | 'project' | 'base' | 'reserved';
+export type ChrHighlightScope =
+  'none' | 'frame' | 'animation' | 'entity' | 'base' | 'all';
 
 export interface ChrSlotClassification {
   readonly physicalIndex: number;
@@ -21,6 +23,27 @@ export interface ChrSlotClassification {
   readonly patternTable: SpritePatternTable;
   readonly occupancy: ChrSlotOccupancy;
   readonly attribution?: string;
+}
+
+export interface CollectChrHighlightOptions {
+  readonly scope: ChrHighlightScope;
+  readonly mode?: 'tileset' | 'playfield' | 'animation';
+  readonly animationModel?: {
+    readonly animations: readonly {
+      readonly id?: string;
+      readonly name: string;
+      readonly entity?: string;
+      readonly frames: readonly {
+        readonly sprites: readonly {
+          readonly physicalTileIndex: number;
+        }[];
+      }[];
+    }[];
+  } | null;
+  readonly selectedAnimationId?: string | null;
+  readonly selectedFrameIndex?: number | null;
+  readonly selectedEntity?: string | null;
+  readonly classifications?: readonly ChrSlotClassification[];
 }
 
 export interface ClassifyChrSlotsOptions {
@@ -586,4 +609,185 @@ export function classifyChrSlots(
   }
 
   return result;
+}
+
+export function collectFramePhysicalTileUsage(
+  animationModel?: CollectChrHighlightOptions['animationModel'],
+  selectedAnimationId?: string | null,
+  frameIndex?: number | null,
+): Set<number> {
+  const result = new Set<number>();
+  if (!animationModel?.animations || animationModel.animations.length === 0) {
+    return result;
+  }
+
+  const targetAnimation =
+    (selectedAnimationId
+      ? animationModel.animations.find(
+          (a) => a.id === selectedAnimationId || a.name === selectedAnimationId,
+        )
+      : null) ?? animationModel.animations[0];
+
+  if (!targetAnimation?.frames || targetAnimation.frames.length === 0) {
+    return result;
+  }
+
+  const frameOrder = frameIndex ?? 0;
+  const targetFrame = targetAnimation.frames[frameOrder];
+  if (!targetFrame?.sprites) {
+    return result;
+  }
+
+  for (const sprite of targetFrame.sprites) {
+    if (
+      typeof sprite.physicalTileIndex === 'number' &&
+      sprite.physicalTileIndex >= 0 &&
+      sprite.physicalTileIndex < NES_CHR_ROM_TILE_COUNT
+    ) {
+      result.add(sprite.physicalTileIndex);
+    }
+  }
+
+  return result;
+}
+
+export function collectAnimationPhysicalTileUsage(
+  animationModel?: CollectChrHighlightOptions['animationModel'],
+  selectedAnimationId?: string | null,
+): Set<number> {
+  const result = new Set<number>();
+  if (!animationModel?.animations || animationModel.animations.length === 0) {
+    return result;
+  }
+
+  let matchingAnimations = selectedAnimationId
+    ? animationModel.animations.filter(
+        (a) => a.id === selectedAnimationId || a.name === selectedAnimationId,
+      )
+    : [];
+
+  if (matchingAnimations.length === 0 && animationModel.animations[0]) {
+    matchingAnimations = [animationModel.animations[0]];
+  }
+
+  for (const anim of matchingAnimations) {
+    for (const frame of anim.frames) {
+      for (const sprite of frame.sprites) {
+        if (
+          typeof sprite.physicalTileIndex === 'number' &&
+          sprite.physicalTileIndex >= 0 &&
+          sprite.physicalTileIndex < NES_CHR_ROM_TILE_COUNT
+        ) {
+          result.add(sprite.physicalTileIndex);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+export function collectEntityPhysicalTileUsage(
+  animationModel?: CollectChrHighlightOptions['animationModel'],
+  targetEntity?: string | null,
+  selectedAnimationId?: string | null,
+): Set<number> {
+  const result = new Set<number>();
+  if (!animationModel?.animations || animationModel.animations.length === 0) {
+    return result;
+  }
+
+  let entityName = targetEntity?.trim();
+  if (!entityName) {
+    const activeAnim = selectedAnimationId
+      ? animationModel.animations.find(
+          (a) => a.id === selectedAnimationId || a.name === selectedAnimationId,
+        )
+      : animationModel.animations[0];
+    entityName = activeAnim?.entity?.trim();
+    if (!entityName && activeAnim?.name) {
+      const parts = activeAnim.name.split('_');
+      if (parts.length > 1 && parts[0]) {
+        entityName = parts[0];
+      }
+    }
+  }
+
+  if (!entityName) {
+    return collectAnimationPhysicalTileUsage(
+      animationModel,
+      selectedAnimationId,
+    );
+  }
+
+  const normalizedEntity = entityName.toLowerCase();
+  const matchingAnimations = animationModel.animations.filter((a) => {
+    if (a.entity?.trim().toLowerCase() === normalizedEntity) {
+      return true;
+    }
+    const prefix = a.name.toLowerCase().split('_')[0];
+    return prefix === normalizedEntity;
+  });
+
+  for (const anim of matchingAnimations) {
+    for (const frame of anim.frames) {
+      for (const sprite of frame.sprites) {
+        if (
+          typeof sprite.physicalTileIndex === 'number' &&
+          sprite.physicalTileIndex >= 0 &&
+          sprite.physicalTileIndex < NES_CHR_ROM_TILE_COUNT
+        ) {
+          result.add(sprite.physicalTileIndex);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+export function collectChrHighlightTileIndices(
+  options: CollectChrHighlightOptions,
+): ReadonlySet<number> {
+  switch (options.scope) {
+    case 'none':
+      return new Set<number>();
+    case 'frame':
+      return collectFramePhysicalTileUsage(
+        options.animationModel,
+        options.selectedAnimationId,
+        options.selectedFrameIndex,
+      );
+    case 'animation':
+      return collectAnimationPhysicalTileUsage(
+        options.animationModel,
+        options.selectedAnimationId,
+      );
+    case 'entity':
+      return collectEntityPhysicalTileUsage(
+        options.animationModel,
+        options.selectedEntity,
+        options.selectedAnimationId,
+      );
+    case 'base': {
+      const baseIndices = new Set<number>();
+      for (const classification of options.classifications ?? []) {
+        if (classification.occupancy === 'base') {
+          baseIndices.add(classification.physicalIndex);
+        }
+      }
+      return baseIndices;
+    }
+    case 'all': {
+      const projectIndices = new Set<number>();
+      for (const classification of options.classifications ?? []) {
+        if (classification.occupancy === 'project') {
+          projectIndices.add(classification.physicalIndex);
+        }
+      }
+      return projectIndices;
+    }
+    default:
+      return new Set<number>();
+  }
 }

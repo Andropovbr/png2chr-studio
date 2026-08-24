@@ -2212,6 +2212,7 @@ function resolveAnimationProjectModel(prj: ProjectView): {
         definitions.push({
           id: anim.id,
           name: compositeName,
+          entity: entityName,
           sourceImageName: anim.source.fileName,
           image: anim.source.indexedImage,
           paletteIndex: anim.paletteIndex ?? null,
@@ -2827,6 +2828,45 @@ function renderChrWorkspace(): void {
       updateWorkspace({
         ...workspace,
         chr: { ...workspace.chr, previewPalette },
+      });
+      render();
+    },
+    highlightScope: workspace.chr.highlightScope ?? 'none',
+    onHighlightScopeChange: (highlightScope) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, highlightScope },
+      });
+      render();
+    },
+    selectedAnimationId:
+      workspace.chr.selectedAnimationId ??
+      workspace.animation.selectedAnimationId ??
+      animModel?.animations[0]?.id ??
+      null,
+    onSelectAnimation: (selectedAnimationId) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, selectedAnimationId, selectedFrameIndex: 0 },
+      });
+      render();
+    },
+    selectedFrameIndex:
+      workspace.chr.selectedFrameIndex ??
+      workspace.animation.selectedFrameIndex ??
+      0,
+    onSelectFrame: (selectedFrameIndex) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, selectedFrameIndex },
+      });
+      render();
+    },
+    selectedEntity: workspace.chr.selectedEntity ?? null,
+    onSelectEntity: (selectedEntity) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, selectedEntity },
       });
       render();
     },

@@ -4,6 +4,10 @@ import { encodeChr } from './chr-encoder';
 import {
   analyzeBaseChrOccupancy,
   classifyChrSlots,
+  collectAnimationPhysicalTileUsage,
+  collectChrHighlightTileIndices,
+  collectEntityPhysicalTileUsage,
+  collectFramePhysicalTileUsage,
   createPatternTableSlots,
   encodePatternTableSlots,
   localPatternTableTileIndex,
@@ -351,6 +355,186 @@ describe('NES sprite pattern tables', () => {
 
       expect(slots[0]?.occupancy).toBe('empty');
       expect(slots[7]?.occupancy).toBe('empty');
+    });
+  });
+
+  describe('collectFramePhysicalTileUsage', () => {
+    it('returns empty set when animation model or animations are missing', () => {
+      expect(collectFramePhysicalTileUsage(null)).toEqual(new Set());
+      expect(collectFramePhysicalTileUsage({ animations: [] })).toEqual(
+        new Set(),
+      );
+    });
+
+    it('collects unique physical tile indexes from a frame and handles duplicate/flipped sprite references', () => {
+      const animationModel = {
+        animations: [
+          {
+            id: 'anim-1',
+            name: 'Hero_walk',
+            frames: [
+              {
+                sprites: [
+                  { physicalTileIndex: 5 },
+                  { physicalTileIndex: 6 },
+                  { physicalTileIndex: 5 }, // duplicate (e.g. reused or H-flipped)
+                  { physicalTileIndex: 260 }, // PT1 physical tile
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const result = collectFramePhysicalTileUsage(animationModel, 'anim-1', 0);
+      expect(result).toEqual(new Set([5, 6, 260]));
+      expect(result.size).toBe(3);
+    });
+
+    it('gracefully handles out-of-range frame index by defaulting or returning empty set', () => {
+      const animationModel = {
+        animations: [
+          {
+            id: 'anim-1',
+            name: 'Hero_walk',
+            frames: [
+              {
+                sprites: [{ physicalTileIndex: 10 }],
+              },
+            ],
+          },
+        ],
+      };
+
+      expect(
+        collectFramePhysicalTileUsage(animationModel, 'anim-1', 99),
+      ).toEqual(new Set());
+    });
+  });
+
+  describe('collectAnimationPhysicalTileUsage', () => {
+    it('collects the union of all physical tiles across multiple frames of an animation', () => {
+      const animationModel = {
+        animations: [
+          {
+            id: 'anim-walk',
+            name: 'Hero_walk',
+            frames: [
+              {
+                sprites: [
+                  { physicalTileIndex: 1 },
+                  { physicalTileIndex: 2 },
+                  { physicalTileIndex: 3 },
+                ],
+              },
+              {
+                sprites: [
+                  { physicalTileIndex: 2 },
+                  { physicalTileIndex: 3 },
+                  { physicalTileIndex: 4 },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const result = collectAnimationPhysicalTileUsage(
+        animationModel,
+        'anim-walk',
+      );
+      expect(result).toEqual(new Set([1, 2, 3, 4]));
+      expect(result.size).toBe(4);
+    });
+  });
+
+  describe('collectEntityPhysicalTileUsage', () => {
+    it('collects union across animations belonging to the same entity and isolates other entities', () => {
+      const animationModel = {
+        animations: [
+          {
+            id: 'hero-walk',
+            name: 'Hero_walk',
+            entity: 'Hero',
+            frames: [
+              {
+                sprites: [{ physicalTileIndex: 10 }, { physicalTileIndex: 11 }],
+              },
+            ],
+          },
+          {
+            id: 'hero-attack',
+            name: 'Hero_attack',
+            entity: 'Hero',
+            frames: [
+              {
+                sprites: [{ physicalTileIndex: 11 }, { physicalTileIndex: 12 }],
+              },
+            ],
+          },
+          {
+            id: 'bat-fly',
+            name: 'Bat_fly',
+            entity: 'Bat',
+            frames: [
+              {
+                sprites: [{ physicalTileIndex: 50 }, { physicalTileIndex: 51 }],
+              },
+            ],
+          },
+        ],
+      };
+
+      const heroResult = collectEntityPhysicalTileUsage(animationModel, 'Hero');
+      expect(heroResult).toEqual(new Set([10, 11, 12]));
+
+      const batResult = collectEntityPhysicalTileUsage(animationModel, 'Bat');
+      expect(batResult).toEqual(new Set([50, 51]));
+    });
+  });
+
+  describe('collectChrHighlightTileIndices', () => {
+    it('returns empty set for scope "none"', () => {
+      expect(collectChrHighlightTileIndices({ scope: 'none' })).toEqual(
+        new Set(),
+      );
+    });
+
+    it('collects base and project slots from classifications for "base" and "all" scopes', () => {
+      const classifications = [
+        {
+          physicalIndex: 0,
+          localIndex: 0,
+          patternTable: 0 as const,
+          occupancy: 'project' as const,
+        },
+        {
+          physicalIndex: 1,
+          localIndex: 1,
+          patternTable: 0 as const,
+          occupancy: 'base' as const,
+        },
+        {
+          physicalIndex: 2,
+          localIndex: 2,
+          patternTable: 0 as const,
+          occupancy: 'empty' as const,
+        },
+      ];
+
+      expect(
+        collectChrHighlightTileIndices({
+          scope: 'base',
+          classifications,
+        }),
+      ).toEqual(new Set([1]));
+
+      expect(
+        collectChrHighlightTileIndices({
+          scope: 'all',
+          classifications,
+        }),
+      ).toEqual(new Set([0]));
     });
   });
 });

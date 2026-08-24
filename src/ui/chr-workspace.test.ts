@@ -1338,4 +1338,340 @@ describe('ChrWorkspace component', () => {
       expect(slot0?.getAttribute('aria-selected')).toBe('true');
     });
   });
+
+  describe('CHR Usage Highlighting', () => {
+    const mockImage: IndexedImage = {
+      width: 32,
+      height: 16,
+      pixels: new Uint8Array(512).fill(1),
+      colors: [
+        { red: 0, green: 0, blue: 0 },
+        { red: 255, green: 0, blue: 0 },
+        { red: 0, green: 255, blue: 0 },
+        { red: 0, green: 0, blue: 255 },
+      ],
+      transparentIndex: 0,
+      colorCount: 4,
+    };
+
+    const definitions: AnimationDefinitionInput[] = [
+      {
+        id: 'hero-walk',
+        name: 'Hero_walk',
+        entity: 'Hero',
+        sourceImageName: 'hero.png',
+        image: mockImage,
+        paletteIndex: 0,
+        quantizationMode: 'median-cut',
+        frameWidth: 16,
+        frameHeight: 16,
+        originX: 0,
+        originY: 0,
+        playback: 'loop',
+        allowHorizontalFlip: false,
+        allowVerticalFlip: false,
+        flipH: false,
+        flipV: false,
+        frameIndices: [0, 1],
+        frameDuration: 6,
+      },
+    ];
+
+    it('renders highlight dropdown controls and summary badge in toolbar', () => {
+      const onHighlightScopeChange = vi.fn();
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        animations: definitions,
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'frame',
+        onHighlightScopeChange,
+        selectedAnimationId: 'hero-walk',
+        selectedFrameIndex: 0,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const select = mockWs.querySelector('.chr-highlight-select');
+      expect(select).toBeDefined();
+
+      const summary = mockWs.querySelector('.chr-highlight-summary');
+      expect(summary).toBeDefined();
+      expect(summary?.textContent).toContain('PT0: 1 · PT1: 0');
+
+      select?.dispatchEvent({ type: 'change' });
+    });
+
+    it('applies is-highlighted and data-highlighted="true" to matching tiles and is-dimmed to others', () => {
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        animations: definitions,
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      // Let's identify the physical tiles used in frame 0
+      const frame0Tiles =
+        model.animations[0]?.frames[0]?.sprites.map(
+          (s) => s.physicalTileIndex,
+        ) ?? [];
+      expect(frame0Tiles.length).toBeGreaterThan(0);
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'frame',
+        selectedAnimationId: 'hero-walk',
+        selectedFrameIndex: 0,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const pt0Card = mockWs.querySelector('[data-pattern-table="0"]');
+
+      frame0Tiles.forEach((tileIdx) => {
+        const slot = pt0Card?.querySelector(
+          `[data-physical-index="${String(tileIdx)}"]`,
+        );
+        expect(slot?.classList.contains('is-highlighted')).toBe(true);
+        expect(slot?.getAttribute('data-highlighted')).toBe('true');
+        expect(slot?.classList.contains('is-dimmed')).toBe(false);
+      });
+
+      // An unused slot should be dimmed
+      const unusedSlot = pt0Card?.querySelector('[data-physical-index="255"]');
+      expect(unusedSlot?.classList.contains('is-dimmed')).toBe(true);
+      expect(unusedSlot?.getAttribute('data-highlighted')).toBe('false');
+    });
+
+    it('maintains selection dominance over highlight and dimming styles', () => {
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        animations: definitions,
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      const targetTile =
+        model.animations[0]?.frames[0]?.sprites[0]?.physicalTileIndex ?? 0;
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'frame',
+        selectedAnimationId: 'hero-walk',
+        selectedFrameIndex: 0,
+        selectedTileIndex: targetTile,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const selectedSlot = mockWs.querySelector(
+        `[data-physical-index="${String(targetTile)}"]`,
+      );
+
+      expect(selectedSlot?.classList.contains('is-selected')).toBe(true);
+      expect(selectedSlot?.classList.contains('is-highlighted')).toBe(true);
+      expect(selectedSlot?.getAttribute('aria-selected')).toBe('true');
+      expect(selectedSlot?.getAttribute('data-highlighted')).toBe('true');
+    });
+
+    it('is independently usable when no animation or frame is pre-selected in the animation workspace', () => {
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        animations: definitions,
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      // No selectedAnimationId, selectedFrameIndex, or selectedEntity supplied
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'frame',
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const select = mockWs.querySelector('.chr-highlight-select');
+      expect(select).toBeDefined();
+
+      const animSelect = mockWs.querySelector('.chr-highlight-anim-select');
+      expect(animSelect).toBeDefined();
+
+      const frameSelect = mockWs.querySelector('.chr-highlight-frame-select');
+      expect(frameSelect).toBeDefined();
+
+      const summary = mockWs.querySelector('.chr-highlight-summary');
+      expect(summary).toBeDefined();
+      expect(summary?.textContent).toContain('PT0: 1 · PT1: 0');
+    });
+
+    it('provides dedicated animation and frame select dropdowns that invoke onSelectAnimation and onSelectFrame', () => {
+      const onSelectAnimation = vi.fn();
+      const onSelectFrame = vi.fn();
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        animations: [
+          ...definitions,
+          {
+            name: 'hero_attack',
+            sourceImageName: 'hero.png',
+            image: mockImage,
+            playback: 'once',
+            allowHorizontalFlip: false,
+            allowVerticalFlip: false,
+            flipH: false,
+            flipV: false,
+            frameIndices: [0],
+            frameDuration: 4,
+          },
+        ],
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'frame',
+        selectedAnimationId: 'hero-walk',
+        selectedFrameIndex: 1,
+        onSelectAnimation,
+        onSelectFrame,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const animSelect = mockWs.querySelector('.chr-highlight-anim-select');
+      expect(animSelect).toBeDefined();
+      expect(animSelect?.children.length).toBe(2);
+
+      animSelect?.dispatchEvent({ type: 'change' });
+      expect(onSelectAnimation).toHaveBeenCalled();
+
+      const frameSelect = mockWs.querySelector('.chr-highlight-frame-select');
+      expect(frameSelect).toBeDefined();
+      expect(frameSelect?.children.length).toBe(2);
+
+      frameSelect?.dispatchEvent({ type: 'change' });
+      expect(onSelectFrame).toHaveBeenCalled();
+    });
+
+    it('provides entity selector dropdown when multiple entities exist and invokes onSelectEntity', () => {
+      const onSelectEntity = vi.fn();
+      const model = buildAnimationProjectModel({
+        name: 'game',
+        animations: [
+          {
+            name: 'Hero_walk',
+            entity: 'Hero',
+            sourceImageName: 'hero.png',
+            image: mockImage,
+            playback: 'loop',
+            allowHorizontalFlip: false,
+            allowVerticalFlip: false,
+            flipH: false,
+            flipV: false,
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+          {
+            name: 'Enemy_walk',
+            entity: 'Enemy',
+            sourceImageName: 'enemy.png',
+            image: mockImage,
+            playback: 'loop',
+            allowHorizontalFlip: false,
+            allowVerticalFlip: false,
+            flipH: false,
+            flipV: false,
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+        destinationPatternTable: 0,
+        flipDeduplication: false,
+      });
+
+      const workspace = createChrWorkspace({
+        mode: 'animation',
+        animationModel: model,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        highlightScope: 'entity',
+        selectedEntity: 'Hero',
+        onSelectEntity,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const entitySelect = mockWs.querySelector('.chr-highlight-entity-select');
+      expect(entitySelect).toBeDefined();
+      expect(entitySelect?.children.length).toBe(2);
+
+      entitySelect?.dispatchEvent({ type: 'change' });
+      expect(onSelectEntity).toHaveBeenCalled();
+    });
+
+    it('preserves state purity when updating highlightScope in WorkspaceState', () => {
+      const initialState = createWorkspaceState();
+      expect(initialState.chr.highlightScope).toBe('none');
+
+      const result = applyWorkspaceUpdate(initialState, {
+        ...initialState,
+        chr: {
+          ...initialState.chr,
+          highlightScope: 'animation',
+          selectedAnimationId: 'hero-walk',
+          selectedFrameIndex: 1,
+        },
+      });
+
+      expect(result.marksProjectDirty).toBe(false);
+      expect(result.value.chr.highlightScope).toBe('animation');
+      expect(result.value.chr.selectedAnimationId).toBe('hero-walk');
+      expect(result.value.chr.selectedFrameIndex).toBe(1);
+      expect(initialState.chr.highlightScope).toBe('none');
+    });
+  });
 });
