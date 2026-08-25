@@ -5,8 +5,10 @@ import {
 } from './c-identifier';
 import {
   analyzeBaseChrOccupancy,
+  collectReservedPhysicalTileIndices,
   createPatternTableSlots,
   encodePatternTableSlots,
+  findNextAvailableChrSlot,
   isSpritePatternTable,
   localPatternTableTileIndex,
   NES_CHR_ROM_TILE_COUNT,
@@ -14,6 +16,7 @@ import {
   NES_PATTERN_TABLE_TILE_COUNT,
   patternTablePhysicalRange,
   type BaseChrOccupancy,
+  type ChrRegion,
   type PatternTableSlot,
   type SpritePatternTable,
 } from './chr-pattern-table';
@@ -86,6 +89,8 @@ export interface BuildAnimationModelOptions {
   readonly chrOutputName?: string;
   readonly flipDeduplication?: boolean;
   readonly spritePalette?: number;
+  readonly chrRegions?: readonly ChrRegion[];
+  readonly reservedIndices?: ReadonlySet<number>;
 }
 
 export interface MetaspriteTile {
@@ -380,6 +385,13 @@ export function buildAnimationProjectModel(
       patternTable: String(patternTable),
     });
   }
+
+  const reservedIndices =
+    options.reservedIndices ??
+    (options.chrRegions
+      ? collectReservedPhysicalTileIndices(options.chrRegions, patternTable)
+      : undefined);
+
   const spritePalette = options.spritePalette ?? 0;
   if (
     !Number.isInteger(spritePalette) ||
@@ -610,9 +622,10 @@ export function buildAnimationProjectModel(
               if (reuse === 'destination') reusedDestinationTiles += 1;
               else reusedImportedTiles += 1;
             } else {
-              const availableSlot = slots
-                .slice(patternTableStart, patternTableEnd + 1)
-                .find((slot) => slot.tile === null);
+              const availableSlot = findNextAvailableChrSlot(slots, {
+                patternTable,
+                reservedIndices,
+              });
               if (availableSlot === undefined) {
                 throw new AnimationModelError(
                   'pattern-table-capacity-overflow',

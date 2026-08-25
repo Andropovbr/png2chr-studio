@@ -335,6 +335,64 @@ export function collectReservedLocalTileIndices(
   return reserved;
 }
 
+/**
+ * Predicate to determine if a specific physical CHR slot is available for allocating a NEW tile.
+ *
+ * Requirements:
+ * 1. The slot must exist and be within valid physical bounds (0..511);
+ * 2. The slot must not be already occupied by Base CHR or an existing project tile (`slot.tile === null`);
+ * 3. The physical slot index must NOT be included in the reserved set (`!reservedIndices?.has(slot.physicalTileIndex)`).
+ */
+export function isChrSlotAvailableForAllocation(
+  slot: PatternTableSlot | null | undefined,
+  reservedIndices?: ReadonlySet<number>,
+): boolean {
+  if (!slot) {
+    return false;
+  }
+  if (slot.tile !== null) {
+    return false;
+  }
+  if (reservedIndices?.has(slot.physicalTileIndex)) {
+    return false;
+  }
+  return true;
+}
+
+export interface FindAvailableChrSlotOptions {
+  readonly startIndex?: number;
+  readonly endIndex?: number;
+  readonly patternTable?: SpritePatternTable;
+  readonly reservedIndices?: ReadonlySet<number>;
+}
+
+/**
+ * Searches for the next available slot within a pattern table or CHR slots array.
+ * Returns the first eligible PatternTableSlot or undefined if none available.
+ */
+export function findNextAvailableChrSlot(
+  slots: readonly PatternTableSlot[],
+  options: FindAvailableChrSlotOptions = {},
+): PatternTableSlot | undefined {
+  let start = options.startIndex ?? 0;
+  let end = options.endIndex ?? slots.length - 1;
+
+  if (options.patternTable !== undefined) {
+    const [ptStart, ptEnd] = patternTablePhysicalRange(options.patternTable);
+    start = Math.max(start, ptStart);
+    end = Math.min(end, ptEnd);
+  }
+
+  for (let i = start; i <= end && i < slots.length; i += 1) {
+    const slot = slots[i];
+    if (isChrSlotAvailableForAllocation(slot, options.reservedIndices)) {
+      return slot;
+    }
+  }
+
+  return undefined;
+}
+
 export interface ChrSlotClassification {
   readonly physicalIndex: number;
   readonly localIndex: number;
@@ -383,6 +441,7 @@ export interface ClassifyChrSlotsOptions {
   readonly deduplicationEnabled?: boolean;
   readonly flipDeduplicationEnabled?: boolean;
   readonly finalChrBytes?: Uint8Array | null;
+  readonly chrRegions?: readonly ChrRegion[];
 }
 
 export interface PatternTableSlot {
@@ -671,20 +730,32 @@ export function composeChrWithAllocatedTiles(
   baseChr: Uint8Array,
   destinationPatternTable: SpritePatternTable,
   tiles: readonly Tile[],
+  reserved?: ReadonlySet<number> | readonly ChrRegion[],
 ): Uint8Array {
+  const reservedIndices =
+    reserved instanceof Set
+      ? reserved
+      : Array.isArray(reserved)
+        ? collectReservedPhysicalTileIndices(reserved)
+        : undefined;
+
   const slots = createPatternTableSlots(baseChr, destinationPatternTable);
-  let insertIndex = 0;
+  let searchIndex = 0;
   for (const tile of tiles) {
-    while (insertIndex < slots.length && slots[insertIndex]?.tile !== null) {
-      insertIndex += 1;
+    const availableSlot = findNextAvailableChrSlot(slots, {
+      startIndex: searchIndex,
+      reservedIndices,
+    });
+    if (availableSlot === undefined) {
+      break;
     }
-    if (insertIndex >= slots.length) break;
-    slots[insertIndex] = {
-      physicalTileIndex: insertIndex,
+    const physicalIndex = availableSlot.physicalTileIndex;
+    slots[physicalIndex] = {
+      physicalTileIndex: physicalIndex,
       tile,
       source: 'imported',
     };
-    insertIndex += 1;
+    searchIndex = physicalIndex + 1;
   }
   return encodePatternTableSlots(slots);
 }
@@ -697,6 +768,9 @@ export function classifyChrSlots(
   const destinationPt = options.destinationPatternTable ?? 0;
   const mode = options.mode ?? 'tileset';
   const finalChrBytes = options.finalChrBytes;
+  const reservedPhysicalSet = collectReservedPhysicalTileIndices(
+    options.chrRegions ?? [],
+  );
 
   // Animation mode
   if (
@@ -788,6 +862,13 @@ export function classifyChrSlots(
               occupancy: 'project',
               attribution: 'Project Tile',
             });
+          } else if (reservedPhysicalSet.has(physicalIndex)) {
+            result.push({
+              physicalIndex,
+              localIndex,
+              patternTable,
+              occupancy: 'reserved',
+            });
           } else {
             result.push({
               physicalIndex,
@@ -803,103 +884,33 @@ export function classifyChrSlots(
     return result;
   }
 
-  // Tileset or Playfield mode with Base CHR
-  if (baseChr && baseChr.length > 0) {
-    const slots = createPatternTableSlots(baseChr, destinationPt);
-    const deduplicated = options.flipDeduplicationEnabled
-      ? deduplicateTilesConsideringFlips(options.tiles ?? [])
-      : options.deduplicationEnabled !== false
-        ? deduplicateTiles(options.tiles ?? [])
-        : (options.tiles ?? []);
-
-    let insertIndex = 0;
-    for (const tile of deduplicated) {
-      while (insertIndex < slots.length && slots[insertIndex]?.tile !== null) {
-        insertIndex += 1;
-      }
-      if (insertIndex < slots.length) {
-        slots[insertIndex] = {
-          physicalTileIndex: insertIndex,
-          tile,
-          source: 'imported',
-        };
-        insertIndex += 1;
-      }
-    }
-
-    for (
-      let physicalIndex = 0;
-      physicalIndex < NES_CHR_ROM_TILE_COUNT;
-      physicalIndex += 1
-    ) {
-      const localIndex = localPatternTableTileIndex(physicalIndex);
-      const patternTable = patternTableForPhysicalTile(physicalIndex);
-      const slot = slots[physicalIndex];
-
-      if (slot?.source === 'destination') {
-        result.push({
-          physicalIndex,
-          localIndex,
-          patternTable,
-          occupancy: 'base',
-          attribution: options.baseChrName
-            ? `Base CHR: ${options.baseChrName}`
-            : 'Base CHR',
-        });
-      } else if (slot?.source === 'imported') {
-        const matchedTile =
-          (options.tiles ?? []).find((tItem) => tItem.id === physicalIndex) ??
-          slot.tile;
-        const attribution = matchedTile
-          ? `Tile #${String(matchedTile.id)} (Col ${String(matchedTile.column)}, Row ${String(matchedTile.row)})`
-          : 'Project Tile';
-
-        result.push({
-          physicalIndex,
-          localIndex,
-          patternTable,
-          occupancy: 'project',
-          attribution,
-        });
-      } else {
-        const startByte = physicalIndex * 16;
-        const isNonZero =
-          finalChrBytes && finalChrBytes.length >= startByte + 16
-            ? finalChrBytes
-                .subarray(startByte, startByte + 16)
-                .some((b: number) => b !== 0)
-            : false;
-
-        if (isNonZero) {
-          result.push({
-            physicalIndex,
-            localIndex,
-            patternTable,
-            occupancy: 'project',
-            attribution: 'Project Tile',
-          });
-        } else {
-          result.push({
-            physicalIndex,
-            localIndex,
-            patternTable,
-            occupancy: 'empty',
-          });
-        }
-      }
-    }
-
-    return result;
-  }
-
-  // Tileset or Playfield mode without Base CHR
+  // Tileset or Playfield mode (with or without Base CHR)
+  const slots = createPatternTableSlots(
+    baseChr && baseChr.length > 0 ? baseChr : new Uint8Array(NES_CHR_ROM_SIZE),
+    destinationPt,
+  );
   const deduplicated = options.flipDeduplicationEnabled
     ? deduplicateTilesConsideringFlips(options.tiles ?? [])
     : options.deduplicationEnabled !== false
       ? deduplicateTiles(options.tiles ?? [])
       : (options.tiles ?? []);
 
-  const totalOccupied = Math.min(NES_CHR_ROM_TILE_COUNT, deduplicated.length);
+  let searchIndex = 0;
+  for (const tile of deduplicated) {
+    const availableSlot = findNextAvailableChrSlot(slots, {
+      startIndex: searchIndex,
+      reservedIndices: reservedPhysicalSet,
+    });
+    if (availableSlot !== undefined) {
+      const physicalIndex = availableSlot.physicalTileIndex;
+      slots[physicalIndex] = {
+        physicalTileIndex: physicalIndex,
+        tile,
+        source: 'imported',
+      };
+      searchIndex = physicalIndex + 1;
+    }
+  }
 
   for (
     let physicalIndex = 0;
@@ -908,25 +919,22 @@ export function classifyChrSlots(
   ) {
     const localIndex = localPatternTableTileIndex(physicalIndex);
     const patternTable = patternTableForPhysicalTile(physicalIndex);
+    const slot = slots[physicalIndex];
 
-    const matchedDirect = (options.tiles ?? []).find(
-      (tItem) => tItem.id === physicalIndex,
-    );
-
-    const startByte = physicalIndex * 16;
-    const isNonZero =
-      finalChrBytes && finalChrBytes.length >= startByte + 16
-        ? finalChrBytes
-            .subarray(startByte, startByte + 16)
-            .some((b: number) => b !== 0)
-        : false;
-
-    if (
-      physicalIndex < totalOccupied ||
-      matchedDirect !== undefined ||
-      isNonZero
-    ) {
-      const matchedTile = matchedDirect ?? deduplicated[physicalIndex];
+    if (slot?.source === 'destination') {
+      result.push({
+        physicalIndex,
+        localIndex,
+        patternTable,
+        occupancy: 'base',
+        attribution: options.baseChrName
+          ? `Base CHR: ${options.baseChrName}`
+          : 'Base CHR',
+      });
+    } else if (slot?.source === 'imported') {
+      const matchedTile =
+        (options.tiles ?? []).find((tItem) => tItem.id === physicalIndex) ??
+        slot.tile;
       const attribution = matchedTile
         ? `Tile #${String(matchedTile.id)} (Col ${String(matchedTile.column)}, Row ${String(matchedTile.row)})`
         : 'Project Tile';
@@ -939,12 +947,46 @@ export function classifyChrSlots(
         attribution,
       });
     } else {
-      result.push({
-        physicalIndex,
-        localIndex,
-        patternTable,
-        occupancy: 'empty',
-      });
+      const startByte = physicalIndex * 16;
+      const isNonZero =
+        finalChrBytes && finalChrBytes.length >= startByte + 16
+          ? finalChrBytes
+              .subarray(startByte, startByte + 16)
+              .some((b: number) => b !== 0)
+          : false;
+
+      const matchedDirect = (options.tiles ?? []).find(
+        (tItem) => tItem.id === physicalIndex,
+      );
+
+      if (isNonZero || matchedDirect !== undefined) {
+        const matchedTile = matchedDirect ?? slot?.tile;
+        const attribution = matchedTile
+          ? `Tile #${String(matchedTile.id)} (Col ${String(matchedTile.column)}, Row ${String(matchedTile.row)})`
+          : 'Project Tile';
+
+        result.push({
+          physicalIndex,
+          localIndex,
+          patternTable,
+          occupancy: 'project',
+          attribution,
+        });
+      } else if (reservedPhysicalSet.has(physicalIndex)) {
+        result.push({
+          physicalIndex,
+          localIndex,
+          patternTable,
+          occupancy: 'reserved',
+        });
+      } else {
+        result.push({
+          physicalIndex,
+          localIndex,
+          patternTable,
+          occupancy: 'empty',
+        });
+      }
     }
   }
 
