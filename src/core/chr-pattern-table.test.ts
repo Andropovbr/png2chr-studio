@@ -36,6 +36,12 @@ import {
   collectReservedLocalTileIndices,
   isChrSlotAvailableForAllocation,
   findNextAvailableChrSlot,
+  formatTileIndexHex,
+  formatTileRangeHex,
+  formatConsecutiveTileRanges,
+  calculatePatternTableCapacity,
+  calculateChrRegionCapacity,
+  analyzeChrRegionDiagnostics,
   type ChrRegion,
   type ChrSlotClassification,
   type PatternTableSlot,
@@ -1442,6 +1448,527 @@ describe('NES sprite pattern tables', () => {
 
       // Slot 5 is empty outside reservation -> 'empty'
       expect(classifications[5]?.occupancy).toBe('empty');
+    });
+  });
+
+  describe('CHR region formatting helpers', () => {
+    it('formatTileIndexHex formats local index into $00..$FF', () => {
+      expect(formatTileIndexHex(0)).toBe('$00');
+      expect(formatTileIndexHex(15)).toBe('$0F');
+      expect(formatTileIndexHex(16)).toBe('$10');
+      expect(formatTileIndexHex(255)).toBe('$FF');
+    });
+
+    it('formatTileRangeHex formats ranges into $00-$0F or single tile $00', () => {
+      expect(formatTileRangeHex(0, 0)).toBe('$00');
+      expect(formatTileRangeHex(0, 15)).toBe('$00-$0F');
+      expect(formatTileRangeHex(32, 63)).toBe('$20-$3F');
+    });
+
+    it('formatConsecutiveTileRanges aggregates sorted indices into comma-separated ranges', () => {
+      expect(formatConsecutiveTileRanges([])).toBe('');
+      expect(formatConsecutiveTileRanges([5])).toBe('$05');
+      expect(formatConsecutiveTileRanges([0, 1, 2, 3])).toBe('$00-$03');
+      expect(formatConsecutiveTileRanges([0, 1, 2, 5, 6, 10])).toBe(
+        '$00-$02, $05-$06, $0A',
+      );
+      // Handles unordered duplicates
+      expect(formatConsecutiveTileRanges([10, 2, 1, 0, 2, 5])).toBe(
+        '$00-$02, $05, $0A',
+      );
+    });
+  });
+
+  describe('CHR region conflicts & capacity diagnostics (analyzeChrRegionDiagnostics)', () => {
+    const makeEmptyClassifications = (): ChrSlotClassification[] =>
+      Array.from({ length: 512 }, (_, i) => ({
+        physicalIndex: i,
+        localIndex: i % 256,
+        patternTable: i < 256 ? 0 : 1,
+        occupancy: 'empty',
+      }));
+
+    it('returns empty diagnostics when no regions are provided and capacity is normal', () => {
+      const classifications = makeEmptyClassifications();
+      const facts = analyzeChrRegionDiagnostics({
+        chrRegions: [],
+        classifications,
+      });
+      expect(facts).toEqual([]);
+    });
+
+    describe('Overlap Diagnostics', () => {
+      it('detects Region + Region overlap with warning severity and stable ID', () => {
+        const regA: ChrRegion = {
+          id: 'player',
+          name: 'Player',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 47, // $00..$2F
+          kind: 'region',
+        };
+        const regB: ChrRegion = {
+          id: 'enemies',
+          name: 'Enemies',
+          patternTable: 0,
+          startTile: 32, // $20
+          endTile: 95, // $5F
+          kind: 'region',
+        };
+
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [regA, regB],
+          checkPatternTableCapacity: false,
+        });
+
+        expect(facts).toHaveLength(1);
+        const fact = facts[0];
+        expect(fact?.kind).toBe('region-overlap');
+        if (fact?.kind === 'region-overlap') {
+          expect(fact.severity).toBe('warning');
+          expect(fact.overlapType).toBe('region-region');
+          expect(fact.patternTable).toBe(0);
+          expect(fact.overlapStartTile).toBe(32);
+          expect(fact.overlapEndTile).toBe(47);
+          expect(fact.id).toBe('chr-region-overlap:enemies:player');
+        }
+      });
+
+      it('detects Reservation + Reservation overlap with warning severity (redundant)', () => {
+        const resA: ChrRegion = {
+          id: 'res-a',
+          name: 'FX Bank A',
+          patternTable: 1,
+          startTile: 0,
+          endTile: 15,
+          kind: 'reservation',
+        };
+        const resB: ChrRegion = {
+          id: 'res-b',
+          name: 'FX Bank B',
+          patternTable: 1,
+          startTile: 10,
+          endTile: 25,
+          kind: 'reservation',
+        };
+
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [resA, resB],
+          checkPatternTableCapacity: false,
+        });
+
+        expect(facts).toHaveLength(1);
+        const fact = facts[0];
+        expect(fact?.kind).toBe('region-overlap');
+        if (fact?.kind === 'region-overlap') {
+          expect(fact.severity).toBe('warning');
+          expect(fact.overlapType).toBe('reservation-reservation');
+          expect(fact.id).toBe('chr-reservation-overlap:res-a:res-b');
+        }
+      });
+
+      it('detects Region + Reservation mixed overlap with info severity', () => {
+        const reg: ChrRegion = {
+          id: 'player-zone',
+          name: 'Player Zone',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 63, // $00..$3F
+          kind: 'region',
+        };
+        const res: ChrRegion = {
+          id: 'runtime-fx',
+          name: 'Runtime FX',
+          patternTable: 0,
+          startTile: 48, // $30..$3F
+          endTile: 63,
+          kind: 'reservation',
+        };
+
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [reg, res],
+          checkPatternTableCapacity: false,
+        });
+
+        expect(facts).toHaveLength(1);
+        const fact = facts[0];
+        expect(fact?.kind).toBe('region-overlap');
+        if (fact?.kind === 'region-overlap') {
+          expect(fact.severity).toBe('info');
+          expect(fact.overlapType).toBe('region-reservation');
+          expect(fact.id).toBe(
+            'chr-region-reservation-overlap:player-zone:runtime-fx',
+          );
+        }
+      });
+
+      it('does NOT report overlap across different pattern tables', () => {
+        const regPt0: ChrRegion = {
+          id: 'pt0-reg',
+          name: 'PT0 Zone',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 31,
+          kind: 'region',
+        };
+        const regPt1: ChrRegion = {
+          id: 'pt1-reg',
+          name: 'PT1 Zone',
+          patternTable: 1,
+          startTile: 0,
+          endTile: 31,
+          kind: 'region',
+        };
+
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [regPt0, regPt1],
+          checkPatternTableCapacity: false,
+        });
+
+        expect(facts).toEqual([]);
+      });
+
+      it('detects 1-tile single boundary overlap and complete containment', () => {
+        // 1-tile overlap at tile 15
+        const a: ChrRegion = {
+          id: 'a',
+          name: 'A',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 15,
+          kind: 'region',
+        };
+        const b: ChrRegion = {
+          id: 'b',
+          name: 'B',
+          patternTable: 0,
+          startTile: 15,
+          endTile: 30,
+          kind: 'region',
+        };
+        const facts1 = analyzeChrRegionDiagnostics({
+          chrRegions: [a, b],
+          checkPatternTableCapacity: false,
+        });
+        expect(facts1).toHaveLength(1);
+        if (facts1[0]?.kind === 'region-overlap') {
+          expect(facts1[0].overlapStartTile).toBe(15);
+          expect(facts1[0].overlapEndTile).toBe(15);
+        }
+
+        // Complete containment: parent contains child completely
+        const parent: ChrRegion = {
+          id: 'parent',
+          name: 'Parent',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 63,
+          kind: 'region',
+        };
+        const child: ChrRegion = {
+          id: 'child',
+          name: 'Child',
+          patternTable: 0,
+          startTile: 16,
+          endTile: 32,
+          kind: 'region',
+        };
+        const facts2 = analyzeChrRegionDiagnostics({
+          chrRegions: [parent, child],
+          checkPatternTableCapacity: false,
+        });
+        expect(facts2).toHaveLength(1);
+        if (facts2[0]?.kind === 'region-overlap') {
+          expect(facts2[0].overlapStartTile).toBe(16);
+          expect(facts2[0].overlapEndTile).toBe(32);
+        }
+      });
+
+      it('does NOT report overlap for adjacent non-overlapping intervals', () => {
+        const a: ChrRegion = {
+          id: 'a',
+          name: 'A',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 15,
+          kind: 'region',
+        };
+        const b: ChrRegion = {
+          id: 'b',
+          name: 'B',
+          patternTable: 0,
+          startTile: 16,
+          endTile: 31,
+          kind: 'region',
+        };
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [a, b],
+          checkPatternTableCapacity: false,
+        });
+        expect(facts).toEqual([]);
+      });
+
+      it('maintains stable deterministic IDs independent of array order', () => {
+        const a: ChrRegion = {
+          id: 'beta',
+          name: 'Beta',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 10,
+          kind: 'region',
+        };
+        const b: ChrRegion = {
+          id: 'alpha',
+          name: 'Alpha',
+          patternTable: 0,
+          startTile: 5,
+          endTile: 15,
+          kind: 'region',
+        };
+
+        const facts1 = analyzeChrRegionDiagnostics({
+          chrRegions: [a, b],
+          checkPatternTableCapacity: false,
+        });
+        const facts2 = analyzeChrRegionDiagnostics({
+          chrRegions: [b, a],
+          checkPatternTableCapacity: false,
+        });
+
+        expect(facts1[0]?.id).toBe('chr-region-overlap:alpha:beta');
+        expect(facts2[0]?.id).toBe('chr-region-overlap:alpha:beta');
+      });
+    });
+
+    describe('Reservations containing occupied content', () => {
+      it('generates warning when reservation contains Base CHR or Project tiles', () => {
+        const classifications = makeEmptyClassifications();
+        // Place 3 occupied tiles in PT0 $20..$22 (physical slots 32..34)
+        classifications[32] = {
+          physicalIndex: 32,
+          localIndex: 32,
+          patternTable: 0,
+          occupancy: 'base',
+        };
+        classifications[33] = {
+          physicalIndex: 33,
+          localIndex: 33,
+          patternTable: 0,
+          occupancy: 'project',
+        };
+        classifications[34] = {
+          physicalIndex: 34,
+          localIndex: 34,
+          patternTable: 0,
+          occupancy: 'base',
+        };
+        // Slots 35..63 are empty reserved
+        for (let i = 35; i <= 63; i += 1) {
+          classifications[i] = {
+            physicalIndex: i,
+            localIndex: i,
+            patternTable: 0,
+            occupancy: 'reserved',
+          };
+        }
+
+        const res: ChrRegion = {
+          id: 'runtime-bank',
+          name: 'Runtime FX',
+          patternTable: 0,
+          startTile: 32, // $20
+          endTile: 63, // $3F
+          kind: 'reservation',
+        };
+
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [res],
+          classifications,
+          checkPatternTableCapacity: false,
+        });
+
+        expect(facts).toHaveLength(1);
+        const fact = facts[0];
+        expect(fact?.kind).toBe('reservation-contains-occupied');
+        if (fact?.kind === 'reservation-contains-occupied') {
+          expect(fact.severity).toBe('warning');
+          expect(fact.id).toBe('chr-reservation-occupied:runtime-bank');
+          expect(fact.occupiedCount).toBe(3);
+          expect(fact.occupiedTileIndices).toEqual([32, 33, 34]);
+        }
+      });
+
+      it('does NOT generate warning when reservation is completely empty', () => {
+        const classifications = makeEmptyClassifications();
+        for (let i = 0; i <= 15; i += 1) {
+          classifications[i] = {
+            physicalIndex: i,
+            localIndex: i,
+            patternTable: 0,
+            occupancy: 'reserved',
+          };
+        }
+
+        const res: ChrRegion = {
+          id: 'empty-res',
+          name: 'Empty Header',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 15,
+          kind: 'reservation',
+        };
+
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [res],
+          classifications,
+          checkPatternTableCapacity: false,
+        });
+
+        expect(facts).toEqual([]);
+      });
+    });
+
+    describe('Pattern Table Capacity calculations and diagnostics', () => {
+      it('calculates Pattern Table capacity without double counting occupied slots inside reservations', () => {
+        const classifications = makeEmptyClassifications();
+        // Occupy 10 slots in PT0 (0..9)
+        for (let i = 0; i < 10; i += 1) {
+          classifications[i] = {
+            physicalIndex: i,
+            localIndex: i,
+            patternTable: 0,
+            occupancy: 'project',
+          };
+        }
+        // Reserve 20 slots in PT0 (10..29) - all empty reserved
+        for (let i = 10; i < 30; i += 1) {
+          classifications[i] = {
+            physicalIndex: i,
+            localIndex: i,
+            patternTable: 0,
+            occupancy: 'reserved',
+          };
+        }
+        // Remaining 226 slots in PT0 are 'empty'
+
+        const capPt0 = calculatePatternTableCapacity(classifications, 0);
+        expect(capPt0.totalOccupiedTiles).toBe(10);
+        expect(capPt0.totalReservedEmptyTiles).toBe(20);
+        expect(capPt0.totalEmptyTiles).toBe(226);
+        expect(capPt0.availableSlots).toBe(226);
+        expect(capPt0.isExhausted).toBe(false);
+        expect(capPt0.isLowCapacity).toBe(false);
+
+        // Sum must be exactly 256
+        expect(
+          capPt0.totalOccupiedTiles +
+            capPt0.totalReservedEmptyTiles +
+            capPt0.totalEmptyTiles,
+        ).toBe(256);
+      });
+
+      it('emits pattern-table-exhausted error when availableSlots is 0', () => {
+        const classifications = makeEmptyClassifications();
+        // Fill entire PT0 with occupied slots
+        for (let i = 0; i < 256; i += 1) {
+          classifications[i] = {
+            physicalIndex: i,
+            localIndex: i,
+            patternTable: 0,
+            occupancy: 'project',
+          };
+        }
+
+        const facts = analyzeChrRegionDiagnostics({
+          classifications,
+          checkPatternTableCapacity: true,
+        });
+
+        const pt0Exhausted = facts.find(
+          (f) => f.kind === 'pattern-table-exhausted' && f.patternTable === 0,
+        );
+        expect(pt0Exhausted).toBeDefined();
+        if (pt0Exhausted?.kind === 'pattern-table-exhausted') {
+          expect(pt0Exhausted.severity).toBe('error');
+          expect(pt0Exhausted.totalOccupied).toBe(256);
+          expect(pt0Exhausted.totalReservedEmpty).toBe(0);
+          expect(pt0Exhausted.id).toBe('chr-pattern-table-exhausted:0');
+        }
+      });
+
+      it('emits pattern-table-low-capacity warning when availableSlots <= CHR_LOW_CAPACITY_THRESHOLD', () => {
+        const classifications = makeEmptyClassifications();
+        // Occupy 252 slots in PT1 (physical 256..507), leaving 4 empty slots (508..511)
+        for (let i = 256; i <= 507; i += 1) {
+          classifications[i] = {
+            physicalIndex: i,
+            localIndex: i - 256,
+            patternTable: 1,
+            occupancy: 'project',
+          };
+        }
+
+        const facts = analyzeChrRegionDiagnostics({
+          classifications,
+          checkPatternTableCapacity: true,
+        });
+
+        const pt1Low = facts.find(
+          (f) =>
+            f.kind === 'pattern-table-low-capacity' && f.patternTable === 1,
+        );
+        expect(pt1Low).toBeDefined();
+        if (pt1Low?.kind === 'pattern-table-low-capacity') {
+          expect(pt1Low.severity).toBe('warning');
+          expect(pt1Low.availableSlots).toBe(4);
+          expect(pt1Low.id).toBe('chr-pattern-table-low-capacity:1');
+        }
+      });
+    });
+
+    describe('Region Capacity calculations', () => {
+      it('calculates region capacity and detects full region', () => {
+        const classifications = makeEmptyClassifications();
+        // Occupy all 16 slots in PT0 $00..$0F
+        for (let i = 0; i < 16; i += 1) {
+          classifications[i] = {
+            physicalIndex: i,
+            localIndex: i,
+            patternTable: 0,
+            occupancy: 'project',
+          };
+        }
+
+        const reg: ChrRegion = {
+          id: 'player-sprites',
+          name: 'Player Sprites',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 15,
+          kind: 'region',
+        };
+
+        const cap = calculateChrRegionCapacity(reg, classifications);
+        expect(cap.totalTiles).toBe(16);
+        expect(cap.occupiedTiles).toBe(16);
+        expect(cap.availableTiles).toBe(0);
+        expect(cap.isFull).toBe(true);
+
+        const facts = analyzeChrRegionDiagnostics({
+          chrRegions: [reg],
+          classifications,
+          checkPatternTableCapacity: false,
+        });
+
+        const fullFact = facts.find((f) => f.kind === 'region-full');
+        expect(fullFact).toBeDefined();
+        if (fullFact?.kind === 'region-full') {
+          expect(fullFact.severity).toBe('info');
+          expect(fullFact.occupiedTiles).toBe(16);
+          expect(fullFact.totalTiles).toBe(16);
+          expect(fullFact.id).toBe('chr-region-full:player-sprites');
+        }
+      });
     });
   });
 });

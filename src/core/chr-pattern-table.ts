@@ -336,6 +336,338 @@ export function collectReservedLocalTileIndices(
 }
 
 /**
+ * Formats a local tile index ($00..$FF) into canonical NES hex notation.
+ */
+export function formatTileIndexHex(value: number): string {
+  return `$${(value & 0xff).toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
+/**
+ * Formats a tile index interval ($00..$FF) into canonical NES hex range notation.
+ */
+export function formatTileRangeHex(startTile: number, endTile: number): string {
+  return startTile === endTile
+    ? formatTileIndexHex(startTile)
+    : `${formatTileIndexHex(startTile)}-${formatTileIndexHex(endTile)}`;
+}
+
+/**
+ * Aggregates a list of local tile indices into concise comma-separated hex ranges.
+ * E.g., [0, 1, 2, 3, 8] -> "$00-$03, $08"
+ */
+export function formatConsecutiveTileRanges(
+  indices: readonly number[],
+): string {
+  if (indices.length === 0) return '';
+  const sorted = [...new Set(indices)].sort((a, b) => a - b);
+  const ranges: [number, number][] = [];
+  let rangeStart = sorted[0] ?? 0;
+  let rangeEnd = sorted[0] ?? 0;
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const current = sorted[i] ?? 0;
+    if (current === rangeEnd + 1) {
+      rangeEnd = current;
+    } else {
+      ranges.push([rangeStart, rangeEnd]);
+      rangeStart = current;
+      rangeEnd = current;
+    }
+  }
+  ranges.push([rangeStart, rangeEnd]);
+
+  return ranges
+    .map(([start, end]) => formatTileRangeHex(start, end))
+    .join(', ');
+}
+
+/**
+ * Default threshold of remaining unallocated slots below which a low capacity warning is generated.
+ */
+export const CHR_LOW_CAPACITY_THRESHOLD = 8;
+
+export interface PatternTableCapacityMetrics {
+  readonly patternTable: SpritePatternTable;
+  readonly capacityTiles: number;
+  readonly totalOccupiedTiles: number;
+  readonly totalReservedEmptyTiles: number;
+  readonly totalEmptyTiles: number;
+  readonly availableSlots: number;
+  readonly isExhausted: boolean;
+  readonly isLowCapacity: boolean;
+}
+
+/**
+ * Pure calculation of Pattern Table capacity and remaining slots available for new allocations.
+ *
+ * Invariant: occupied != reserved.
+ * - Occupied tiles (base or project) within a reservation are counted under `totalOccupiedTiles`.
+ * - Empty slots within a reservation are counted under `totalReservedEmptyTiles`.
+ * - `availableSlots = 256 - totalOccupiedTiles - totalReservedEmptyTiles = totalEmptyTiles`.
+ * - No double counting occurs.
+ */
+export function calculatePatternTableCapacity(
+  classifications: readonly ChrSlotClassification[],
+  patternTable: SpritePatternTable,
+): PatternTableCapacityMetrics {
+  const [start, end] = patternTablePhysicalRange(patternTable);
+  let totalOccupiedTiles = 0;
+  let totalReservedEmptyTiles = 0;
+  let totalEmptyTiles = 0;
+
+  for (let i = start; i <= end; i += 1) {
+    const slot = classifications[i];
+    if (slot?.occupancy === 'base' || slot?.occupancy === 'project') {
+      totalOccupiedTiles += 1;
+    } else if (slot?.occupancy === 'reserved') {
+      totalReservedEmptyTiles += 1;
+    } else {
+      totalEmptyTiles += 1;
+    }
+  }
+
+  const availableSlots = totalEmptyTiles;
+  return {
+    patternTable,
+    capacityTiles: NES_PATTERN_TABLE_TILE_COUNT,
+    totalOccupiedTiles,
+    totalReservedEmptyTiles,
+    totalEmptyTiles,
+    availableSlots,
+    isExhausted: availableSlots === 0,
+    isLowCapacity:
+      availableSlots > 0 && availableSlots <= CHR_LOW_CAPACITY_THRESHOLD,
+  };
+}
+
+export interface ChrRegionCapacityMetrics {
+  readonly region: ChrRegion;
+  readonly patternTable: SpritePatternTable;
+  readonly totalTiles: number;
+  readonly occupiedTiles: number;
+  readonly reservedEmptyTiles: number;
+  readonly availableTiles: number;
+  readonly isFull: boolean;
+}
+
+/**
+ * Pure calculation of capacity for a specific CHR region or reservation.
+ */
+export function calculateChrRegionCapacity(
+  region: ChrRegion,
+  classifications: readonly ChrSlotClassification[],
+): ChrRegionCapacityMetrics {
+  const [start, end] = chrRegionPhysicalRange(region);
+  const totalTiles = region.endTile - region.startTile + 1;
+  let occupiedTiles = 0;
+  let reservedEmptyTiles = 0;
+
+  for (let i = start; i <= end; i += 1) {
+    const slot = classifications[i];
+    if (slot?.occupancy === 'base' || slot?.occupancy === 'project') {
+      occupiedTiles += 1;
+    } else if (slot?.occupancy === 'reserved') {
+      reservedEmptyTiles += 1;
+    }
+  }
+
+  const availableTiles = totalTiles - occupiedTiles - reservedEmptyTiles;
+  return {
+    region,
+    patternTable: region.patternTable,
+    totalTiles,
+    occupiedTiles,
+    reservedEmptyTiles,
+    availableTiles,
+    isFull: occupiedTiles === totalTiles,
+  };
+}
+
+export type ChrRegionDiagnosticFact =
+  | {
+      readonly kind: 'region-overlap';
+      readonly id: string;
+      readonly regionA: ChrRegion;
+      readonly regionB: ChrRegion;
+      readonly patternTable: SpritePatternTable;
+      readonly overlapStartTile: number;
+      readonly overlapEndTile: number;
+      readonly overlapType:
+        'region-region' | 'region-reservation' | 'reservation-reservation';
+      readonly severity: 'warning' | 'info';
+    }
+  | {
+      readonly kind: 'reservation-contains-occupied';
+      readonly id: string;
+      readonly region: ChrRegion;
+      readonly patternTable: SpritePatternTable;
+      readonly occupiedCount: number;
+      readonly occupiedTileIndices: readonly number[];
+      readonly startTile: number;
+      readonly endTile: number;
+      readonly severity: 'warning';
+    }
+  | {
+      readonly kind: 'pattern-table-exhausted';
+      readonly id: string;
+      readonly patternTable: SpritePatternTable;
+      readonly capacityTiles: number;
+      readonly totalOccupied: number;
+      readonly totalReservedEmpty: number;
+      readonly severity: 'error';
+    }
+  | {
+      readonly kind: 'pattern-table-low-capacity';
+      readonly id: string;
+      readonly patternTable: SpritePatternTable;
+      readonly capacityTiles: number;
+      readonly availableSlots: number;
+      readonly totalOccupied: number;
+      readonly totalReservedEmpty: number;
+      readonly severity: 'warning';
+    }
+  | {
+      readonly kind: 'region-full';
+      readonly id: string;
+      readonly region: ChrRegion;
+      readonly patternTable: SpritePatternTable;
+      readonly totalTiles: number;
+      readonly occupiedTiles: number;
+      readonly severity: 'info';
+    };
+
+export interface AnalyzeChrRegionDiagnosticsOptions {
+  readonly chrRegions?: readonly ChrRegion[];
+  readonly classifications?: readonly ChrSlotClassification[];
+  readonly checkPatternTableCapacity?: boolean;
+}
+
+/**
+ * Pure domain analysis of CHR regions, reservations, overlaps, and capacity constraints.
+ * Returns structured, deterministic facts without any mutation or side-effects.
+ */
+export function analyzeChrRegionDiagnostics(
+  options: AnalyzeChrRegionDiagnosticsOptions = {},
+): readonly ChrRegionDiagnosticFact[] {
+  const regions = options.chrRegions ?? [];
+  const classifications = options.classifications;
+  const facts: ChrRegionDiagnosticFact[] = [];
+
+  // 1. Overlaps
+  const overlaps = findChrRegionOverlaps(regions);
+  for (const overlap of overlaps) {
+    const { regionA, regionB, patternTable, overlapStartTile, overlapEndTile } =
+      overlap;
+    const [id1, id2] = [regionA.id, regionB.id].sort();
+    let overlapType:
+      'region-region' | 'region-reservation' | 'reservation-reservation';
+    let severity: 'warning' | 'info';
+    let idPrefix: string;
+
+    if (regionA.kind === 'reservation' && regionB.kind === 'reservation') {
+      overlapType = 'reservation-reservation';
+      severity = 'warning';
+      idPrefix = 'chr-reservation-overlap';
+    } else if (regionA.kind === 'region' && regionB.kind === 'region') {
+      overlapType = 'region-region';
+      severity = 'warning';
+      idPrefix = 'chr-region-overlap';
+    } else {
+      overlapType = 'region-reservation';
+      severity = 'info';
+      idPrefix = 'chr-region-reservation-overlap';
+    }
+
+    facts.push({
+      kind: 'region-overlap',
+      id: `${idPrefix}:${id1 ?? ''}:${id2 ?? ''}`,
+      regionA,
+      regionB,
+      patternTable,
+      overlapStartTile,
+      overlapEndTile,
+      overlapType,
+      severity,
+    });
+  }
+
+  // 2. Reservations containing occupied content & Region Fullness
+  if (classifications?.length === NES_CHR_ROM_TILE_COUNT) {
+    for (const region of regions) {
+      if (region.kind === 'reservation') {
+        const [start, end] = chrRegionPhysicalRange(region);
+        const occupiedTileIndices: number[] = [];
+
+        for (let i = start; i <= end; i += 1) {
+          const slot = classifications[i];
+          if (slot?.occupancy === 'base' || slot?.occupancy === 'project') {
+            occupiedTileIndices.push(slot.localIndex);
+          }
+        }
+
+        if (occupiedTileIndices.length > 0) {
+          facts.push({
+            kind: 'reservation-contains-occupied',
+            id: `chr-reservation-occupied:${region.id}`,
+            region,
+            patternTable: region.patternTable,
+            occupiedCount: occupiedTileIndices.length,
+            occupiedTileIndices,
+            startTile: region.startTile,
+            endTile: region.endTile,
+            severity: 'warning',
+          });
+        }
+      } else {
+        const capacity = calculateChrRegionCapacity(region, classifications);
+        if (capacity.isFull && capacity.totalTiles > 0) {
+          facts.push({
+            kind: 'region-full',
+            id: `chr-region-full:${region.id}`,
+            region,
+            patternTable: region.patternTable,
+            totalTiles: capacity.totalTiles,
+            occupiedTiles: capacity.occupiedTiles,
+            severity: 'info',
+          });
+        }
+      }
+    }
+
+    // 3. Pattern Table Capacity
+    if (options.checkPatternTableCapacity !== false) {
+      for (const pt of [0, 1] as const) {
+        const cap = calculatePatternTableCapacity(classifications, pt);
+        if (cap.isExhausted) {
+          facts.push({
+            kind: 'pattern-table-exhausted',
+            id: `chr-pattern-table-exhausted:${String(pt)}`,
+            patternTable: pt,
+            capacityTiles: cap.capacityTiles,
+            totalOccupied: cap.totalOccupiedTiles,
+            totalReservedEmpty: cap.totalReservedEmptyTiles,
+            severity: 'error',
+          });
+        } else if (cap.isLowCapacity) {
+          facts.push({
+            kind: 'pattern-table-low-capacity',
+            id: `chr-pattern-table-low-capacity:${String(pt)}`,
+            patternTable: pt,
+            capacityTiles: cap.capacityTiles,
+            availableSlots: cap.availableSlots,
+            totalOccupied: cap.totalOccupiedTiles,
+            totalReservedEmpty: cap.totalReservedEmptyTiles,
+            severity: 'warning',
+          });
+        }
+      }
+    }
+  }
+
+  return facts;
+}
+
+/**
  * Predicate to determine if a specific physical CHR slot is available for allocating a NEW tile.
  *
  * Requirements:

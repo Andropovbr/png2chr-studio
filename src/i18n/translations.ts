@@ -161,6 +161,24 @@ const en = {
   chrWorkspaceSlotOccupancyProject: 'Project Tile (Occupied)',
   chrWorkspaceSlotOccupancyBase: 'Base CHR (Imported)',
   chrWorkspaceSlotOccupancyReserved: 'Reserved Slot',
+  chrRegionOverlapRegion:
+    'Regions "{nameA}" and "{nameB}" overlap on PT{patternTable} at {range}.',
+  chrRegionOverlapReservation:
+    'Reservations "{nameA}" and "{nameB}" overlap on PT{patternTable} at {range} (redundant reservation).',
+  chrRegionOverlapMixed:
+    'Region "{nameA}" and Reservation "{nameB}" overlap on PT{patternTable} at {range}.',
+  chrReservationContainsOccupiedSingle:
+    'Reservation "{name}" contains {count} existing tile at PT{patternTable}:{range}. Existing tiles are preserved; the reservation only blocks new allocations.',
+  chrReservationContainsOccupiedMultiple:
+    'Reservation "{name}" contains {count} existing tiles at PT{patternTable}:{range}. Existing tiles are preserved; the reservation only blocks new allocations.',
+  chrPatternTableExhausted:
+    'Pattern Table {patternTable} has no available slots for allocation (occupied: {occupied}, reserved: {reserved}).',
+  chrPatternTableLowCapacitySingle:
+    'Pattern Table {patternTable} has low capacity: only {available} slot remaining for new allocations.',
+  chrPatternTableLowCapacityMultiple:
+    'Pattern Table {patternTable} has low capacity: only {available} slots remaining for new allocations.',
+  chrRegionFull:
+    'Region "{name}" on PT{patternTable} is full ({occupied}/{total} tiles occupied).',
   chrWorkspacePtUtilization:
     'PPU Range {range} · 256 tiles (4 KiB) · {occupied} / 256 occupied ({free} free)',
   chrWorkspacePt0Subtitle: 'PPU Range $0000..$0FFF · 256 tiles (4 KiB)',
@@ -932,6 +950,24 @@ const ptBr = {
   chrWorkspaceSlotOccupancyProject: 'Tile do Projeto (Ocupado)',
   chrWorkspaceSlotOccupancyBase: 'CHR-Base (Importada)',
   chrWorkspaceSlotOccupancyReserved: 'Slot Reservado',
+  chrRegionOverlapRegion:
+    'As regiões "{nameA}" e "{nameB}" se sobrepõem na PT{patternTable} em {range}.',
+  chrRegionOverlapReservation:
+    'As reservas "{nameA}" e "{nameB}" se sobrepõem na PT{patternTable} em {range} (reserva redundante).',
+  chrRegionOverlapMixed:
+    'A região "{nameA}" e a reserva "{nameB}" se sobrepõem na PT{patternTable} em {range}.',
+  chrReservationContainsOccupiedSingle:
+    'A reserva "{name}" contém {count} tile existente em PT{patternTable}:{range}. Os tiles existentes são preservados; a reserva apenas bloqueia novas alocações.',
+  chrReservationContainsOccupiedMultiple:
+    'A reserva "{name}" contém {count} tiles existentes em PT{patternTable}:{range}. Os tiles existentes são preservados; a reserva apenas bloqueia novas alocações.',
+  chrPatternTableExhausted:
+    'A Pattern Table {patternTable} não possui slots disponíveis para alocação (ocupados: {occupied}, reservados: {reserved}).',
+  chrPatternTableLowCapacitySingle:
+    'A Pattern Table {patternTable} tem baixa capacidade: resta apenas {available} slot para novas alocações.',
+  chrPatternTableLowCapacityMultiple:
+    'A Pattern Table {patternTable} tem baixa capacidade: restam apenas {available} slots para novas alocações.',
+  chrRegionFull:
+    'A região "{name}" na PT{patternTable} está cheia ({occupied}/{total} tiles ocupados).',
   chrWorkspacePtUtilization:
     'Faixa PPU {range} · 256 tiles (4 KiB) · {occupied} / 256 ocupados ({free} livres)',
   chrWorkspacePt0Subtitle: 'Faixa PPU $0000..$0FFF · 256 tiles (4 KiB)',
