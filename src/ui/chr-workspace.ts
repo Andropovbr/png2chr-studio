@@ -44,11 +44,12 @@ import type { TileHistory } from '../core/chr-tile-editor';
 import type { ChrDrawingTool } from './chr-tile-editor';
 import type { Tile } from '../core/types';
 import { t } from '../i18n';
+import { createChrRegionManagerPanel } from './chr-region-manager';
 import { createChrTileInspector } from './chr-tile-inspector';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
 
-export const CHR_ZOOM_LEVELS = [1, 2, 3, 4, 8] as const;
+export const CHR_ZOOM_LEVELS = [1, 2, 3, 4] as const;
 export type ChrZoomLevel = (typeof CHR_ZOOM_LEVELS)[number];
 
 export const NEUTRAL_NES_GRAYSCALE = [
@@ -117,11 +118,13 @@ export interface ChrWorkspaceOptions {
     readonly showGrid: boolean;
     readonly shiftWrap: boolean;
   }) => void;
+  readonly onUpdateChrRegions?: (regions: readonly ChrRegion[]) => void;
 }
 
 export type ChrWorkspaceElement = HTMLElement & {
   readonly diagnosticsElement: HTMLElement | null;
   readonly tileInspectorElement: HTMLElement | null;
+  readonly regionManagerElement: HTMLElement | null;
 };
 
 interface ComputedChrMetrics {
@@ -1928,10 +1931,17 @@ export function createChrWorkspace(
 
   exportPanel.append(exportHeader, actions);
 
+  const regionManagerPanel = createChrRegionManagerPanel({
+    chrRegions: options.chrRegions,
+    classifications,
+    onUpdateChrRegions: options.onUpdateChrRegions,
+  });
+
   workspace.append(
     introPanel,
     viewerPanel,
     tileInspector,
+    regionManagerPanel,
     occupancyPanel,
     spriteContextPanel,
     reusePanel,
@@ -1964,6 +1974,10 @@ export function createChrWorkspace(
     },
     tileInspectorElement: {
       value: tileInspector,
+      enumerable: true,
+    },
+    regionManagerElement: {
+      value: regionManagerPanel,
       enumerable: true,
     },
   });

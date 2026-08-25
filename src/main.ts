@@ -3257,6 +3257,13 @@ function renderChrWorkspace(): void {
       handleChrTileEdit(physicalIndex, newPixels);
       restoreChrEditorFocus(focusSelector);
     },
+    onUpdateChrRegions: (chrRegions) => {
+      updateProject({
+        ...project,
+        chrRegions,
+      });
+      render();
+    },
   });
 
   const sidebar = createSidebar({

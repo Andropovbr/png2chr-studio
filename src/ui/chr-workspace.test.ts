@@ -648,7 +648,7 @@ describe('ChrWorkspace component', () => {
 
     const zoomButtons =
       zoomControls?.querySelectorAll('.segmented-button') ?? [];
-    expect(zoomButtons.length).toBe(5); // 1x, 2x, 3x, 4x, 8x
+    expect(zoomButtons.length).toBe(4); // 1x, 2x, 3x, 4x
 
     // 3x button should be active
     const activeBtn = zoomControls?.querySelector(
@@ -982,10 +982,10 @@ describe('ChrWorkspace component', () => {
 
     const updateResult = applyWorkspaceUpdate(initialWorkspace, (prev) => ({
       ...prev,
-      chr: { ...prev.chr, zoom: 8 },
+      chr: { ...prev.chr, zoom: 4 },
     }));
 
-    expect(updateResult.value.chr.zoom).toBe(8);
+    expect(updateResult.value.chr.zoom).toBe(4);
     expect(updateResult.marksProjectDirty).toBe(false);
   });
 
@@ -2776,6 +2776,86 @@ describe('ChrWorkspace component', () => {
       const tabStops = Array.from(allSlots).filter((s) => s.tabIndex === 0);
       expect(tabStops.length).toBe(1);
       expect(tabStops[0]?.getAttribute('data-local-index')).toBe('5');
+    });
+
+    it('mounts Region Manager panel in CHR workspace and forwards onUpdateChrRegions callback', () => {
+      const onUpdateChrRegions = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrRegions: [
+          {
+            id: 'reg-hero',
+            name: 'Hero',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 15,
+            kind: 'region',
+          },
+        ],
+        onUpdateChrRegions,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const section = mockWs.querySelector('#section-chr-regions');
+      expect(section).not.toBeNull();
+      expect(
+        section?.querySelector('.chr-region-manager-title')?.textContent,
+      ).toBe('CHR Regions & Reservations');
+      expect(
+        section?.querySelector('.chr-region-count-badge')?.textContent,
+      ).toBe('1 configured');
+      expect(section?.textContent).toContain('Hero');
+    });
+
+    it('immediately reflects reserved slots in pattern table grid when reservations are present', () => {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrRegions: [
+          {
+            id: 'res-runtime',
+            name: 'Runtime FX',
+            patternTable: 0,
+            startTile: 0x20,
+            endTile: 0x2f,
+            kind: 'reservation',
+          },
+        ],
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const pt0Overlay = mockWs.querySelector(
+        '.chr-pt-view-card[data-pattern-table="0"] .chr-pt-grid-overlay',
+      );
+
+      // Slot $20 should have is-occupancy-reserved and in-reservation
+      const slot20 = pt0Overlay?.querySelector(
+        '.chr-tile-slot[data-local-index="32"]',
+      );
+      expect(slot20?.classList.contains('is-occupancy-reserved')).toBe(true);
+      expect(slot20?.classList.contains('in-reservation')).toBe(true);
+
+      // Slot $00 should be normal empty
+      const slot00 = pt0Overlay?.querySelector(
+        '.chr-tile-slot[data-local-index="0"]',
+      );
+      expect(slot00?.classList.contains('is-occupancy-reserved')).toBe(false);
+      expect(slot00?.classList.contains('is-occupancy-empty')).toBe(true);
     });
   });
 });
