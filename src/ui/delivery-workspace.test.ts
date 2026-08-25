@@ -19,18 +19,30 @@ import {
   createDeliveryWorkspace,
   type DeliveryWorkspaceOptions,
 } from './delivery-workspace';
+import type { ChrSlotClassification } from '../core/chr-pattern-table';
 
 class MockElement {
   public tagName: string;
   public id = '';
   public className = '';
-  public textContent = '';
+  private _textContent = '';
   public innerHTML = '';
   public children: MockElement[] = [];
   public parentElement: MockElement | null = null;
   public dataset: Record<string, string> = {};
   private readonly listeners = new Map<string, ((event?: unknown) => void)[]>();
   private readonly attributes = new Map<string, string>();
+
+  public get textContent(): string {
+    if (this.children.length === 0) {
+      return this._textContent;
+    }
+    return this.children.map((c) => c.textContent).join('');
+  }
+
+  public set textContent(val: string) {
+    this._textContent = val;
+  }
 
   public constructor(tagName = 'DIV') {
     this.tagName = tagName.toUpperCase();
@@ -443,6 +455,76 @@ describe('Delivery Workspace', () => {
 
     // Click CHR shortcut
     shortcutBtns[4]?.click();
+    expect(onNavigateWorkspace).toHaveBeenCalledWith('chr');
+  });
+
+  it('renders CHR region overlap and reservation diagnostics with navigation to CHR workspace', () => {
+    const onNavigateWorkspace = vi.fn();
+    const classifications: ChrSlotClassification[] = Array.from(
+      { length: 512 },
+      (_, i) => ({
+        physicalIndex: i,
+        localIndex: i % 256,
+        patternTable: i < 256 ? 0 : 1,
+        occupancy: i === 32 ? 'base' : 'empty',
+      }),
+    );
+
+    const options = createOptions({
+      chrRegions: [
+        {
+          id: 'reg1',
+          name: 'Player Area',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 31,
+          kind: 'region',
+        },
+        {
+          id: 'reg2',
+          name: 'Enemy Area',
+          patternTable: 0,
+          startTile: 16,
+          endTile: 47,
+          kind: 'region',
+        },
+        {
+          id: 'res-fx',
+          name: 'Runtime FX',
+          patternTable: 0,
+          startTile: 32,
+          endTile: 48,
+          kind: 'reservation',
+        },
+      ],
+      chrSlotClassifications: classifications,
+      onNavigateWorkspace,
+    });
+
+    const el = createDeliveryWorkspace(options);
+    const mockEl = el as unknown as MockElement;
+
+    // Diagnostics items rendered
+    const diagItems = mockEl.querySelectorAll('.delivery-diag-item');
+    expect(diagItems.length).toBeGreaterThan(0);
+
+    // Overlap diagnostic should be present
+    const overlapDiag = diagItems.find((item) =>
+      item.textContent.includes('Player Area'),
+    );
+    expect(overlapDiag).toBeDefined();
+    expect(overlapDiag?.textContent).toContain('Enemy Area');
+
+    // Reservation occupied diagnostic should be present
+    const resOccupiedDiag = diagItems.find((item) =>
+      item.textContent.includes('Runtime FX'),
+    );
+    expect(resOccupiedDiag).toBeDefined();
+
+    // Clicking action button on region diagnostic navigates to 'chr'
+    const actionBtn = overlapDiag?.querySelector('.delivery-diag-action');
+    expect(actionBtn).not.toBeNull();
+    actionBtn?.click();
     expect(onNavigateWorkspace).toHaveBeenCalledWith('chr');
   });
 });

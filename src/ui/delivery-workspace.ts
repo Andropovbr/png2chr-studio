@@ -7,6 +7,14 @@ import {
   type AnimationModelError,
   type AnimationProjectModel,
 } from '../core/animation-model';
+import {
+  analyzeChrRegionDiagnostics,
+  formatConsecutiveTileRanges,
+  formatTileRangeHex,
+  type ChrRegion,
+  type ChrRegionDiagnosticFact,
+  type ChrSlotClassification,
+} from '../core/chr-pattern-table';
 import { padChrRom } from '../core/chr-rom';
 import {
   encodeNesBackgroundPalettes,
@@ -29,6 +37,7 @@ export interface DeliveryArtifact {
 }
 
 export interface DeliveryDiagnosticItem {
+  readonly id?: string;
   readonly level: 'error' | 'warning' | 'info';
   readonly message: string;
   readonly targetWorkspace?: WorkspaceView;
@@ -56,6 +65,8 @@ export interface DeliveryWorkspaceOptions {
   readonly animationModel: AnimationProjectModel | null;
   readonly animationModelError: AnimationModelError | null;
   readonly error: DisplayError | null;
+  readonly chrRegions?: readonly ChrRegion[];
+  readonly chrSlotClassifications?: readonly ChrSlotClassification[];
   readonly onDownloadBytes: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText: (text: string, fileName: string) => void;
   readonly onNavigateWorkspace?: (view: WorkspaceView) => void;
@@ -74,6 +85,95 @@ function errorTranslation(error: AnimationModelError): TranslationKey {
     default:
       return 'animationErrorGeneric';
   }
+}
+
+export function formatChrRegionDiagnosticMessage(
+  fact: ChrRegionDiagnosticFact,
+): string {
+  switch (fact.kind) {
+    case 'region-overlap': {
+      const rangeStr = formatTileRangeHex(
+        fact.overlapStartTile,
+        fact.overlapEndTile,
+      );
+      if (fact.overlapType === 'reservation-reservation') {
+        return t('chrRegionOverlapReservation', {
+          nameA: fact.regionA.name,
+          nameB: fact.regionB.name,
+          patternTable: fact.patternTable,
+          range: rangeStr,
+        });
+      }
+      if (fact.overlapType === 'region-region') {
+        return t('chrRegionOverlapRegion', {
+          nameA: fact.regionA.name,
+          nameB: fact.regionB.name,
+          patternTable: fact.patternTable,
+          range: rangeStr,
+        });
+      }
+      // Mixed: region-reservation
+      const reg = fact.regionA.kind === 'region' ? fact.regionA : fact.regionB;
+      const res =
+        fact.regionA.kind === 'reservation' ? fact.regionA : fact.regionB;
+      return t('chrRegionOverlapMixed', {
+        nameA: reg.name,
+        nameB: res.name,
+        patternTable: fact.patternTable,
+        range: rangeStr,
+      });
+    }
+    case 'reservation-contains-occupied': {
+      const rangeStr = formatConsecutiveTileRanges(fact.occupiedTileIndices);
+      const key =
+        fact.occupiedCount === 1
+          ? 'chrReservationContainsOccupiedSingle'
+          : 'chrReservationContainsOccupiedMultiple';
+      return t(key, {
+        name: fact.region.name,
+        count: fact.occupiedCount,
+        patternTable: fact.patternTable,
+        range: rangeStr,
+      });
+    }
+    case 'pattern-table-exhausted': {
+      return t('chrPatternTableExhausted', {
+        patternTable: fact.patternTable,
+        occupied: fact.totalOccupied,
+        reserved: fact.totalReservedEmpty,
+      });
+    }
+    case 'pattern-table-low-capacity': {
+      const key =
+        fact.availableSlots === 1
+          ? 'chrPatternTableLowCapacitySingle'
+          : 'chrPatternTableLowCapacityMultiple';
+      return t(key, {
+        patternTable: fact.patternTable,
+        available: fact.availableSlots,
+      });
+    }
+    case 'region-full': {
+      return t('chrRegionFull', {
+        name: fact.region.name,
+        patternTable: fact.patternTable,
+        occupied: fact.occupiedTiles,
+        total: fact.totalTiles,
+      });
+    }
+  }
+}
+
+export function convertChrRegionDiagnosticFactsToDeliveryItems(
+  facts: readonly ChrRegionDiagnosticFact[],
+): readonly DeliveryDiagnosticItem[] {
+  return facts.map((fact) => ({
+    id: fact.id,
+    level: fact.severity,
+    message: formatChrRegionDiagnosticMessage(fact),
+    targetWorkspace: 'chr',
+    actionLabel: t('deliveryLinkChr'),
+  }));
 }
 
 export function createDeliveryWorkspace(
@@ -186,6 +286,17 @@ export function createDeliveryWorkspace(
         actionLabel: t('deliveryLinkTileset'),
       });
     }
+  }
+
+  // 1.4 CHR Regions & Reservations Conflicts / Capacity Diagnostics
+  if (options.chrRegions || options.chrSlotClassifications) {
+    const facts = analyzeChrRegionDiagnostics({
+      chrRegions: options.chrRegions,
+      classifications: options.chrSlotClassifications,
+    });
+    const regionDiagnostics =
+      convertChrRegionDiagnosticFactsToDeliveryItems(facts);
+    diagnostics.push(...regionDiagnostics);
   }
 
   const errorCount = diagnostics.filter((d) => d.level === 'error').length;

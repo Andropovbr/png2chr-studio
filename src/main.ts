@@ -106,7 +106,10 @@ import { createTilesetWorkspace } from './ui/tileset-workspace';
 import { createPlayfieldWorkspace } from './ui/playfield-workspace';
 import { createPaletteWorkspace } from './ui/palette-workspace';
 import { createChrWorkspace } from './ui/chr-workspace';
-import { composeChrWithAllocatedTiles } from './core/chr-pattern-table';
+import {
+  classifyChrSlots,
+  composeChrWithAllocatedTiles,
+} from './core/chr-pattern-table';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
 import {
   applyDerivedStatusUpdate,
@@ -3370,6 +3373,18 @@ function renderDeliveryWorkspace(): void {
   const activeSpritePaletteSlots =
     project.activeSpritePaletteSlots ?? palettes.slice(0, 4).map((p) => p.id);
 
+  const classifications = classifyChrSlots({
+    finalChrBytes: animModel?.finalChr ?? chr ?? new Uint8Array(8192),
+    mode: project.mode,
+    animationModel: animModel,
+    baseChr: project.animation.destinationChr,
+    destinationPatternTable: project.animation.destinationPatternTable,
+    tiles: project.tiles,
+    deduplicationEnabled: project.deduplicationEnabled,
+    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    chrRegions: project.chrRegions,
+  });
+
   const workspaceElement = createDeliveryWorkspace({
     mode: project.mode,
     projectName,
@@ -3391,6 +3406,8 @@ function renderDeliveryWorkspace(): void {
     animationModel: animModel,
     animationModelError: animModelError,
     error: derivedStatus.error,
+    chrRegions: project.chrRegions,
+    chrSlotClassifications: classifications,
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,
     onNavigateWorkspace: (view) => {
