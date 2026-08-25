@@ -18,8 +18,9 @@ import {
   type ScenePreviewInstance,
   generateInstanceId,
 } from './scene-preview';
+import { validateChrRegion, type ChrRegion } from './chr-pattern-table';
 
-export type { ProjectScenePreviewConfig, ScenePreviewInstance };
+export type { ProjectScenePreviewConfig, ScenePreviewInstance, ChrRegion };
 
 export const CURRENT_PROJECT_FORMAT_VERSION = 1;
 export const SUPPORTED_PROJECT_FORMAT_VERSIONS = [1] as const;
@@ -115,6 +116,7 @@ export interface StudioProject {
     readonly quantization: QuantizationSettings;
   };
   readonly palette: ProjectPaletteConfig;
+  readonly chrRegions?: readonly ChrRegion[];
   readonly tileset?: ProjectTilesetConfig;
   readonly playfield?: ProjectPlayfieldConfig;
   readonly animation?: ProjectAnimationSettingsConfig;
@@ -284,6 +286,7 @@ export function createDefaultProject(
       palettes: defaultPalettes,
       activeSpritePaletteSlots: defaultActiveSlots,
     },
+    chrRegions: [],
     tileset: {
       asset: null,
     },
@@ -638,6 +641,7 @@ export function deserializeProject(
   }
 
   const scenePreview = parseScenePreview(raw.scenePreview);
+  const chrRegions = parseChrRegions(raw.chrRegions);
 
   const project: StudioProject = {
     formatVersion: 1,
@@ -655,6 +659,7 @@ export function deserializeProject(
       palettes,
       activeSpritePaletteSlots,
     },
+    ...(chrRegions !== undefined ? { chrRegions } : {}),
     tileset,
     playfield,
     animation,
@@ -665,6 +670,20 @@ export function deserializeProject(
     success: true,
     project,
   };
+}
+
+function parseChrRegions(value: unknown): readonly ChrRegion[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const regions: ChrRegion[] = [];
+  for (const item of value) {
+    const result = validateChrRegion(item);
+    if (result.valid) {
+      regions.push(result.region);
+    }
+  }
+  return regions;
 }
 
 function parsePaletteSet(value: unknown): NesPaletteSet {

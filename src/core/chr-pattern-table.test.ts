@@ -25,6 +25,16 @@ import {
   tileBitplaneOffsets,
   tileStartByteOffset,
   computeTileAddressingMetadata,
+  validateChrRegion,
+  chrRegionPhysicalRange,
+  isPhysicalTileInRegion,
+  isLocalTileInRegion,
+  doChrRegionsOverlap,
+  getChrRegionOverlapRange,
+  findChrRegionOverlaps,
+  collectReservedPhysicalTileIndices,
+  collectReservedLocalTileIndices,
+  type ChrRegion,
   type ChrSlotClassification,
 } from './chr-pattern-table';
 import type { Tile } from './types';
@@ -924,6 +934,307 @@ describe('NES sprite pattern tables', () => {
       expect(summary.maxReferenceCount).toBe(4);
       expect(summary.mostReferencedTileIndex).toBe(12);
       expect(summary.averageReuseRatio).toBe(2); // 6 / 3 = 2.0
+    });
+  });
+
+  describe('ChrRegion domain model and validation', () => {
+    it('validates a correct organizational region on PT0', () => {
+      const result = validateChrRegion({
+        id: 'reg-player',
+        name: 'Player Sprites',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 31,
+        kind: 'region',
+        notes: 'Main player animation frames',
+        color: '#00E5FF',
+      });
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.region).toEqual({
+          id: 'reg-player',
+          name: 'Player Sprites',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 31,
+          kind: 'region',
+          notes: 'Main player animation frames',
+          color: '#00E5FF',
+        });
+      }
+    });
+
+    it('validates a correct reservation on PT1 with full table range $00..$FF', () => {
+      const result = validateChrRegion({
+        id: 'res-dynamic',
+        name: 'Dynamic Effects Bank',
+        patternTable: 1,
+        startTile: 0,
+        endTile: 255,
+        kind: 'reservation',
+      });
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.region.patternTable).toBe(1);
+        expect(result.region.startTile).toBe(0);
+        expect(result.region.endTile).toBe(255);
+        expect(result.region.kind).toBe('reservation');
+      }
+    });
+
+    it('validates single-tile boundary regions at $00 and $FF', () => {
+      const firstTile = validateChrRegion({
+        id: 'reg-0',
+        name: 'Zero Tile',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 0,
+        kind: 'region',
+      });
+      expect(firstTile.valid).toBe(true);
+
+      const lastTile = validateChrRegion({
+        id: 'reg-255',
+        name: 'Last Tile',
+        patternTable: 1,
+        startTile: 255,
+        endTile: 255,
+        kind: 'reservation',
+      });
+      expect(lastTile.valid).toBe(true);
+    });
+
+    it('trims whitespace on id and name', () => {
+      const result = validateChrRegion({
+        id: '  reg-trimmed  ',
+        name: '   Trimmed Name   ',
+        patternTable: 0,
+        startTile: 10,
+        endTile: 20,
+        kind: 'region',
+      });
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.region.id).toBe('reg-trimmed');
+        expect(result.region.name).toBe('Trimmed Name');
+      }
+    });
+
+    it('rejects invalid inputs and returns descriptive validation errors', () => {
+      // Non-object
+      expect(validateChrRegion(null).valid).toBe(false);
+      expect(validateChrRegion('not-an-object').valid).toBe(false);
+      expect(validateChrRegion([]).valid).toBe(false);
+
+      // Empty id
+      const emptyId = validateChrRegion({
+        id: '   ',
+        name: 'Name',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 10,
+        kind: 'region',
+      });
+      expect(emptyId.valid).toBe(false);
+      if (!emptyId.valid) {
+        expect(emptyId.errors.some((e) => e.field === 'id')).toBe(true);
+      }
+
+      // Empty name
+      const emptyName = validateChrRegion({
+        id: 'reg-1',
+        name: '',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 10,
+        kind: 'region',
+      });
+      expect(emptyName.valid).toBe(false);
+      if (!emptyName.valid) {
+        expect(emptyName.errors.some((e) => e.field === 'name')).toBe(true);
+      }
+
+      // Invalid pattern table
+      const invalidPt = validateChrRegion({
+        id: 'reg-1',
+        name: 'Name',
+        patternTable: 2,
+        startTile: 0,
+        endTile: 10,
+        kind: 'region',
+      });
+      expect(invalidPt.valid).toBe(false);
+      if (!invalidPt.valid) {
+        expect(invalidPt.errors.some((e) => e.field === 'patternTable')).toBe(
+          true,
+        );
+      }
+
+      // Negative startTile
+      const negativeStart = validateChrRegion({
+        id: 'reg-1',
+        name: 'Name',
+        patternTable: 0,
+        startTile: -1,
+        endTile: 10,
+        kind: 'region',
+      });
+      expect(negativeStart.valid).toBe(false);
+
+      // End tile > 255
+      const overflowEnd = validateChrRegion({
+        id: 'reg-1',
+        name: 'Name',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 256,
+        kind: 'region',
+      });
+      expect(overflowEnd.valid).toBe(false);
+
+      // Start > End
+      const startAfterEnd = validateChrRegion({
+        id: 'reg-1',
+        name: 'Name',
+        patternTable: 0,
+        startTile: 50,
+        endTile: 20,
+        kind: 'region',
+      });
+      expect(startAfterEnd.valid).toBe(false);
+      if (!startAfterEnd.valid) {
+        expect(
+          startAfterEnd.errors.some((e) => e.code === 'start-after-end'),
+        ).toBe(true);
+      }
+
+      // Invalid kind
+      const invalidKind = validateChrRegion({
+        id: 'reg-1',
+        name: 'Name',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 10,
+        kind: 'custom-kind',
+      });
+      expect(invalidKind.valid).toBe(false);
+    });
+  });
+
+  describe('ChrRegion range helpers and overlap detection', () => {
+    const regPt0A: ChrRegion = {
+      id: 'pt0-a',
+      name: 'PT0 A',
+      patternTable: 0,
+      startTile: 0,
+      endTile: 31, // $00..$1F -> physical 0..31
+      kind: 'region',
+    };
+
+    const regPt0B: ChrRegion = {
+      id: 'pt0-b',
+      name: 'PT0 B',
+      patternTable: 0,
+      startTile: 31,
+      endTile: 63, // $1F..$3F -> physical 31..63 (overlaps at 31 / $1F!)
+      kind: 'region',
+    };
+
+    const regPt0C: ChrRegion = {
+      id: 'pt0-c',
+      name: 'PT0 C',
+      patternTable: 0,
+      startTile: 64,
+      endTile: 127, // $40..$7F -> physical 64..127
+      kind: 'reservation',
+    };
+
+    const regPt1A: ChrRegion = {
+      id: 'pt1-a',
+      name: 'PT1 A',
+      patternTable: 1,
+      startTile: 0,
+      endTile: 31, // PT1 $00..$1F -> physical 256..287
+      kind: 'reservation',
+    };
+
+    it('calculates exact physical range for PT0 and PT1 regions', () => {
+      expect(chrRegionPhysicalRange(regPt0A)).toEqual([0, 31]);
+      expect(chrRegionPhysicalRange(regPt0C)).toEqual([64, 127]);
+      expect(chrRegionPhysicalRange(regPt1A)).toEqual([256, 287]);
+    });
+
+    it('tests tile containment with isPhysicalTileInRegion and isLocalTileInRegion', () => {
+      expect(isPhysicalTileInRegion(0, regPt0A)).toBe(true);
+      expect(isPhysicalTileInRegion(31, regPt0A)).toBe(true);
+      expect(isPhysicalTileInRegion(32, regPt0A)).toBe(false);
+      expect(isPhysicalTileInRegion(256, regPt0A)).toBe(false);
+
+      expect(isPhysicalTileInRegion(256, regPt1A)).toBe(true);
+      expect(isPhysicalTileInRegion(287, regPt1A)).toBe(true);
+      expect(isPhysicalTileInRegion(288, regPt1A)).toBe(false);
+
+      expect(isLocalTileInRegion(0, 15, regPt0A)).toBe(true);
+      expect(isLocalTileInRegion(1, 15, regPt0A)).toBe(false); // Wrong PT
+      expect(isLocalTileInRegion(1, 15, regPt1A)).toBe(true);
+    });
+
+    it('detects boundary inclusive overlaps on the same pattern table', () => {
+      // regPt0A ($00..$1F) and regPt0B ($1F..$3F) overlap at tile 31 ($1F)
+      expect(doChrRegionsOverlap(regPt0A, regPt0B)).toBe(true);
+      expect(getChrRegionOverlapRange(regPt0A, regPt0B)).toEqual([31, 31]);
+    });
+
+    it('confirms adjacent non-overlapping intervals do not overlap', () => {
+      // regPt0B ($1F..$63) and regPt0C ($64..$127) are adjacent without overlap
+      expect(doChrRegionsOverlap(regPt0B, regPt0C)).toBe(false);
+      expect(getChrRegionOverlapRange(regPt0B, regPt0C)).toBeNull();
+    });
+
+    it('confirms identical ranges in different pattern tables do not overlap', () => {
+      // regPt0A (PT0 $00..$1F) and regPt1A (PT1 $00..$1F) do NOT overlap
+      expect(doChrRegionsOverlap(regPt0A, regPt1A)).toBe(false);
+      expect(getChrRegionOverlapRange(regPt0A, regPt1A)).toBeNull();
+    });
+
+    it('finds all overlapping pairs across a collection of regions', () => {
+      const overlaps = findChrRegionOverlaps([
+        regPt0A,
+        regPt0B,
+        regPt0C,
+        regPt1A,
+      ]);
+      expect(overlaps).toHaveLength(1);
+      expect(overlaps[0]?.regionA.id).toBe('pt0-a');
+      expect(overlaps[0]?.regionB.id).toBe('pt0-b');
+      expect(overlaps[0]?.overlapStartTile).toBe(31);
+      expect(overlaps[0]?.overlapEndTile).toBe(31);
+    });
+
+    it('collects reserved physical indices ignoring non-reservation regions', () => {
+      const regions: ChrRegion[] = [regPt0A, regPt0B, regPt0C, regPt1A];
+
+      const allReserved = collectReservedPhysicalTileIndices(regions);
+      // regPt0C has 64 tiles (64..127) + regPt1A has 32 tiles (256..287) = 96 reserved tiles
+      expect(allReserved.size).toBe(96);
+      expect(allReserved.has(0)).toBe(false); // regPt0A is a 'region', not a 'reservation'
+      expect(allReserved.has(64)).toBe(true); // regPt0C is a reservation
+      expect(allReserved.has(127)).toBe(true);
+      expect(allReserved.has(256)).toBe(true); // regPt1A is a reservation
+      expect(allReserved.has(287)).toBe(true);
+
+      const pt0Reserved = collectReservedPhysicalTileIndices(regions, 0);
+      expect(pt0Reserved.size).toBe(64);
+      expect(pt0Reserved.has(256)).toBe(false);
+
+      const pt1LocalReserved = collectReservedLocalTileIndices(regions, 1);
+      expect(pt1LocalReserved.size).toBe(32);
+      expect(pt1LocalReserved.has(0)).toBe(true);
+      expect(pt1LocalReserved.has(31)).toBe(true);
+      expect(pt1LocalReserved.has(32)).toBe(false);
     });
   });
 });

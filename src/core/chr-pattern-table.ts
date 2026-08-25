@@ -18,6 +18,323 @@ export type ChrSlotOccupancy = 'empty' | 'project' | 'base' | 'reserved';
 export type ChrHighlightScope =
   'none' | 'frame' | 'animation' | 'entity' | 'base' | 'all';
 
+export type ChrRegionKind = 'region' | 'reservation';
+
+export interface ChrRegion {
+  readonly id: string;
+  readonly name: string;
+  readonly patternTable: SpritePatternTable;
+  readonly startTile: number;
+  readonly endTile: number;
+  readonly kind: ChrRegionKind;
+  readonly notes?: string;
+  readonly color?: string;
+}
+
+export type ChrRegionValidationErrorCode =
+  | 'invalid-id'
+  | 'invalid-name'
+  | 'invalid-pattern-table'
+  | 'invalid-start-tile'
+  | 'invalid-end-tile'
+  | 'start-after-end'
+  | 'invalid-kind'
+  | 'invalid-color'
+  | 'invalid-notes';
+
+export interface ChrRegionValidationError {
+  readonly code: ChrRegionValidationErrorCode;
+  readonly message: string;
+  readonly field: keyof ChrRegion;
+}
+
+export type ChrRegionValidationResult =
+  | { readonly valid: true; readonly region: ChrRegion }
+  | {
+      readonly valid: false;
+      readonly errors: readonly ChrRegionValidationError[];
+    };
+
+export interface ChrRegionOverlap {
+  readonly regionA: ChrRegion;
+  readonly regionB: ChrRegion;
+  readonly patternTable: SpritePatternTable;
+  readonly overlapStartTile: number;
+  readonly overlapEndTile: number;
+}
+
+export function validateChrRegion(value: unknown): ChrRegionValidationResult {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return {
+      valid: false,
+      errors: [
+        {
+          code: 'invalid-id',
+          message: 'Region must be an object.',
+          field: 'id',
+        },
+      ],
+    };
+  }
+
+  const raw = value as Record<string, unknown>;
+  const errors: ChrRegionValidationError[] = [];
+
+  const rawId = typeof raw.id === 'string' ? raw.id.trim() : '';
+  if (!rawId) {
+    errors.push({
+      code: 'invalid-id',
+      message: 'Region id must be a non-empty string.',
+      field: 'id',
+    });
+  }
+
+  const rawName = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!rawName) {
+    errors.push({
+      code: 'invalid-name',
+      message: 'Region name must be a non-empty string.',
+      field: 'name',
+    });
+  }
+
+  const pt = raw.patternTable;
+  if (
+    typeof pt !== 'number' ||
+    !Number.isInteger(pt) ||
+    (pt !== 0 && pt !== 1)
+  ) {
+    errors.push({
+      code: 'invalid-pattern-table',
+      message: 'Pattern table must be 0 (PT0) or 1 (PT1).',
+      field: 'patternTable',
+    });
+  }
+
+  const startTile = raw.startTile;
+  if (
+    typeof startTile !== 'number' ||
+    !Number.isInteger(startTile) ||
+    startTile < 0 ||
+    startTile >= NES_PATTERN_TABLE_TILE_COUNT
+  ) {
+    errors.push({
+      code: 'invalid-start-tile',
+      message:
+        'Start tile index must be an integer between 0 and 255 ($00..$FF).',
+      field: 'startTile',
+    });
+  }
+
+  const endTile = raw.endTile;
+  if (
+    typeof endTile !== 'number' ||
+    !Number.isInteger(endTile) ||
+    endTile < 0 ||
+    endTile >= NES_PATTERN_TABLE_TILE_COUNT
+  ) {
+    errors.push({
+      code: 'invalid-end-tile',
+      message:
+        'End tile index must be an integer between 0 and 255 ($00..$FF).',
+      field: 'endTile',
+    });
+  }
+
+  if (
+    typeof startTile === 'number' &&
+    Number.isInteger(startTile) &&
+    typeof endTile === 'number' &&
+    Number.isInteger(endTile) &&
+    startTile >= 0 &&
+    startTile < NES_PATTERN_TABLE_TILE_COUNT &&
+    endTile >= 0 &&
+    endTile < NES_PATTERN_TABLE_TILE_COUNT &&
+    startTile > endTile
+  ) {
+    errors.push({
+      code: 'start-after-end',
+      message: `Start tile ($${startTile.toString(16).toUpperCase().padStart(2, '0')}) cannot be greater than end tile ($${endTile.toString(16).toUpperCase().padStart(2, '0')}).`,
+      field: 'startTile',
+    });
+  }
+
+  const kind = raw.kind;
+  if (kind !== 'region' && kind !== 'reservation') {
+    errors.push({
+      code: 'invalid-kind',
+      message: "Region kind must be either 'region' or 'reservation'.",
+      field: 'kind',
+    });
+  }
+
+  let notes: string | undefined;
+  if (raw.notes !== undefined && raw.notes !== null) {
+    if (typeof raw.notes !== 'string') {
+      errors.push({
+        code: 'invalid-notes',
+        message: 'Region notes must be a string.',
+        field: 'notes',
+      });
+    } else {
+      const trimmedNotes = raw.notes.trim();
+      if (trimmedNotes) {
+        notes = trimmedNotes;
+      }
+    }
+  }
+
+  let color: string | undefined;
+  if (raw.color !== undefined && raw.color !== null) {
+    if (typeof raw.color !== 'string') {
+      errors.push({
+        code: 'invalid-color',
+        message: 'Region color must be a string.',
+        field: 'color',
+      });
+    } else {
+      const trimmedColor = raw.color.trim();
+      if (trimmedColor) {
+        color = trimmedColor;
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, errors };
+  }
+
+  const region: ChrRegion = {
+    id: rawId,
+    name: rawName,
+    patternTable: pt as SpritePatternTable,
+    startTile: startTile as number,
+    endTile: endTile as number,
+    kind: kind as ChrRegionKind,
+    ...(notes !== undefined ? { notes } : {}),
+    ...(color !== undefined ? { color } : {}),
+  };
+
+  return { valid: true, region };
+}
+
+export function chrRegionPhysicalRange(
+  region: ChrRegion,
+): readonly [number, number] {
+  const base = region.patternTable * NES_PATTERN_TABLE_TILE_COUNT;
+  return [base + region.startTile, base + region.endTile];
+}
+
+export function isPhysicalTileInRegion(
+  physicalIndex: number,
+  region: ChrRegion,
+): boolean {
+  if (
+    !Number.isInteger(physicalIndex) ||
+    physicalIndex < 0 ||
+    physicalIndex >= NES_CHR_ROM_TILE_COUNT
+  ) {
+    return false;
+  }
+  const [start, end] = chrRegionPhysicalRange(region);
+  return physicalIndex >= start && physicalIndex <= end;
+}
+
+export function isLocalTileInRegion(
+  patternTable: SpritePatternTable,
+  localIndex: number,
+  region: ChrRegion,
+): boolean {
+  if (
+    !isSpritePatternTable(patternTable) ||
+    !Number.isInteger(localIndex) ||
+    localIndex < 0 ||
+    localIndex >= NES_PATTERN_TABLE_TILE_COUNT
+  ) {
+    return false;
+  }
+  return (
+    region.patternTable === patternTable &&
+    localIndex >= region.startTile &&
+    localIndex <= region.endTile
+  );
+}
+
+export function doChrRegionsOverlap(a: ChrRegion, b: ChrRegion): boolean {
+  if (a.patternTable !== b.patternTable) {
+    return false;
+  }
+  return Math.max(a.startTile, b.startTile) <= Math.min(a.endTile, b.endTile);
+}
+
+export function getChrRegionOverlapRange(
+  a: ChrRegion,
+  b: ChrRegion,
+): readonly [number, number] | null {
+  if (!doChrRegionsOverlap(a, b)) {
+    return null;
+  }
+  return [Math.max(a.startTile, b.startTile), Math.min(a.endTile, b.endTile)];
+}
+
+export function findChrRegionOverlaps(
+  regions: readonly ChrRegion[],
+): readonly ChrRegionOverlap[] {
+  const overlaps: ChrRegionOverlap[] = [];
+  for (let i = 0; i < regions.length; i += 1) {
+    const a = regions[i];
+    if (!a) continue;
+    for (let j = i + 1; j < regions.length; j += 1) {
+      const b = regions[j];
+      if (!b) continue;
+      const range = getChrRegionOverlapRange(a, b);
+      if (range !== null) {
+        overlaps.push({
+          regionA: a,
+          regionB: b,
+          patternTable: a.patternTable,
+          overlapStartTile: range[0],
+          overlapEndTile: range[1],
+        });
+      }
+    }
+  }
+  return overlaps;
+}
+
+export function collectReservedPhysicalTileIndices(
+  regions: readonly ChrRegion[] = [],
+  patternTable?: SpritePatternTable,
+): ReadonlySet<number> {
+  const reserved = new Set<number>();
+  for (const region of regions) {
+    if (region.kind === 'reservation') {
+      if (patternTable === undefined || region.patternTable === patternTable) {
+        const [start, end] = chrRegionPhysicalRange(region);
+        for (let i = start; i <= end; i += 1) {
+          reserved.add(i);
+        }
+      }
+    }
+  }
+  return reserved;
+}
+
+export function collectReservedLocalTileIndices(
+  regions: readonly ChrRegion[] = [],
+  patternTable: SpritePatternTable,
+): ReadonlySet<number> {
+  const reserved = new Set<number>();
+  for (const region of regions) {
+    if (region.kind === 'reservation' && region.patternTable === patternTable) {
+      for (let i = region.startTile; i <= region.endTile; i += 1) {
+        reserved.add(i);
+      }
+    }
+  }
+  return reserved;
+}
+
 export interface ChrSlotClassification {
   readonly physicalIndex: number;
   readonly localIndex: number;

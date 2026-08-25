@@ -423,4 +423,26 @@ describe('animation exporters', () => {
       expect(anim).not.toHaveProperty('color_reduction');
     });
   });
+
+  it('ensures animation JSON v5, C, and ca65 outputs remain strictly unpolluted', () => {
+    const mod = model();
+    const json = JSON.parse(serializeAnimationMetadata(mod)) as Record<
+      string,
+      unknown
+    >;
+    const cCode = generateCAnimationExport(mod);
+    const asmCode = generateCa65AnimationExport(mod);
+
+    // JSON v5 format and version invariant
+    expect(json.format).toBe('png2chr-studio-animation');
+    expect(json.version).toBe(5);
+    expect(json).not.toHaveProperty('chrRegions');
+    expect(json).not.toHaveProperty('regions');
+
+    // C and ASM invariants
+    expect(cCode.source).toContain(
+      'const Png2ChrAnimationFrame hero_animation_frames',
+    );
+    expect(asmCode.source).toContain('hero_animation_frames:');
+  });
 });
