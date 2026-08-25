@@ -28,6 +28,7 @@ export type PreviewTool = 'palette' | 'paint-collision' | 'erase-collision';
 export type SourceKind = 'png' | 'chr' | 'nes';
 
 export interface AnimationSourceData {
+  readonly assetId?: string;
   readonly fileName: string;
   readonly sourceImage: ImageData;
   readonly indexedImage: IndexedImage;
@@ -76,6 +77,7 @@ export interface AnimationSettings {
   readonly spritePalette: number;
   readonly spriteColorIndex: number;
   readonly colorIndices: Uint8Array;
+  readonly destinationChrAssetId?: string | null;
   readonly destinationChrName: string | null;
   readonly destinationChr: Uint8Array;
   /** Pattern table used by sprite OAM tile bytes (PPUCTRL bit 3). */
@@ -90,6 +92,7 @@ export interface AnimationSettings {
 }
 
 export interface ProjectView {
+  readonly assetId?: string | null;
   readonly fileName: string | null;
   readonly sourceKind: SourceKind | null;
   readonly width: number | null;

@@ -357,6 +357,7 @@ function buildCurrentStudioProject(): StudioProject {
     asset:
       project.fileName !== null && project.mode === 'tileset'
         ? {
+            id: project.assetId ?? undefined,
             path: project.fileName,
             name: project.fileName,
             sourceKind: project.sourceKind ?? undefined,
@@ -380,6 +381,7 @@ function buildCurrentStudioProject(): StudioProject {
     asset:
       project.fileName !== null && project.mode === 'playfield'
         ? {
+            id: project.assetId ?? undefined,
             path: project.fileName,
             name: project.fileName,
             sourceKind: project.sourceKind ?? 'png',
@@ -410,6 +412,7 @@ function buildCurrentStudioProject(): StudioProject {
       asset:
         anim.source !== null
           ? {
+              id: anim.source.assetId ?? undefined,
               path: anim.source.fileName,
               name: anim.source.fileName,
               sourceKind: 'png',
@@ -457,6 +460,7 @@ function buildCurrentStudioProject(): StudioProject {
     destinationChr:
       project.animation.destinationChrName !== null
         ? {
+            id: project.animation.destinationChrAssetId ?? undefined,
             path: project.animation.destinationChrName,
             name: project.animation.destinationChrName,
             sourceKind: 'chr',
@@ -635,6 +639,7 @@ async function loadProjectFile(
               colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
             });
             source = {
+              assetId: anim.asset?.id,
               fileName: matchingFile.name,
               sourceImage: imageData,
               indexedImage,
@@ -660,6 +665,7 @@ async function loadProjectFile(
               colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
             });
             source = {
+              assetId: anim.asset.id,
               fileName: anim.asset.name ?? anim.asset.path,
               sourceImage: imageData,
               indexedImage,
@@ -756,6 +762,7 @@ async function loadProjectFile(
         spriteColorIndex: animSettings?.spriteColorIndex ?? 1,
         patternTable: animSettings?.patternTable ?? 0,
         destinationPatternTable: animSettings?.destinationPatternTable ?? 0,
+        destinationChrAssetId: animSettings?.destinationChr?.id ?? null,
         destinationChrName:
           animSettings?.destinationChr?.name ??
           animSettings?.destinationChr?.path ??
@@ -768,6 +775,7 @@ async function loadProjectFile(
       };
 
       project = {
+        assetId: null,
         fileName: null,
         sourceKind: null,
         width: null,
@@ -975,6 +983,7 @@ async function loadProjectFile(
     }
 
     project = {
+      assetId: assetRef?.id ?? null,
       fileName: assetRef?.name ?? assetRef?.path ?? null,
       sourceKind: assetRef?.sourceKind ?? 'png',
       width,

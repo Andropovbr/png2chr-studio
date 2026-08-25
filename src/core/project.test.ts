@@ -103,6 +103,7 @@ describe('StudioProject core infrastructure', () => {
         patternTable: 1,
         destinationPatternTable: 0,
         destinationChr: {
+          id: 'asset-base-chr-default',
           path: 'chr/base.chr',
           name: 'base.chr',
           sourceKind: 'chr',
@@ -113,6 +114,7 @@ describe('StudioProject core infrastructure', () => {
             name: 'walk',
             entity: 'hero',
             asset: {
+              id: 'asset-anim-walk-id',
               path: 'sprites/hero_walk.png',
               name: 'hero_walk.png',
               sourceKind: 'png',
@@ -191,6 +193,7 @@ describe('StudioProject core infrastructure', () => {
       },
       tileset: {
         asset: {
+          id: 'asset-tileset-dungeon',
           path: 'assets/tiles/dungeon.png',
           name: 'dungeon.png',
           sourceKind: 'png',
@@ -217,6 +220,7 @@ describe('StudioProject core infrastructure', () => {
         colorDistanceMode: 'rgb',
       });
       expect(loaded.project.tileset?.asset).toEqual({
+        id: 'asset-tileset-dungeon',
         path: 'assets/tiles/dungeon.png',
         name: 'dungeon.png',
         sourceKind: 'png',
@@ -294,6 +298,7 @@ describe('StudioProject core infrastructure', () => {
       },
       playfield: {
         asset: {
+          id: 'asset-playfield-overworld',
           path: 'stages/overworld_level1.png',
           name: 'overworld_level1.png',
           sourceKind: 'png',
@@ -318,6 +323,7 @@ describe('StudioProject core infrastructure', () => {
       expect(loaded.project.settings.deduplicationEnabled).toBe(true);
       expect(loaded.project.settings.flipDeduplicationEnabled).toBe(true);
       expect(loaded.project.playfield?.asset).toEqual({
+        id: 'asset-playfield-overworld',
         path: 'stages/overworld_level1.png',
         name: 'overworld_level1.png',
         sourceKind: 'png',
@@ -993,6 +999,327 @@ describe('StudioProject core infrastructure', () => {
           },
         ]);
       }
+    });
+
+    describe('Milestone 6: Project Asset Identity & Legacy Normalization', () => {
+      it('performs lossless round-trip persistence with explicit asset IDs', () => {
+        const original: StudioProject = {
+          ...createDefaultProject('Asset ID Test', 'animation'),
+          tileset: {
+            asset: {
+              id: 'asset-tileset-custom-123',
+              path: 'tiles.png',
+              name: 'tiles.png',
+            },
+          },
+          playfield: {
+            asset: {
+              id: 'asset-playfield-custom-456',
+              path: 'screen.png',
+              name: 'screen.png',
+            },
+          },
+          animation: {
+            name: 'entity',
+            symbolPrefix: 'entity',
+            defaultPaletteIndex: 0,
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            flipDeduplication: true,
+            spritePalette: 0,
+            spriteColorIndex: 1,
+            patternTable: 0,
+            destinationPatternTable: 0,
+            destinationChr: {
+              id: 'asset-base-chr-custom-789',
+              path: 'base.chr',
+              name: 'base.chr',
+            },
+            animations: [
+              {
+                id: 'anim-walk',
+                name: 'Walk',
+                paletteId: null,
+                paletteIndex: null,
+                quantizationMode: 'median-cut',
+                ditheringMode: 'none',
+                frameWidth: 16,
+                frameHeight: 16,
+                originX: 8,
+                originY: 16,
+                playback: 'loop',
+                allowHorizontalFlip: false,
+                allowVerticalFlip: false,
+                defaultDuration: 12,
+                frameIndices: [],
+                frameDurations: [],
+                asset: {
+                  id: 'asset-anim-walk-sheet',
+                  path: 'hero_walk.png',
+                  name: 'hero_walk.png',
+                },
+              },
+            ],
+          },
+        };
+
+        const json = serializeProject(original);
+        const result = deserializeProject(json);
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.project.tileset?.asset?.id).toBe(
+            'asset-tileset-custom-123',
+          );
+          expect(result.project.playfield?.asset?.id).toBe(
+            'asset-playfield-custom-456',
+          );
+          expect(result.project.animation?.destinationChr?.id).toBe(
+            'asset-base-chr-custom-789',
+          );
+          expect(result.project.animation?.animations[0]?.asset?.id).toBe(
+            'asset-anim-walk-sheet',
+          );
+        }
+      });
+
+      it('normalizes legacy Tileset project without asset ID with deterministic fallback', () => {
+        const legacyTilesetJson = JSON.stringify({
+          formatVersion: 1,
+          name: 'Legacy Tileset',
+          mode: 'tileset',
+          settings: {
+            deduplicationEnabled: false,
+            flipDeduplicationEnabled: false,
+            quantization: {
+              quantizationMode: 'median-cut',
+              ditheringMode: 'none',
+              colorDistanceMode: 'rgb',
+            },
+          },
+          palette: {
+            paletteSet: createDefaultNesPaletteSet(),
+          },
+          tileset: {
+            asset: {
+              path: 'tiles.png',
+              name: 'tiles.png',
+            },
+          },
+        });
+
+        const result = deserializeProject(legacyTilesetJson);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.project.tileset?.asset?.id).toBe(
+            'asset-tileset-default',
+          );
+        }
+      });
+
+      it('normalizes legacy Playfield project without asset ID with deterministic fallback', () => {
+        const legacyPlayfieldJson = JSON.stringify({
+          formatVersion: 1,
+          name: 'Legacy Playfield',
+          mode: 'playfield',
+          settings: {
+            deduplicationEnabled: true,
+            flipDeduplicationEnabled: false,
+            quantization: {
+              quantizationMode: 'median-cut',
+              ditheringMode: 'none',
+              colorDistanceMode: 'rgb',
+            },
+          },
+          palette: {
+            paletteSet: createDefaultNesPaletteSet(),
+          },
+          playfield: {
+            asset: {
+              path: 'world1.png',
+              name: 'world1.png',
+            },
+          },
+        });
+
+        const result = deserializeProject(legacyPlayfieldJson);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.project.playfield?.asset?.id).toBe(
+            'asset-playfield-default',
+          );
+        }
+      });
+
+      it('normalizes legacy Animation project and Base CHR without asset IDs with deterministic fallbacks', () => {
+        const legacyAnimJson = JSON.stringify({
+          formatVersion: 1,
+          name: 'Legacy Anim',
+          mode: 'animation',
+          settings: {
+            deduplicationEnabled: true,
+            flipDeduplicationEnabled: false,
+            quantization: {
+              quantizationMode: 'median-cut',
+              ditheringMode: 'none',
+              colorDistanceMode: 'rgb',
+            },
+          },
+          palette: {
+            paletteSet: createDefaultNesPaletteSet(),
+          },
+          animation: {
+            name: 'hero',
+            symbolPrefix: 'hero',
+            defaultPaletteIndex: 0,
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            flipDeduplication: true,
+            spritePalette: 0,
+            spriteColorIndex: 1,
+            patternTable: 0,
+            destinationPatternTable: 0,
+            destinationChr: {
+              path: 'game.chr',
+              name: 'game.chr',
+            },
+            animations: [
+              {
+                id: 'anim_idle',
+                name: 'idle',
+                asset: {
+                  path: 'hero_idle.png',
+                  name: 'hero_idle.png',
+                },
+                frameWidth: 16,
+                frameHeight: 16,
+                originX: 8,
+                originY: 16,
+                playback: 'loop',
+                allowHorizontalFlip: false,
+                allowVerticalFlip: false,
+                defaultDuration: 6,
+                frameIndices: [0],
+                frameDurations: [6],
+              },
+              {
+                id: 'anim_jump',
+                name: 'jump',
+                asset: {
+                  path: 'hero_jump.png',
+                  name: 'hero_jump.png',
+                },
+                frameWidth: 16,
+                frameHeight: 16,
+                originX: 8,
+                originY: 16,
+                playback: 'once',
+                allowHorizontalFlip: false,
+                allowVerticalFlip: false,
+                defaultDuration: 8,
+                frameIndices: [0],
+                frameDurations: [8],
+              },
+            ],
+          },
+        });
+
+        const result = deserializeProject(legacyAnimJson);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.project.animation?.destinationChr?.id).toBe(
+            'asset-base-chr-default',
+          );
+          expect(result.project.animation?.animations[0]?.asset?.id).toBe(
+            'asset-anim-anim_idle',
+          );
+          expect(result.project.animation?.animations[1]?.asset?.id).toBe(
+            'asset-anim-anim_jump',
+          );
+        }
+      });
+
+      it('preserves normalized legacy IDs across repeated save and reload cycles', () => {
+        const legacyJson = JSON.stringify({
+          formatVersion: 1,
+          name: 'Legacy Cycle Test',
+          mode: 'tileset',
+          settings: {
+            deduplicationEnabled: false,
+            flipDeduplicationEnabled: false,
+            quantization: {
+              quantizationMode: 'median-cut',
+              ditheringMode: 'none',
+              colorDistanceMode: 'rgb',
+            },
+          },
+          palette: {
+            paletteSet: createDefaultNesPaletteSet(),
+          },
+          tileset: {
+            asset: {
+              path: 'tiles.png',
+            },
+          },
+        });
+
+        // 1. Initial deserialization (normalizes ID)
+        const firstLoad = deserializeProject(legacyJson);
+        expect(firstLoad.success).toBe(true);
+        if (!firstLoad.success) throw new Error('Deserialization failed');
+        const normalizedId = firstLoad.project.tileset?.asset?.id;
+        expect(normalizedId).toBe('asset-tileset-default');
+
+        // 2. Serialize back to JSON
+        const serialized = serializeProject(firstLoad.project);
+
+        // 3. Second deserialization
+        const secondLoad = deserializeProject(serialized);
+        expect(secondLoad.success).toBe(true);
+        if (!secondLoad.success) throw new Error('Deserialization failed');
+        expect(secondLoad.project.tileset?.asset?.id).toBe(normalizedId);
+      });
+
+      it('preserves asset IDs even when asset display names or project names are modified', () => {
+        const project = createDefaultProject('Original Project', 'tileset');
+        const projectWithAsset: StudioProject = {
+          ...project,
+          tileset: {
+            asset: {
+              id: 'asset-tileset-stable-id-1',
+              path: 'old_filename.png',
+              name: 'Old Display Name',
+            },
+          },
+        };
+
+        // User renames project and asset file name
+        const renamedProject: StudioProject = {
+          ...projectWithAsset,
+          name: 'Renamed Project 2026',
+          tileset: {
+            asset: {
+              id: 'asset-tileset-stable-id-1',
+              name: 'New Fancy Display Name',
+              path: 'new_filename.png',
+            },
+          },
+        };
+
+        const json = serializeProject(renamedProject);
+        const result = deserializeProject(json);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.project.name).toBe('Renamed Project 2026');
+          expect(result.project.tileset?.asset?.name).toBe(
+            'New Fancy Display Name',
+          );
+          // ID remains strictly stable!
+          expect(result.project.tileset?.asset?.id).toBe(
+            'asset-tileset-stable-id-1',
+          );
+        }
+      });
     });
   });
 });
