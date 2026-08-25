@@ -270,6 +270,8 @@ export function createChrTileEditor(
   redoBtn.setAttribute('aria-label', t('chrEditorRedo'));
   redoBtn.textContent = '↷';
   redoBtn.disabled = !history.canRedo;
+  redoBtn.setAttribute('aria-disabled', history.canRedo ? 'false' : 'true');
+
   const updateHistoryButtons = (): void => {
     undoBtn.disabled = !history.canUndo;
     undoBtn.setAttribute('aria-disabled', history.canUndo ? 'false' : 'true');
@@ -672,7 +674,7 @@ export function createChrTileEditor(
 
   // --- 6. Keyboard Shortcuts Handler ---
   const handleKeyDown = (e: KeyboardEvent): void => {
-    if (!container.isConnected && e.currentTarget !== container) {
+    if (typeof container.isConnected === 'boolean' && !container.isConnected) {
       if (typeof window !== 'undefined') {
         window.removeEventListener('keydown', handleKeyDown);
       }
