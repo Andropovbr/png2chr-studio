@@ -849,5 +849,150 @@ describe('StudioProject core infrastructure', () => {
         expect(animItem?.paletteId).toBe(palettes?.[1]?.id);
       }
     });
+
+    it('initializes default project with empty chrRegions array', () => {
+      const project = createDefaultProject('Clean Project', 'animation');
+      expect(project.chrRegions).toEqual([]);
+    });
+
+    it('performs lossless round-trip persistence with multiple ChrRegions and reservations', () => {
+      const original: StudioProject = {
+        ...createDefaultProject('Region Project', 'animation'),
+        chrRegions: [
+          {
+            id: 'reg-player',
+            name: 'Hero Sprites',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 31,
+            kind: 'region',
+            notes: 'Main character run and jump frames',
+            color: '#00E5FF',
+          },
+          {
+            id: 'res-dyn-effects',
+            name: 'Dynamic Effects Bank',
+            patternTable: 1,
+            startTile: 192,
+            endTile: 255,
+            kind: 'reservation',
+            notes: 'Reserved for explosion particles',
+          },
+        ],
+      };
+
+      const json = serializeProject(original);
+      const result = deserializeProject(json);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.project.chrRegions).toEqual([
+          {
+            id: 'reg-player',
+            name: 'Hero Sprites',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 31,
+            kind: 'region',
+            notes: 'Main character run and jump frames',
+            color: '#00E5FF',
+          },
+          {
+            id: 'res-dyn-effects',
+            name: 'Dynamic Effects Bank',
+            patternTable: 1,
+            startTile: 192,
+            endTile: 255,
+            kind: 'reservation',
+            notes: 'Reserved for explosion particles',
+          },
+        ]);
+      }
+    });
+
+    it('loads legacy project JSON without chrRegions without errors', () => {
+      const legacyJson = JSON.stringify({
+        formatVersion: 1,
+        name: 'Legacy Project',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: false,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          paletteSet: createDefaultNesPaletteSet(),
+          activePaletteIndex: 0,
+          activeColorIndex: 1,
+        },
+      });
+
+      const result = deserializeProject(legacyJson);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.project.chrRegions).toBeUndefined();
+        // Safe default access
+        expect(result.project.chrRegions ?? []).toEqual([]);
+      }
+    });
+
+    it('filters out corrupted chrRegion entries during deserialization', () => {
+      const jsonWithCorrupted = JSON.stringify({
+        formatVersion: 1,
+        name: 'Corrupted Test',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: false,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          paletteSet: createDefaultNesPaletteSet(),
+        },
+        chrRegions: [
+          {
+            id: 'valid-reg',
+            name: 'Valid Region',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 15,
+            kind: 'region',
+          },
+          {
+            id: 'invalid-reg',
+            name: 'Invalid Region',
+            patternTable: 0,
+            startTile: 50,
+            endTile: 10, // Invalid: start > end
+            kind: 'region',
+          },
+          null,
+          'not an object',
+        ],
+      });
+
+      const result = deserializeProject(jsonWithCorrupted);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.project.chrRegions).toEqual([
+          {
+            id: 'valid-reg',
+            name: 'Valid Region',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 15,
+            kind: 'region',
+          },
+        ]);
+      }
+    });
   });
 });

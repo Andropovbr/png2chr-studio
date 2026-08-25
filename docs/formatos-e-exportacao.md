@@ -166,6 +166,26 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
     ],
     "activeSpritePaletteSlots": ["pal_hero_blue", null, null, null]
   },
+  "chrRegions": [
+    {
+      "id": "reg_player",
+      "name": "Player Sprites",
+      "patternTable": 0,
+      "startTile": 0,
+      "endTile": 31,
+      "kind": "region",
+      "notes": "Main hero animations",
+      "color": "#00E5FF"
+    },
+    {
+      "id": "res_dynamic_fx",
+      "name": "Dynamic Effects Bank",
+      "patternTable": 1,
+      "startTile": 192,
+      "endTile": 255,
+      "kind": "reservation"
+    }
+  ],
   "tileset": {
     "asset": {
       "path": "assets/tiles.png",
@@ -261,6 +281,7 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
 
 - **Portabilidade de Assets (`ProjectAssetReference`):** Cada referência a arquivo (`asset` ou `destinationChr`) armazena tanto o caminho relativo normalizado (`path`) quanto os dados embutidos codificados em Base64 (`dataUrl`). Isso garante que arquivos de projeto salvos sejam 100% portáveis e funcionem offline de forma auto-suficiente, sem depender da existência do arquivo original no disco.
 - **Gerenciador de Paletas (`palette`):** Armazena a matriz clássica 4×4 (`paletteSet`), a lista de definições nomeadas (`PaletteDefinition`), os 4 slots de paleta de hardware de sprites (`activeSpritePaletteSlots`), e os índices da paleta/cor de edição ativas.
+- **Regiões e Reservas de CHR (`chrRegions`):** Lista opcional de partições lógicas e reservas de exclusão de CHR (`ChrRegion`). Cada item contém `id`, `name`, `patternTable` (`0` ou `1`), `startTile` e `endTile` (índices locais `$00..$FF` / `0..255`, inclusive), `kind` (`"region"` para faixas organizacionais ou `"reservation"` para zonas reservadas contra alocação automática), além de `notes` e `color` opcionais. Mantém total retrocompatibilidade (`formatVersion: 1`).
 - **Tileset & Playfield:** Persiste caminhos/dados de imagem, atribuições de paleta por tile/metatile, substituições de pixels 8×8 (`pixelOverrides`), mapa de colisão de 480 bytes (`collisionCells` com 11 tipos), tipo de colisão ativo e parâmetros de geração procedural.
 - **Animações e Metasprites (`animation`):** Múltiplas animações com identificadores estáveis (`id`), dimensões e âncoras de origem por animação, sequenciamento e temporização por frame, paletas atribuídas por frame ou globais (`paletteId` / `framePaletteIds`), mapa de substituições de pixel 8×8 (`pixelOverrides`) e alocação de Base CHR com isolamento de Pattern Table (PT0/PT1).
 - **Scene Preview (`scenePreview`):** Instâncias multi-entidade com coordenadas no canvas (X, Y), animação associada, visibilidade e identificador único (`id`).

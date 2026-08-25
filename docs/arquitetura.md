@@ -96,7 +96,7 @@ Conforme documentado em [`docs/project-state-boundaries.md`](./project-state-bou
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
-1. **`StudioProject` (Persistente):** Estado canônico de criação (modo selecionado, fontes gráficas com dataUrl, definições de paleta, slots ativos, pixel overrides, mapa de colisão, animações, instâncias de cena, base CHR). Qualquer alteração gera uma nova identidade de objeto e marca o projeto como não-salvo (`isDirty = true`).
+1. **`StudioProject` (Persistente):** Estado canônico de criação (modo selecionado, fontes gráficas com dataUrl, definições de paleta, slots ativos, pixel overrides, mapa de colisão, animações, instâncias de cena, base CHR, regiões e reservas de CHR `chrRegions`). Qualquer alteração gera uma nova identidade de objeto e marca o projeto como não-salvo (`isDirty = true`).
 2. **`WorkspaceState` (Transiente):** Estado de layout e navegação da interface (área de trabalho ativa, ferramenta ativa no preview, zoom de edição, painéis colapsados, overlays numéricos de paleta).
 3. **`DerivedStatus` (Status):** Estado volátil de carregamento e diagnósticos de erro recuperáveis.
 
@@ -231,7 +231,7 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
     - _Livre / Não alocado (`empty`):_ Espaço livre disponível na CHR-ROM. Representado por borda tracejada sutil, padrão matricial texturizado de fundo e marcador neutro.
     - _Tile do Projeto (`project`):_ Gráficos gerados ou importados para o projeto atual (deduplicados em Tileset/Playfield ou referenciados por frames no modo Animação). Representado por borda sólida, indicador sutil no canto superior e tooltip/ARIA com atribuição do asset.
     - _CHR-Base (`base`):_ Tiles importados de uma CHR-base de destino. Representado por borda âmbar e indicador específico.
-    - _Reservado (`reserved`):_ Estrutura extensível pronta para futuras políticas de reserva explícita de faixas de slots sem alteração do esquema persistido atual.
+    - _Reservado (`reserved`):_ Modelo de domínio e persistência formalizado via `ChrRegion` (`kind: 'reservation'`), com suporte a bloqueio de alocação e sobreposição visual progressiva (conforme especificado em [`docs/investigations/chr-regions-reservations.md`](./investigations/chr-regions-reservations.md)).
   - **Distinção Semântica Fundamental (Tiles Deliberadamente em Branco):** O estado de ocupação é derivado estritamente dos metadados canônicos de alocação da fonte gráfica, e **nunca** apenas por checar se os 16 bytes do tile são todos zero. Um tile deliberadamente transparente ou todo em cor 0 que pertença à lista de tiles do projeto é corretamente classificado como `Tile do Projeto`, enquanto slots não alocados no restante do espaço de 8 KiB são classificados como `Livre`.
   - **Recursos Visuais Multi-Modais e Acessibilidade:** O visualizador não depende exclusivamente de cor para transmitir o estado dos slots: utiliza bordas diferenciadas (tracejada vs. sólida), indicadores de canto, texturas sutis de fundo, legenda de ocupação na barra de ferramentas (`.chr-occupancy-legend`), atributos `data-occupancy`, `aria-label` descritivos e tooltips informativos. A arte gráfica dos tiles 2bpp permanece 100% legível por baixo das demarcações.
   - **Destaque Contextual de Uso de CHR (CHR Usage Highlighting):** Permite inspecionar diretamente quais slots físicos da CHR-ROM pertencem a um determinado escopo de uso sem alterar dados nem forçar re-exportação (`src/core/chr-pattern-table.ts`):
