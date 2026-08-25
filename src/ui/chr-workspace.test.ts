@@ -165,6 +165,17 @@ class MockElement {
     return results;
   }
 
+  getBoundingClientRect() {
+    return {
+      left: 0,
+      top: 0,
+      width: 256,
+      height: 256,
+      right: 256,
+      bottom: 256,
+    };
+  }
+
   getContext(type: string) {
     if (type === '2d') {
       const noop = (): void => {
@@ -2354,6 +2365,164 @@ describe('ChrWorkspace component', () => {
       );
       expect(undo1?.attributes.get('aria-disabled')).toBe('true');
       expect(history1.canUndo).toBe(false);
+    });
+
+    it('handles full continuous Pencil stroke without intermediate host re-renders and commits atomically on pointerup', () => {
+      let currentTilePixels: Uint8Array = new Uint8Array(64);
+      const history = createTileHistory(
+        currentTilePixels,
+        50,
+        areTilePixelsEqual,
+      );
+
+      let canonicalCommits = 0;
+      let activeWorkspaceMock: MockElement | null = null;
+
+      const renderHostWorkspace = (): void => {
+        const ws = createChrWorkspace({
+          mode: 'tileset',
+          animationModel: null,
+          baseChr: null,
+          baseChrName: null,
+          patternTable: 0,
+          destinationPatternTable: 0,
+          tiles: [{ id: 0, column: 0, row: 0, pixels: currentTilePixels }],
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          selectedTileIndex: 0,
+          history,
+          onTilePixelsChange: (_physicalIndex, newPixels) => {
+            canonicalCommits += 1;
+            currentTilePixels = newPixels;
+            // Simulate host global render on canonical update
+            renderHostWorkspace();
+          },
+        });
+        activeWorkspaceMock = ws as unknown as MockElement;
+      };
+
+      // 1. Initial Host Render
+      renderHostWorkspace();
+      const initialWs = activeWorkspaceMock as MockElement | null;
+      expect(initialWs).not.toBeNull();
+      const initialCanvas = initialWs?.querySelector('.chr-tile-editor-canvas');
+      expect(initialCanvas).not.toBeNull();
+
+      // 2. Start Pencil Drag (pointerdown)
+      initialCanvas?.dispatchEvent({
+        type: 'pointerdown',
+        button: 0,
+        clientX: 37,
+        clientY: 37,
+        pointerId: 1,
+      });
+
+      // No canonical commit yet -> editor/canvas has NOT been destroyed
+      expect(canonicalCommits).toBe(0);
+
+      // 3. Continuous Drag (pointermove over 5 pixels)
+      for (let x = 2; x <= 6; x += 1) {
+        initialCanvas?.dispatchEvent({
+          type: 'pointermove',
+          clientX: x * 32 + 5,
+          clientY: 37,
+          pointerId: 1,
+        });
+        expect(canonicalCommits).toBe(0);
+      }
+
+      // 4. Release Pointer (pointerup)
+      initialCanvas?.dispatchEvent({
+        type: 'pointerup',
+        pointerId: 1,
+      });
+
+      // Exactly 1 canonical commit occurred upon stroke completion!
+      expect(canonicalCommits).toBe(1);
+      expect(history.depth).toBe(1);
+      expect(history.canUndo).toBe(true);
+
+      // 5. Host re-rendered after commit -> Undo button is now active
+      const postCommitWs = activeWorkspaceMock as MockElement | null;
+      const undoBtn = postCommitWs?.querySelector(
+        '.chr-editor-action-btn[data-action="undo"]',
+      );
+      expect(undoBtn).not.toBeNull();
+      expect(undoBtn?.attributes.get('aria-disabled')).toBe('false');
+
+      // 6. Execute Undo
+      undoBtn?.click();
+      expect(canonicalCommits).toBe(2);
+      expect(currentTilePixels.every((p) => p === 0)).toBe(true);
+      expect(history.canRedo).toBe(true);
+
+      // 7. Execute Redo
+      const postUndoWs = activeWorkspaceMock as MockElement | null;
+      const redoBtn = postUndoWs?.querySelector(
+        '.chr-editor-action-btn[data-action="redo"]',
+      );
+      expect(redoBtn).not.toBeNull();
+      expect(redoBtn?.attributes.get('aria-disabled')).toBe('false');
+      redoBtn?.click();
+      expect(canonicalCommits).toBe(3);
+      expect(currentTilePixels[1 * 8 + 1]).toBe(1);
+    });
+
+    it('handles single click Pencil stroke in real host lifecycle with 1 commit and enabled Undo', () => {
+      let currentTilePixels: Uint8Array = new Uint8Array(64);
+      const history = createTileHistory(
+        currentTilePixels,
+        50,
+        areTilePixelsEqual,
+      );
+
+      let canonicalCommits = 0;
+      let activeWorkspaceMock: MockElement | null = null;
+
+      const renderHostWorkspace = (): void => {
+        const ws = createChrWorkspace({
+          mode: 'tileset',
+          animationModel: null,
+          baseChr: null,
+          baseChrName: null,
+          patternTable: 0,
+          destinationPatternTable: 0,
+          tiles: [{ id: 0, column: 0, row: 0, pixels: currentTilePixels }],
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          selectedTileIndex: 0,
+          history,
+          onTilePixelsChange: (_physicalIndex, newPixels) => {
+            canonicalCommits += 1;
+            currentTilePixels = newPixels;
+            renderHostWorkspace();
+          },
+        });
+        activeWorkspaceMock = ws as unknown as MockElement;
+      };
+
+      renderHostWorkspace();
+      const wsMock = activeWorkspaceMock as MockElement | null;
+      const canvas = wsMock?.querySelector('.chr-tile-editor-canvas');
+
+      // Simple Click
+      canvas?.dispatchEvent({
+        type: 'pointerdown',
+        button: 0,
+        clientX: 50,
+        clientY: 50,
+        pointerId: 1,
+      });
+      expect(canonicalCommits).toBe(0);
+
+      canvas?.dispatchEvent({
+        type: 'pointerup',
+        pointerId: 1,
+      });
+
+      expect(canonicalCommits).toBe(1);
+      expect(history.canUndo).toBe(true);
+      expect(currentTilePixels[1 * 8 + 1]).toBe(1);
     });
   });
 });

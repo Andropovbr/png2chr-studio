@@ -50,6 +50,7 @@ export interface ChrTileEditorOptions {
   readonly shiftWrap?: boolean;
   readonly history?: TileHistory<Uint8Array>;
   readonly onPixelsChange?: (pixels: Uint8Array) => void;
+  readonly onPixelsPreviewChange?: (pixels: Uint8Array) => void;
   readonly onSelectColorIndex?: (colorIndex: number) => void;
   readonly onSelectTool?: (tool: ChrDrawingTool) => void;
   readonly onToggleGrid?: (showGrid: boolean) => void;
@@ -562,7 +563,7 @@ export function createChrTileEditor(
           strokeCurrentPixels = next;
           strokeModified = true;
           renderLocalCanvas(next);
-          options.onPixelsChange?.(next);
+          options.onPixelsPreviewChange?.(next);
         }
         break;
       }
@@ -572,7 +573,7 @@ export function createChrTileEditor(
           strokeCurrentPixels = next;
           strokeModified = true;
           renderLocalCanvas(next);
-          options.onPixelsChange?.(next);
+          options.onPixelsPreviewChange?.(next);
         }
         break;
       }
@@ -656,6 +657,7 @@ export function createChrTileEditor(
     ) {
       history.pushState(cloneTilePixels(strokeCurrentPixels));
       updateHistoryButtons();
+      options.onPixelsChange?.(strokeCurrentPixels);
     }
     strokeStartPixels = null;
 

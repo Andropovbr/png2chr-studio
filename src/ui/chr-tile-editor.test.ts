@@ -318,10 +318,11 @@ describe('ChrTileEditor component', () => {
     expect(onToggleGrid).toHaveBeenCalledWith(true);
   });
 
-  it('batches an entire Pencil drag stroke into a single atomic history step', () => {
+  it('batches an entire Pencil drag stroke into a single atomic history step and commits on pointerup', () => {
     const initialPixels = createEmptyTilePixels(0);
     const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
     const onPixelsChange = vi.fn();
+    const onPixelsPreviewChange = vi.fn();
     const onUndo = vi.fn();
     const onRedo = vi.fn();
 
@@ -331,6 +332,7 @@ describe('ChrTileEditor component', () => {
       activeTool: 'pencil',
       selectedColorIndex: 3,
       onPixelsChange,
+      onPixelsPreviewChange,
       onUndo,
       onRedo,
     });
@@ -362,14 +364,23 @@ describe('ChrTileEditor component', () => {
       pointerId: 1,
     });
 
-    // onPixelsChange called 3 times during the stroke for live feedback
-    expect(onPixelsChange).toHaveBeenCalledTimes(3);
+    // onPixelsPreviewChange called 3 times during the stroke for live preview
+    expect(onPixelsPreviewChange).toHaveBeenCalledTimes(3);
+    // Canonical onPixelsChange is NOT called during the stroke
+    expect(onPixelsChange).toHaveBeenCalledTimes(0);
 
     // End stroke
     canvas?.dispatchEvent({
       type: 'pointerup',
       pointerId: 1,
     });
+
+    // Canonical onPixelsChange called exactly once on pointerup commit
+    expect(onPixelsChange).toHaveBeenCalledTimes(1);
+    const committedPixels = getPixelCallArg(onPixelsChange, 0);
+    expect(committedPixels[1 * 8 + 1]).toBe(3);
+    expect(committedPixels[1 * 8 + 2]).toBe(3);
+    expect(committedPixels[1 * 8 + 3]).toBe(3);
 
     // History now has exactly 1 entry on undo stack
     expect(history.depth).toBe(1);
@@ -383,8 +394,8 @@ describe('ChrTileEditor component', () => {
     undoBtn?.click();
 
     expect(onUndo).toHaveBeenCalledTimes(1);
-    expect(onPixelsChange).toHaveBeenCalledTimes(4);
-    const restoredPixels = getPixelCallArg(onPixelsChange, 3);
+    expect(onPixelsChange).toHaveBeenCalledTimes(2);
+    const restoredPixels = getPixelCallArg(onPixelsChange, 1);
     for (let i = 0; i < 64; i += 1) {
       expect(restoredPixels[i]).toBe(0);
     }
@@ -398,21 +409,203 @@ describe('ChrTileEditor component', () => {
     redoBtn?.click();
 
     expect(onRedo).toHaveBeenCalledTimes(1);
-    expect(onPixelsChange).toHaveBeenCalledTimes(5);
-    const redonePixels = getPixelCallArg(onPixelsChange, 4);
+    expect(onPixelsChange).toHaveBeenCalledTimes(3);
+    const redonePixels = getPixelCallArg(onPixelsChange, 2);
     expect(redonePixels[1 * 8 + 1]).toBe(3);
     expect(redonePixels[1 * 8 + 2]).toBe(3);
     expect(redonePixels[1 * 8 + 3]).toBe(3);
   });
 
+  it('handles single click as a valid stroke that commits 1 history step and enables Undo', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      activeTool: 'pencil',
+      selectedColorIndex: 2,
+      onPixelsChange,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+    const canvas = element.querySelector('.chr-tile-editor-canvas');
+
+    // Click down at (4, 4)
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      button: 0,
+      clientX: 133,
+      clientY: 133,
+      pointerId: 1,
+    });
+    // Click up immediately (no pointermove)
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 1,
+    });
+
+    expect(history.depth).toBe(1);
+    expect(history.canUndo).toBe(true);
+    expect(onPixelsChange).toHaveBeenCalledTimes(1);
+    const committed = getPixelCallArg(onPixelsChange, 0);
+    expect(committed[4 * 8 + 4]).toBe(2);
+  });
+
+  it('batches an Eraser drag stroke into a single atomic history step and commits on pointerup', () => {
+    const initialPixels = createEmptyTilePixels(3);
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      activeTool: 'eraser',
+      onPixelsChange,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+    const canvas = element.querySelector('.chr-tile-editor-canvas');
+
+    // Drag eraser across 3 pixels
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      button: 0,
+      clientX: 37,
+      clientY: 37,
+      pointerId: 1,
+    });
+    canvas?.dispatchEvent({
+      type: 'pointermove',
+      clientX: 69,
+      clientY: 37,
+      pointerId: 1,
+    });
+    canvas?.dispatchEvent({
+      type: 'pointermove',
+      clientX: 101,
+      clientY: 37,
+      pointerId: 1,
+    });
+
+    // onPixelsChange is not called during the drag
+    expect(onPixelsChange).toHaveBeenCalledTimes(0);
+
+    // End stroke
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 1,
+    });
+
+    expect(onPixelsChange).toHaveBeenCalledTimes(1);
+    expect(history.depth).toBe(1);
+    expect(history.canUndo).toBe(true);
+
+    const committed = getPixelCallArg(onPixelsChange, 0);
+    expect(committed[1 * 8 + 1]).toBe(0);
+    expect(committed[1 * 8 + 2]).toBe(0);
+    expect(committed[1 * 8 + 3]).toBe(0);
+    expect(committed[0]).toBe(3);
+  });
+
+  it('commits a 10-pixel stroke in exactly 1 onPixelsChange call', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      activeTool: 'pencil',
+      selectedColorIndex: 1,
+      onPixelsChange,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+    const canvas = element.querySelector('.chr-tile-editor-canvas');
+
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      button: 0,
+      clientX: 5,
+      clientY: 5,
+      pointerId: 1,
+    });
+
+    // Move through 9 more points
+    for (let i = 1; i < 10; i += 1) {
+      canvas?.dispatchEvent({
+        type: 'pointermove',
+        clientX: 5 + i * 20,
+        clientY: 5,
+        pointerId: 1,
+      });
+    }
+
+    expect(onPixelsChange).toHaveBeenCalledTimes(0);
+
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 1,
+    });
+
+    expect(onPixelsChange).toHaveBeenCalledTimes(1);
+    expect(history.depth).toBe(1);
+  });
+
+  it('commits stroke state reached up to pointercancel as a single atomic action', () => {
+    const initialPixels = createEmptyTilePixels(0);
+    const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
+
+    const options = createTestOptions({
+      pixels: initialPixels,
+      history,
+      activeTool: 'pencil',
+      selectedColorIndex: 3,
+      onPixelsChange,
+    });
+    const element = createChrTileEditor(options) as unknown as MockElement;
+    const canvas = element.querySelector('.chr-tile-editor-canvas');
+
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      button: 0,
+      clientX: 37,
+      clientY: 37,
+      pointerId: 1,
+    });
+    canvas?.dispatchEvent({
+      type: 'pointermove',
+      clientX: 69,
+      clientY: 37,
+      pointerId: 1,
+    });
+
+    expect(onPixelsChange).toHaveBeenCalledTimes(0);
+
+    // Cancel stroke
+    canvas?.dispatchEvent({
+      type: 'pointercancel',
+      pointerId: 1,
+    });
+
+    expect(onPixelsChange).toHaveBeenCalledTimes(1);
+    expect(history.depth).toBe(1);
+    expect(history.canUndo).toBe(true);
+    const committed = getPixelCallArg(onPixelsChange, 0);
+    expect(committed[1 * 8 + 1]).toBe(3);
+    expect(committed[1 * 8 + 2]).toBe(3);
+  });
+
   it('does not create history entry if stroke does not change any pixel', () => {
     const initialPixels = createEmptyTilePixels(0);
     const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+    const onPixelsChange = vi.fn();
 
     const options = createTestOptions({
       pixels: initialPixels,
       history,
       activeTool: 'eraser', // Drawing 0 on already 0 tile
+      onPixelsChange,
     });
     const element = createChrTileEditor(options) as unknown as MockElement;
     const canvas = element.querySelector('.chr-tile-editor-canvas');
@@ -432,6 +625,7 @@ describe('ChrTileEditor component', () => {
 
     expect(history.depth).toBe(0);
     expect(history.canUndo).toBe(false);
+    expect(onPixelsChange).toHaveBeenCalledTimes(0);
   });
 
   it('records flood fill as a single atomic undoable action', () => {
