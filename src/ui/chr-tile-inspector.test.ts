@@ -104,6 +104,29 @@ class MockElement {
   querySelectorAll(selector: string): MockElement[] {
     const results: MockElement[] = [];
     const match = (el: MockElement): boolean => {
+      if (selector.includes('[')) {
+        const attrMatch = /\[([^=\]]+)(?:=['"]?([^'"\]]+)['"]?)?\]/.exec(
+          selector,
+        );
+        if (attrMatch) {
+          const attr = attrMatch[1]?.trim();
+          const val = attrMatch[2]?.trim();
+          if (attr) {
+            const hasAttr = el.attributes.has(attr);
+            if (!hasAttr) return false;
+            if (val !== undefined) {
+              if (el.attributes.get(attr) !== val) return false;
+            }
+          }
+        }
+        const baseSelector = selector.split('[')[0]?.trim();
+        if (!baseSelector) return true;
+        if (baseSelector.startsWith('.')) {
+          const classes = baseSelector.split('.').filter(Boolean);
+          return classes.every((cls) => el.classList.contains(cls));
+        }
+        return el.tagName.toLowerCase() === baseSelector.toLowerCase();
+      }
       if (selector.startsWith('.')) {
         const classes = selector.split('.').filter(Boolean);
         return classes.every((cls) => el.classList.contains(cls));
@@ -564,6 +587,31 @@ describe('ChrTileInspector component and utilities', () => {
         'Occupied · no known project references',
       );
       expect(badge?.classList.contains('is-unreferenced-occupied')).toBe(true);
+    });
+
+    it('propagates onTilePixelsChange when editing actions occur in the embedded editor', () => {
+      const onTilePixelsChange = vi.fn();
+      const finalChr = new Uint8Array(8192);
+      finalChr[5 * 16] = 0x55;
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: finalChr,
+        onTilePixelsChange,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const rotateBtn = mockEl.querySelector(
+        '.chr-editor-action-btn[data-action="rotate-cw"]',
+      );
+      expect(rotateBtn).not.toBeNull();
+      rotateBtn?.click();
+
+      expect(onTilePixelsChange).toHaveBeenCalledTimes(1);
+      expect(onTilePixelsChange).toHaveBeenCalledWith(
+        5,
+        expect.any(Uint8Array),
+      );
     });
   });
 });

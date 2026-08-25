@@ -12,6 +12,7 @@ import {
   cloneTilePixels,
   createTileHistory,
   decodeChrTileToPixels,
+  type TileHistory,
 } from '../core/chr-tile-editor';
 import { createChrTileEditor, type ChrDrawingTool } from './chr-tile-editor';
 import type { Tile } from '../core/types';
@@ -54,6 +55,11 @@ export interface ChrTileInspectorOptions {
   readonly heatmapEnabled?: boolean;
   readonly onNavigateToReference?: (reference: ChrTileReference) => void;
   readonly onDeselect?: () => void;
+  readonly onTilePixelsChange?: (
+    physicalIndex: number,
+    newPixels: Uint8Array,
+  ) => void;
+  readonly history?: TileHistory<Uint8Array>;
 }
 
 export function resolveTileSlotDiagnosis(
@@ -281,8 +287,9 @@ export function createChrTileInspector(
       }
     });
 
-    // Interactive 8×8 CHR Tile Pixel Editor (Isolated local demo host for visual validation)
-    const startByte = options.selectedTileIndex * 16;
+    // Interactive 8×8 CHR Tile Pixel Editor
+    const selectedIdx = options.selectedTileIndex;
+    const startByte = selectedIdx * 16;
     const tileBytes =
       options.finalChrBytes.length >= startByte + 16
         ? options.finalChrBytes.subarray(startByte, startByte + 16)
@@ -292,11 +299,13 @@ export function createChrTileInspector(
     let localSelectedColor = 1;
     let localShowGrid = true;
     let localShiftWrap = false;
-    const localHistory = createTileHistory(
-      cloneTilePixels(localTilePixels),
-      50,
-      areTilePixelsEqual,
-    );
+    const editorHistory =
+      options.history ??
+      createTileHistory(
+        cloneTilePixels(localTilePixels),
+        50,
+        areTilePixelsEqual,
+      );
 
     const editorContainer = document.createElement('div');
     editorContainer.className = 'chr-tile-inspector-editor-container';
@@ -310,10 +319,10 @@ export function createChrTileInspector(
         paletteColors: options.colors ?? NEUTRAL_NES_GRAYSCALE,
         showGrid: localShowGrid,
         shiftWrap: localShiftWrap,
-        history: localHistory,
+        history: editorHistory,
         onPixelsChange: (nextPixels) => {
           localTilePixels = nextPixels;
-          renderLocalEditor();
+          options.onTilePixelsChange?.(selectedIdx, nextPixels);
         },
         onSelectColorIndex: (colorIdx) => {
           localSelectedColor = colorIdx;

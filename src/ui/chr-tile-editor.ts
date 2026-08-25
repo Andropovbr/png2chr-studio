@@ -50,6 +50,7 @@ export interface ChrTileEditorOptions {
   readonly shiftWrap?: boolean;
   readonly history?: TileHistory<Uint8Array>;
   readonly onPixelsChange?: (pixels: Uint8Array) => void;
+  readonly onPixelsPreviewChange?: (pixels: Uint8Array) => void;
   readonly onSelectColorIndex?: (colorIndex: number) => void;
   readonly onSelectTool?: (tool: ChrDrawingTool) => void;
   readonly onToggleGrid?: (showGrid: boolean) => void;
@@ -116,6 +117,38 @@ export function createChrTileEditor(
   const history: TileHistory<Uint8Array> =
     options.history ??
     createTileHistory(cloneTilePixels(options.pixels), 50, areTilePixelsEqual);
+
+  const canvas = document.createElement('canvas');
+  canvas.className = `chr-tile-editor-canvas${showGrid ? ' has-grid' : ''}`;
+  canvas.width = TILE_SIZE;
+  canvas.height = TILE_SIZE;
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', t('chrEditorCanvasAriaLabel'));
+
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  let currentPixels: Uint8Array = cloneTilePixels(options.pixels);
+
+  const renderLocalCanvas = (pixels: Uint8Array): void => {
+    currentPixels = pixels;
+    if (!ctx) return;
+    const imgData = ctx.createImageData(TILE_SIZE, TILE_SIZE);
+    for (let i = 0; i < PIXELS_PER_TILE; i += 1) {
+      const cIdx = pixels[i] ?? 0;
+      const rgb = paletteColors[cIdx] ?? { red: 0, green: 0, blue: 0 };
+      const offset = i * 4;
+      imgData.data[offset] = rgb.red;
+      imgData.data[offset + 1] = rgb.green;
+      imgData.data[offset + 2] = rgb.blue;
+      imgData.data[offset + 3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  };
+
+  renderLocalCanvas(currentPixels);
 
   // --- 1. Primary Toolbar (Drawing & Palette) ---
   const toolbar = document.createElement('div');
@@ -226,9 +259,7 @@ export function createChrTileEditor(
   undoBtn.setAttribute('aria-label', t('chrEditorUndo'));
   undoBtn.textContent = '↶';
   undoBtn.disabled = !history.canUndo;
-  if (!history.canUndo) {
-    undoBtn.setAttribute('aria-disabled', 'true');
-  }
+  undoBtn.setAttribute('aria-disabled', history.canUndo ? 'false' : 'true');
 
   // Redo button
   const redoBtn = document.createElement('button');
@@ -240,9 +271,7 @@ export function createChrTileEditor(
   redoBtn.setAttribute('aria-label', t('chrEditorRedo'));
   redoBtn.textContent = '↷';
   redoBtn.disabled = !history.canRedo;
-  if (!history.canRedo) {
-    redoBtn.setAttribute('aria-disabled', 'true');
-  }
+  redoBtn.setAttribute('aria-disabled', history.canRedo ? 'false' : 'true');
 
   const updateHistoryButtons = (): void => {
     undoBtn.disabled = !history.canUndo;
@@ -255,6 +284,7 @@ export function createChrTileEditor(
     if (!history.canUndo) return;
     const prev = history.undo();
     if (prev) {
+      renderLocalCanvas(prev);
       updateHistoryButtons();
       options.onPixelsChange?.(cloneTilePixels(prev));
       options.onUndo?.();
@@ -265,6 +295,7 @@ export function createChrTileEditor(
     if (!history.canRedo) return;
     const next = history.redo();
     if (next) {
+      renderLocalCanvas(next);
       updateHistoryButtons();
       options.onPixelsChange?.(cloneTilePixels(next));
       options.onRedo?.();
@@ -272,8 +303,9 @@ export function createChrTileEditor(
   };
 
   const applyInstantAction = (nextPixels: Uint8Array): void => {
-    if (!areTilePixelsEqual(options.pixels, nextPixels)) {
+    if (!areTilePixelsEqual(currentPixels, nextPixels)) {
       history.pushState(cloneTilePixels(nextPixels));
+      renderLocalCanvas(nextPixels);
       updateHistoryButtons();
       options.onPixelsChange?.(nextPixels);
     }
@@ -480,33 +512,9 @@ export function createChrTileEditor(
   const canvasWrapper = document.createElement('div');
   canvasWrapper.className = `chr-tile-editor-canvas-wrapper${showGrid ? ' has-grid' : ''}`;
 
-  const canvas = document.createElement('canvas');
-  canvas.className = `chr-tile-editor-canvas${showGrid ? ' has-grid' : ''}`;
-  canvas.width = TILE_SIZE;
-  canvas.height = TILE_SIZE;
-  canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', t('chrEditorCanvasAriaLabel'));
-
   const gridOverlay = document.createElement('div');
   gridOverlay.className = `chr-tile-editor-grid-overlay${showGrid ? ' is-visible' : ''}`;
   gridOverlay.setAttribute('aria-hidden', 'true');
-
-  // Render 8x8 pixels onto canvas
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.imageSmoothingEnabled = false;
-    const imgData = ctx.createImageData(TILE_SIZE, TILE_SIZE);
-    for (let i = 0; i < PIXELS_PER_TILE; i += 1) {
-      const cIdx = options.pixels[i] ?? 0;
-      const rgb = paletteColors[cIdx] ?? { red: 0, green: 0, blue: 0 };
-      const offset = i * 4;
-      imgData.data[offset] = rgb.red;
-      imgData.data[offset + 1] = rgb.green;
-      imgData.data[offset + 2] = rgb.blue;
-      imgData.data[offset + 3] = 255;
-    }
-    ctx.putImageData(imgData, 0, 0);
-  }
 
   canvasWrapper.append(canvas, gridOverlay);
   canvasContainer.append(canvasWrapper);
@@ -526,7 +534,7 @@ export function createChrTileEditor(
   let isDragging = false;
   let lastPixel: { x: number; y: number } | null = null;
   let strokeStartPixels: Uint8Array | null = null;
-  let strokeCurrentPixels: Uint8Array = options.pixels;
+  let strokeCurrentPixels: Uint8Array = currentPixels;
   let strokeModified = false;
 
   const getCoordinates = (
@@ -554,7 +562,8 @@ export function createChrTileEditor(
         if (!areTilePixelsEqual(strokeCurrentPixels, next)) {
           strokeCurrentPixels = next;
           strokeModified = true;
-          options.onPixelsChange?.(next);
+          renderLocalCanvas(next);
+          options.onPixelsPreviewChange?.(next);
         }
         break;
       }
@@ -563,17 +572,18 @@ export function createChrTileEditor(
         if (!areTilePixelsEqual(strokeCurrentPixels, next)) {
           strokeCurrentPixels = next;
           strokeModified = true;
-          options.onPixelsChange?.(next);
+          renderLocalCanvas(next);
+          options.onPixelsPreviewChange?.(next);
         }
         break;
       }
       case 'eyedropper': {
-        const picked = options.pixels[py * TILE_SIZE + px] ?? 0;
+        const picked = currentPixels[py * TILE_SIZE + px] ?? 0;
         options.onSelectColorIndex?.(picked);
         break;
       }
       case 'fill': {
-        const next = floodFillTile(options.pixels, px, py, selectedColorIndex);
+        const next = floodFillTile(currentPixels, px, py, selectedColorIndex);
         applyInstantAction(next);
         break;
       }
@@ -599,8 +609,8 @@ export function createChrTileEditor(
 
     isDragging = true;
     lastPixel = { x: px, y: py };
-    strokeStartPixels = cloneTilePixels(options.pixels);
-    strokeCurrentPixels = options.pixels;
+    strokeStartPixels = cloneTilePixels(currentPixels);
+    strokeCurrentPixels = currentPixels;
     strokeModified = false;
 
     options.onStrokeStart?.();
@@ -647,6 +657,7 @@ export function createChrTileEditor(
     ) {
       history.pushState(cloneTilePixels(strokeCurrentPixels));
       updateHistoryButtons();
+      options.onPixelsChange?.(strokeCurrentPixels);
     }
     strokeStartPixels = null;
 
@@ -665,6 +676,12 @@ export function createChrTileEditor(
 
   // --- 6. Keyboard Shortcuts Handler ---
   const handleKeyDown = (e: KeyboardEvent): void => {
+    if (typeof container.isConnected === 'boolean' && !container.isConnected) {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('keydown', handleKeyDown);
+      }
+      return;
+    }
     if (isEditableElement(e.target)) {
       return;
     }
@@ -692,7 +709,7 @@ export function createChrTileEditor(
     // 3. Copy: Ctrl+C / Cmd+C
     if (isCtrlOrCmd && keyLower === 'c') {
       e.preventDefault();
-      const copied = copyTileToClipboard(options.pixels);
+      const copied = copyTileToClipboard(currentPixels);
       updatePasteButton();
       options.onCopy?.(copied);
       return;
@@ -746,12 +763,15 @@ export function createChrTileEditor(
     // 7. Clear Shortcut: Delete / Backspace
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
-      applyInstantAction(clearTile(options.pixels, 0));
+      applyInstantAction(clearTile(currentPixels, 0));
       return;
     }
   };
 
   container.addEventListener('keydown', handleKeyDown);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', handleKeyDown);
+  }
 
   return container;
 }
