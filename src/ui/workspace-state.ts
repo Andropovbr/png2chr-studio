@@ -1,4 +1,5 @@
 import type { DisplayError, PreviewTool } from './types';
+import type { ChrDrawingTool } from './chr-tile-editor';
 
 export type AnimationWorkspaceTab = 'frames' | 'pixels' | 'mapping' | 'scene';
 
@@ -30,6 +31,10 @@ export interface ChrWorkspaceState {
   readonly selectedFrameIndex?: number | null;
   readonly selectedEntity?: string | null;
   readonly heatmapEnabled?: boolean;
+  readonly editorTool: ChrDrawingTool;
+  readonly editorColorIndex: number;
+  readonly editorShowGrid: boolean;
+  readonly editorShiftWrap: boolean;
 }
 
 export interface WorkspaceState {
@@ -84,6 +89,10 @@ export function createWorkspaceState(
       selectedFrameIndex: 0,
       selectedEntity: null,
       heatmapEnabled: false,
+      editorTool: 'pencil',
+      editorColorIndex: 1,
+      editorShowGrid: true,
+      editorShiftWrap: false,
     },
   };
 }

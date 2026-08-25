@@ -2216,6 +2216,59 @@ describe('ChrWorkspace component', () => {
       );
     });
 
+    it('projects controlled CHR Editor UI state and reports state changes', () => {
+      const onEditorStateChange = vi.fn();
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+        editorState: {
+          activeTool: 'eraser',
+          selectedColorIndex: 3,
+          showGrid: false,
+          shiftWrap: true,
+        },
+        onEditorStateChange,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      expect(
+        mockWs
+          .querySelector('.chr-editor-tool-btn[data-tool="eraser"]')
+          ?.getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(
+        mockWs
+          .querySelector('.chr-editor-color-btn[data-color-index="3"]')
+          ?.getAttribute('aria-checked'),
+      ).toBe('true');
+      expect(
+        mockWs
+          .querySelector('.chr-editor-grid-btn')
+          ?.getAttribute('aria-pressed'),
+      ).toBe('false');
+      expect(
+        mockWs
+          .querySelector('.chr-editor-wrap-btn')
+          ?.getAttribute('aria-pressed'),
+      ).toBe('true');
+
+      mockWs.querySelector('.chr-editor-grid-btn')?.click();
+      expect(onEditorStateChange).toHaveBeenCalledWith({
+        activeTool: 'eraser',
+        selectedColorIndex: 3,
+        showGrid: true,
+        shiftWrap: true,
+      });
+    });
+
     it('preserves history instance across workspace re-renders and allows Undo/Redo to update project via onTilePixelsChange', () => {
       const onTilePixelsChange = vi.fn();
       const initialPixels = new Uint8Array(64);

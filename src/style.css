@@ -4621,6 +4621,12 @@ input:focus-visible + label {
   border-radius: 0.5rem;
 }
 
+.chr-tile-editor:focus-visible,
+.chr-tile-editor-canvas:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .chr-tile-editor-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -4852,6 +4858,7 @@ input:focus-visible + label {
 .chr-editor-action-btn[aria-disabled='true'] {
   opacity: 0.35;
   cursor: not-allowed;
+  filter: grayscale(1);
 }
 
 .chr-editor-wrap-btn.is-active {
@@ -4859,6 +4866,22 @@ input:focus-visible + label {
   border-color: var(--accent);
   color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+@media (forced-colors: active) {
+  .chr-editor-tool-btn.is-active,
+  .chr-editor-color-btn.is-active,
+  .chr-editor-grid-btn.is-active,
+  .chr-editor-wrap-btn.is-active {
+    outline: 2px solid ButtonText;
+    outline-offset: -3px;
+  }
+
+  .chr-editor-action-btn:disabled,
+  .chr-editor-action-btn[aria-disabled='true'] {
+    opacity: 1;
+    color: GrayText;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

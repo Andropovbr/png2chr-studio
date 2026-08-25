@@ -90,6 +90,72 @@ export function isEditableElement(target: EventTarget | null): boolean {
   return false;
 }
 
+function enableRovingTabindex(
+  buttons: HTMLButtonElement[],
+  initialIndex: number,
+  onNavigate?: (index: number) => void,
+): void {
+  if (buttons.length === 0) return;
+
+  let currentIndex = Math.max(0, Math.min(initialIndex, buttons.length - 1));
+  if (buttons[currentIndex]?.disabled) {
+    currentIndex = Math.max(
+      0,
+      buttons.findIndex((button) => !button.disabled),
+    );
+  }
+  buttons.forEach((button, index) => {
+    button.tabIndex = index === currentIndex ? 0 : -1;
+    button.addEventListener('keydown', (event) => {
+      const key = event.key;
+      let nextIndex: number | null = null;
+      if (key === 'ArrowRight' || key === 'ArrowDown') {
+        for (let offset = 1; offset <= buttons.length; offset += 1) {
+          const candidate = (index + offset) % buttons.length;
+          if (!buttons[candidate]?.disabled) {
+            nextIndex = candidate;
+            break;
+          }
+        }
+      } else if (key === 'ArrowLeft' || key === 'ArrowUp') {
+        for (let offset = 1; offset <= buttons.length; offset += 1) {
+          const candidate = (index - offset + buttons.length) % buttons.length;
+          if (!buttons[candidate]?.disabled) {
+            nextIndex = candidate;
+            break;
+          }
+        }
+      } else if (key === 'Home') {
+        nextIndex = buttons.findIndex((button) => !button.disabled);
+      } else if (key === 'End') {
+        for (
+          let candidate = buttons.length - 1;
+          candidate >= 0;
+          candidate -= 1
+        ) {
+          if (!buttons[candidate]?.disabled) {
+            nextIndex = candidate;
+            break;
+          }
+        }
+      }
+
+      if (nextIndex === null || nextIndex < 0) return;
+      event.preventDefault();
+      const previousTarget = buttons[currentIndex];
+      previousTarget?.setAttribute('tabindex', '-1');
+      if (previousTarget) previousTarget.tabIndex = -1;
+      currentIndex = nextIndex;
+      const target = buttons[currentIndex];
+      if (!target) return;
+      target.tabIndex = 0;
+      target.setAttribute('tabindex', '0');
+      target.focus();
+      onNavigate?.(currentIndex);
+    });
+  });
+}
+
 export function createChrTileEditor(
   options: ChrTileEditorOptions,
 ): HTMLElement {
@@ -122,8 +188,10 @@ export function createChrTileEditor(
   canvas.className = `chr-tile-editor-canvas${showGrid ? ' has-grid' : ''}`;
   canvas.width = TILE_SIZE;
   canvas.height = TILE_SIZE;
+  canvas.tabIndex = 0;
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', t('chrEditorCanvasAriaLabel'));
+  canvas.setAttribute('aria-describedby', 'chr-editor-keyboard-hint');
 
   const ctx = canvas.getContext('2d');
   if (ctx) {
@@ -167,6 +235,7 @@ export function createChrTileEditor(
     { id: 'fill', labelKey: 'chrEditorToolFill', icon: '🪣' },
   ];
 
+  const toolButtons: HTMLButtonElement[] = [];
   tools.forEach(({ id, labelKey, icon }) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -182,7 +251,15 @@ export function createChrTileEditor(
     });
 
     toolsGroup.append(btn);
+    toolButtons.push(btn);
   });
+  enableRovingTabindex(
+    toolButtons,
+    Math.max(
+      0,
+      tools.findIndex(({ id }) => id === activeTool),
+    ),
+  );
 
   // Palette Color Indices Group (0, 1, 2, 3)
   const paletteGroup = document.createElement('div');
@@ -190,6 +267,7 @@ export function createChrTileEditor(
   paletteGroup.setAttribute('role', 'radiogroup');
   paletteGroup.setAttribute('aria-label', t('chrEditorColorIndexSelector'));
 
+  const colorButtons: HTMLButtonElement[] = [];
   for (let colorIdx = 0; colorIdx < 4; colorIdx += 1) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -222,7 +300,11 @@ export function createChrTileEditor(
     });
 
     paletteGroup.append(btn);
+    colorButtons.push(btn);
   }
+  enableRovingTabindex(colorButtons, selectedColorIndex, (colorIdx) => {
+    options.onSelectColorIndex?.(colorIdx);
+  });
 
   // Grid toggle button
   const gridToggleBtn = document.createElement('button');
@@ -332,28 +414,29 @@ export function createChrTileEditor(
       id: 'flip-h',
       labelKey: 'chrEditorFlipH',
       icon: '⇋',
-      execute: () => flipTileHorizontal(options.pixels),
+      execute: () => flipTileHorizontal(currentPixels),
     },
     {
       id: 'flip-v',
       labelKey: 'chrEditorFlipV',
       icon: '⇅',
-      execute: () => flipTileVertical(options.pixels),
+      execute: () => flipTileVertical(currentPixels),
     },
     {
       id: 'rotate-cw',
       labelKey: 'chrEditorRotateCw',
       icon: '↷',
-      execute: () => rotateTile90(options.pixels, true),
+      execute: () => rotateTile90(currentPixels, true),
     },
     {
       id: 'rotate-ccw',
       labelKey: 'chrEditorRotateCcw',
       icon: '↶',
-      execute: () => rotateTile90(options.pixels, false),
+      execute: () => rotateTile90(currentPixels, false),
     },
   ];
 
+  const transformButtons: HTMLButtonElement[] = [];
   transformActions.forEach(({ id, labelKey, icon, execute }) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -369,7 +452,9 @@ export function createChrTileEditor(
     });
 
     transformGroup.append(btn);
+    transformButtons.push(btn);
   });
+  enableRovingTabindex(transformButtons, 0);
 
   // Shift Group (Up, Down, Left, Right, Wrap Toggle)
   const shiftGroup = document.createElement('div');
@@ -404,6 +489,7 @@ export function createChrTileEditor(
     },
   ];
 
+  const shiftButtons: HTMLButtonElement[] = [];
   shiftDirections.forEach(({ dir, id, labelKey, icon }) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -414,11 +500,12 @@ export function createChrTileEditor(
     btn.textContent = icon;
 
     btn.addEventListener('click', () => {
-      const next = shiftTile(options.pixels, dir, shiftWrap);
+      const next = shiftTile(currentPixels, dir, shiftWrap);
       applyInstantAction(next);
     });
 
     shiftGroup.append(btn);
+    shiftButtons.push(btn);
   });
 
   // Wrap toggle
@@ -437,6 +524,8 @@ export function createChrTileEditor(
     options.onToggleShiftWrap?.(shiftWrap);
   });
   shiftGroup.append(wrapBtn);
+  shiftButtons.push(wrapBtn);
+  enableRovingTabindex(shiftButtons, shiftWrap ? shiftButtons.length - 1 : 0);
 
   // Actions Group (Clear, Copy, Paste)
   const actionsGroup = document.createElement('div');
@@ -453,7 +542,7 @@ export function createChrTileEditor(
   clearBtn.setAttribute('aria-label', t('chrEditorClear'));
   clearBtn.textContent = '🗑️';
   clearBtn.addEventListener('click', () => {
-    const next = clearTile(options.pixels, 0);
+    const next = clearTile(currentPixels, 0);
     applyInstantAction(next);
   });
 
@@ -476,9 +565,7 @@ export function createChrTileEditor(
   pasteBtn.textContent = '📥';
   const hasClipboard = hasClipboardTile();
   pasteBtn.disabled = !hasClipboard;
-  if (!hasClipboard) {
-    pasteBtn.setAttribute('aria-disabled', 'true');
-  }
+  pasteBtn.setAttribute('aria-disabled', hasClipboard ? 'false' : 'true');
 
   const updatePasteButton = (): void => {
     const available = hasClipboardTile();
@@ -487,7 +574,7 @@ export function createChrTileEditor(
   };
 
   copyBtn.addEventListener('click', () => {
-    const copied = copyTileToClipboard(options.pixels);
+    const copied = copyTileToClipboard(currentPixels);
     updatePasteButton();
     options.onCopy?.(copied);
   });
@@ -501,6 +588,7 @@ export function createChrTileEditor(
   });
 
   actionsGroup.append(clearBtn, copyBtn, pasteBtn);
+  enableRovingTabindex([clearBtn, copyBtn, pasteBtn], 0);
 
   actionsToolbar.append(historyGroup, transformGroup, shiftGroup, actionsGroup);
   container.append(toolbar, actionsToolbar);
@@ -527,7 +615,12 @@ export function createChrTileEditor(
   coordsDisplay.className = 'chr-tile-editor-coords';
   coordsDisplay.textContent = '—';
 
-  statusBar.append(coordsDisplay);
+  const keyboardHint = document.createElement('span');
+  keyboardHint.id = 'chr-editor-keyboard-hint';
+  keyboardHint.className = 'visually-hidden';
+  keyboardHint.textContent = t('chrEditorCanvasKeyboardHint');
+
+  statusBar.append(coordsDisplay, keyboardHint);
   container.append(canvasContainer, statusBar);
 
   // --- 5. Pointer Interaction (Batching Strokes into Atomic History Steps) ---
@@ -598,6 +691,8 @@ export function createChrTileEditor(
     if (px < 0 || px >= TILE_SIZE || py < 0 || py >= TILE_SIZE) {
       return;
     }
+
+    canvas.focus();
 
     try {
       if (typeof canvas.setPointerCapture === 'function') {
@@ -676,12 +771,6 @@ export function createChrTileEditor(
 
   // --- 6. Keyboard Shortcuts Handler ---
   const handleKeyDown = (e: KeyboardEvent): void => {
-    if (typeof container.isConnected === 'boolean' && !container.isConnected) {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('keydown', handleKeyDown);
-      }
-      return;
-    }
     if (isEditableElement(e.target)) {
       return;
     }
@@ -769,9 +858,6 @@ export function createChrTileEditor(
   };
 
   container.addEventListener('keydown', handleKeyDown);
-  if (typeof window !== 'undefined') {
-    window.addEventListener('keydown', handleKeyDown);
-  }
 
   return container;
 }

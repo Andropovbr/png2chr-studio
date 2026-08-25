@@ -106,6 +106,7 @@ import { createTilesetWorkspace } from './ui/tileset-workspace';
 import { createPlayfieldWorkspace } from './ui/playfield-workspace';
 import { createPaletteWorkspace } from './ui/palette-workspace';
 import { createChrWorkspace } from './ui/chr-workspace';
+import { composeChrWithAllocatedTiles } from './core/chr-pattern-table';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
 import {
   applyDerivedStatusUpdate,
@@ -514,6 +515,7 @@ function handleNewProject(): void {
   quantizationPreviews = [];
   quantizationPreviewsLoading = false;
   quantizationPreviewCache.clear();
+  resetAllTileHistories();
   const defaultPalettes = createDefaultPaletteDefinitions();
   project = {
     fileName: null,
@@ -1714,7 +1716,7 @@ function getActiveTileHistory(
   if (physicalIndex === null || physicalIndex < 0 || physicalIndex >= 512) {
     return undefined;
   }
-  const historyKey = `${projectName}:${project.mode}:${String(physicalIndex)}`;
+  const historyKey = `${project.mode}:${String(physicalIndex)}`;
   let history = chrTileHistoryMap.get(historyKey);
   if (!history) {
     history = createTileHistory(
@@ -1725,6 +1727,40 @@ function getActiveTileHistory(
     chrTileHistoryMap.set(historyKey, history);
   }
   return history;
+}
+
+function captureChrEditorFocusSelector(): string | null {
+  const activeElement = document.activeElement as HTMLElement | null;
+  if (!activeElement?.closest('.chr-tile-editor')) return null;
+  const tool = activeElement.getAttribute('data-tool');
+  if (tool) return `[data-tool="${tool}"]`;
+  const colorIndex = activeElement.getAttribute('data-color-index');
+  if (colorIndex) return `[data-color-index="${colorIndex}"]`;
+  const action = activeElement.getAttribute('data-action');
+  if (action) return `[data-action="${action}"]`;
+  if (activeElement.classList.contains('chr-editor-grid-btn')) {
+    return '.chr-editor-grid-btn';
+  }
+  if (activeElement.classList.contains('chr-tile-editor-canvas')) {
+    return '.chr-tile-editor-canvas';
+  }
+  return '.chr-tile-editor';
+}
+
+function restoreChrEditorFocus(selector: string | null): void {
+  if (!selector) return;
+  queueMicrotask(() => {
+    const editor = document.querySelector<HTMLElement>('.chr-tile-editor');
+    const target =
+      selector === '.chr-tile-editor'
+        ? editor
+        : editor?.querySelector<HTMLElement>(selector);
+    if (target instanceof HTMLButtonElement && target.disabled) {
+      editor?.focus();
+      return;
+    }
+    target?.focus();
+  });
 }
 
 function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
@@ -1773,10 +1809,7 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
     }
   }
 
-  const destPt =
-    project.mode === 'animation'
-      ? project.animation.destinationPatternTable
-      : 0;
+  const destPt = project.animation.destinationPatternTable;
 
   const target = resolveTileEditOrigin({
     physicalIndex,
@@ -1788,14 +1821,10 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
       workspace.animation.selectedAnimationId ??
       null,
     baseChr:
-      project.mode === 'animation' &&
       project.animation.destinationChr.length > 0
         ? project.animation.destinationChr
         : null,
-    baseChrName:
-      project.mode === 'animation'
-        ? project.animation.destinationChrName
-        : null,
+    baseChrName: project.animation.destinationChrName,
     destinationPatternTable: destPt,
     tiles: project.tiles,
     playfieldNametable,
@@ -1814,14 +1843,10 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
     mode: project.mode,
     animations: project.animation.animations,
     baseChr:
-      project.mode === 'animation' &&
       project.animation.destinationChr.length > 0
         ? project.animation.destinationChr
         : null,
-    baseChrName:
-      project.mode === 'animation'
-        ? project.animation.destinationChrName
-        : null,
+    baseChrName: project.animation.destinationChrName,
     destinationPatternTable: destPt,
     indexedImage: project.indexedImage,
     pixelOverrides: project.pixelOverrides,
@@ -2998,6 +3023,12 @@ function renderPaletteWorkspace(): void {
 
 function renderChrWorkspace(): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
+  const manualChr =
+    project.animation.destinationChr.length > 0
+      ? project.animation.destinationChr
+      : null;
+  const manualChrName = project.animation.destinationChrName;
+  const destinationPatternTable = project.animation.destinationPatternTable;
 
   let playfieldNametable: Uint8Array | null = null;
   if (project.mode === 'playfield' && project.indexedImage !== null) {
@@ -3032,17 +3063,22 @@ function renderChrWorkspace(): void {
   }
 
   const selectedPhysicalTile = workspace.chr.selectedTileIndex;
+  const projectedTiles = project.flipDeduplicationEnabled
+    ? deduplicateTilesConsideringFlips(project.tiles)
+    : project.deduplicationEnabled
+      ? deduplicateTiles(project.tiles)
+      : project.tiles;
   const currentFinalChr =
     animModel?.finalChr ??
-    (project.tiles.length > 0
-      ? padChrRom(
-          encodeChr(
-            project.deduplicationEnabled
-              ? deduplicateTiles(project.tiles)
-              : project.tiles,
-          ),
+    (manualChr
+      ? composeChrWithAllocatedTiles(
+          manualChr,
+          destinationPatternTable,
+          projectedTiles,
         )
-      : new Uint8Array(8192));
+      : project.tiles.length > 0
+        ? padChrRom(encodeChr(projectedTiles))
+        : new Uint8Array(8192));
 
   const tileHistory =
     selectedPhysicalTile !== null &&
@@ -3058,21 +3094,11 @@ function renderChrWorkspace(): void {
     mode: project.mode,
     animationModel: animModel,
     playfieldNametable,
-    baseChr:
-      project.mode === 'animation' &&
-      project.animation.destinationChr.length > 0
-        ? project.animation.destinationChr
-        : null,
-    baseChrName:
-      project.mode === 'animation'
-        ? project.animation.destinationChrName
-        : null,
+    baseChr: manualChr,
+    baseChrName: manualChrName,
     patternTable:
       project.mode === 'animation' ? project.animation.patternTable : 0,
-    destinationPatternTable:
-      project.mode === 'animation'
-        ? project.animation.destinationPatternTable
-        : 0,
+    destinationPatternTable,
     tiles: project.tiles,
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
@@ -3190,8 +3216,31 @@ function renderChrWorkspace(): void {
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,
     history: tileHistory,
+    editorState: {
+      activeTool: workspace.chr.editorTool,
+      selectedColorIndex: workspace.chr.editorColorIndex,
+      showGrid: workspace.chr.editorShowGrid,
+      shiftWrap: workspace.chr.editorShiftWrap,
+    },
+    onEditorStateChange: (editorState) => {
+      const focusSelector = captureChrEditorFocusSelector();
+      updateWorkspace({
+        ...workspace,
+        chr: {
+          ...workspace.chr,
+          editorTool: editorState.activeTool,
+          editorColorIndex: editorState.selectedColorIndex,
+          editorShowGrid: editorState.showGrid,
+          editorShiftWrap: editorState.shiftWrap,
+        },
+      });
+      render();
+      restoreChrEditorFocus(focusSelector);
+    },
     onTilePixelsChange: (physicalIndex, newPixels) => {
+      const focusSelector = captureChrEditorFocusSelector();
       handleChrTileEdit(physicalIndex, newPixels);
+      restoreChrEditorFocus(focusSelector);
     },
   });
 
@@ -3241,14 +3290,24 @@ function renderDeliveryWorkspace(): void {
   let attributeTable: Uint8Array | null = null;
   let collisionMap: Uint8Array | null = null;
 
-  if (project.mode !== 'animation' && tiles.length > 0) {
+  if (
+    project.mode !== 'animation' &&
+    (tiles.length > 0 || project.animation.destinationChr.length > 0)
+  ) {
     const tilesToEncode =
       project.mode === 'playfield' ||
       project.deduplicationEnabled ||
       project.flipDeduplicationEnabled
         ? activeDeduplicatedTiles
         : tiles;
-    chr = padChrRom(encodeChr(tilesToEncode));
+    chr =
+      project.animation.destinationChr.length > 0
+        ? composeChrWithAllocatedTiles(
+            project.animation.destinationChr,
+            project.animation.destinationPatternTable,
+            tilesToEncode,
+          )
+        : padChrRom(encodeChr(tilesToEncode));
 
     if (project.mode === 'playfield' && project.indexedImage !== null) {
       const regionSize = PLAYFIELD_PALETTE_REGION_SIZE;
