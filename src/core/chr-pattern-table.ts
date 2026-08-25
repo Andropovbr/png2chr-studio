@@ -260,6 +260,102 @@ export function isLocalTileInRegion(
   );
 }
 
+/**
+ * Returns all CHR regions (regular or reservation) that cover a given physical CHR tile index (0..511).
+ */
+export function findChrRegionsForPhysicalTile(
+  physicalIndex: number,
+  regions: readonly ChrRegion[] = [],
+): readonly ChrRegion[] {
+  return regions.filter((region) =>
+    isPhysicalTileInRegion(physicalIndex, region),
+  );
+}
+
+/**
+ * Returns all CHR regions that cover a given local pattern table tile index ($00..$FF).
+ */
+export function findChrRegionsForLocalTile(
+  patternTable: SpritePatternTable,
+  localIndex: number,
+  regions: readonly ChrRegion[] = [],
+): readonly ChrRegion[] {
+  return regions.filter((region) =>
+    isLocalTileInRegion(patternTable, localIndex, region),
+  );
+}
+
+/**
+ * Validates and sanitizes a user-supplied region color string to prevent CSS injection.
+ * Accepts hex codes (#fff, #123456, #12345678) or safe rgb/hsl functions.
+ */
+export function sanitizeRegionColor(color?: string | null): string | undefined {
+  if (!color || typeof color !== 'string') return undefined;
+  const trimmed = color.trim();
+  if (/^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (
+    /^rgba?\(\s*([0-9]{1,3}%?\s*,\s*){2}[0-9]{1,3}%?\s*(,\s*(0(\.\d+)?|1(\.0+)?|\d+%\s*))?\)$/i.test(
+      trimmed,
+    )
+  ) {
+    return trimmed;
+  }
+  if (
+    /^hsla?\(\s*\d+(\.\d+)?(deg)?\s*,\s*\d+%\s*,\s*\d+%\s*(,\s*(0(\.\d+)?|1(\.0+)?|\d+%\s*))?\)$/i.test(
+      trimmed,
+    )
+  ) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+export interface ChrSlotRegionMembership {
+  readonly physicalIndex: number;
+  readonly localIndex: number;
+  readonly patternTable: SpritePatternTable;
+  readonly regions: readonly ChrRegion[];
+  readonly reservations: readonly ChrRegion[];
+  readonly allRegions: readonly ChrRegion[];
+  readonly inRegion: boolean;
+  readonly inReservation: boolean;
+  readonly primaryColor?: string;
+}
+
+/**
+ * Pre-computes region and reservation memberships across all 512 physical CHR slots.
+ */
+export function buildChrSlotRegionIndex(
+  regions: readonly ChrRegion[] = [],
+): readonly ChrSlotRegionMembership[] {
+  const result: ChrSlotRegionMembership[] = [];
+  for (let i = 0; i < NES_CHR_ROM_TILE_COUNT; i += 1) {
+    const pt = patternTableForPhysicalTile(i);
+    const local = i % NES_PATTERN_TABLE_TILE_COUNT;
+    const covering = regions.filter((r) => isPhysicalTileInRegion(i, r));
+    const regularRegions = covering.filter((r) => r.kind === 'region');
+    const reservations = covering.filter((r) => r.kind === 'reservation');
+    const colorWithRegion =
+      regularRegions.find((r) => r.color) ?? reservations.find((r) => r.color);
+    const primaryColor = sanitizeRegionColor(colorWithRegion?.color);
+
+    result.push({
+      physicalIndex: i,
+      localIndex: local,
+      patternTable: pt,
+      regions: regularRegions,
+      reservations,
+      allRegions: covering,
+      inRegion: regularRegions.length > 0,
+      inReservation: reservations.length > 0,
+      ...(primaryColor ? { primaryColor } : {}),
+    });
+  }
+  return result;
+}
+
 export function doChrRegionsOverlap(a: ChrRegion, b: ChrRegion): boolean {
   if (a.patternTable !== b.patternTable) {
     return false;

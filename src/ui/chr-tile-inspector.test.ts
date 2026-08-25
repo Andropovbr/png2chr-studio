@@ -613,5 +613,186 @@ describe('ChrTileInspector component and utilities', () => {
         expect.any(Uint8Array),
       );
     });
+
+    it('renders Region and Reservation as None when no regions cover the tile', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        chrRegions: [],
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const regionMetric = mockEl.querySelector('.chr-metric-region');
+      const regionDd = regionMetric?.querySelector('dd');
+      const resMetric = mockEl.querySelector('.chr-metric-reservation');
+      const resDd = resMetric?.querySelector('dd');
+      expect(regionDd?.textContent).toBe('None');
+      expect(resDd?.textContent).toBe('None');
+    });
+
+    it('renders single Region badge with name, range, and color swatch', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5, // PT0 tile $05
+        finalChrBytes: new Uint8Array(8192),
+        chrRegions: [
+          {
+            id: 'reg-player',
+            name: 'Player',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 15,
+            kind: 'region',
+            color: '#38bdf8',
+          },
+        ],
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const badge = mockEl.querySelector('.chr-region-badge');
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toContain('Player ($00-$0F)');
+      const swatch = mockEl.querySelector('.chr-region-color-swatch');
+      expect(swatch).not.toBeNull();
+      expect(swatch?.style.backgroundColor).toBe('#38bdf8');
+    });
+
+    it('renders multiple Region badges when overlapping regions cover the selected tile', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 0x10, // PT0 tile $10
+        finalChrBytes: new Uint8Array(8192),
+        chrRegions: [
+          {
+            id: 'reg-1',
+            name: 'Player',
+            patternTable: 0,
+            startTile: 0x00,
+            endTile: 0x1f,
+            kind: 'region',
+          },
+          {
+            id: 'reg-2',
+            name: 'Shared FX',
+            patternTable: 0,
+            startTile: 0x10,
+            endTile: 0x2f,
+            kind: 'region',
+          },
+        ],
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const badges = mockEl.querySelectorAll('.chr-region-badge');
+      expect(badges.length).toBe(2);
+      expect(badges[0]?.textContent).toContain('Player ($00-$1F)');
+      expect(badges[1]?.textContent).toContain('Shared FX ($10-$2F)');
+    });
+
+    it('renders Reservation badge when tile falls within a reservation', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 0x35, // PT0 tile $35
+        finalChrBytes: new Uint8Array(8192),
+        chrRegions: [
+          {
+            id: 'res-runtime',
+            name: 'Runtime Buffer',
+            patternTable: 0,
+            startTile: 0x30,
+            endTile: 0x3f,
+            kind: 'reservation',
+          },
+        ],
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const resBadge = mockEl.querySelector('.chr-reservation-badge');
+      expect(resBadge).not.toBeNull();
+      expect(resBadge?.textContent).toContain('Runtime Buffer ($30-$3F)');
+    });
+
+    it('renders both Region and Reservation badges when tile is in both', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 0x35,
+        finalChrBytes: new Uint8Array(8192),
+        chrRegions: [
+          {
+            id: 'reg-player',
+            name: 'Player',
+            patternTable: 0,
+            startTile: 0x00,
+            endTile: 0x3f,
+            kind: 'region',
+          },
+          {
+            id: 'res-runtime',
+            name: 'Runtime Buffer',
+            patternTable: 0,
+            startTile: 0x30,
+            endTile: 0x3f,
+            kind: 'reservation',
+          },
+        ],
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const regionBadge = mockEl.querySelector('.chr-region-badge');
+      const resBadge = mockEl.querySelector('.chr-reservation-badge');
+      expect(regionBadge?.textContent).toContain('Player ($00-$3F)');
+      expect(resBadge?.textContent).toContain('Runtime Buffer ($30-$3F)');
+    });
+
+    it('correctly resolves tile slot diagnosis with reservations and base CHR', () => {
+      const baseChr = new Uint8Array(4096);
+      baseChr[0x10 * 16] = 0xaa; // Base CHR at slot $10
+
+      const diagnosisBase = resolveTileSlotDiagnosis(
+        0x10,
+        new Uint8Array(8192),
+        'tileset',
+        null,
+        baseChr,
+        'main.chr',
+        0,
+        [],
+        true,
+        false,
+        [
+          {
+            id: 'res-1',
+            name: 'Res1',
+            patternTable: 0,
+            startTile: 0x00,
+            endTile: 0x20,
+            kind: 'reservation',
+          },
+        ],
+      );
+      // Occupied tile inside reservation remains 'base'
+      expect(diagnosisBase.state).toBe('base');
+
+      const diagnosisReserved = resolveTileSlotDiagnosis(
+        0x05,
+        new Uint8Array(8192),
+        'tileset',
+        null,
+        baseChr,
+        'main.chr',
+        0,
+        [],
+        true,
+        false,
+        [
+          {
+            id: 'res-1',
+            name: 'Res1',
+            patternTable: 0,
+            startTile: 0x00,
+            endTile: 0x20,
+            kind: 'reservation',
+          },
+        ],
+      );
+      // Empty tile inside reservation becomes 'reserved'
+      expect(diagnosisReserved.state).toBe('reserved');
+    });
   });
 });

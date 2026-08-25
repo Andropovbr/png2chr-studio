@@ -4,6 +4,7 @@ import type {
 } from '../core/animation-model';
 import {
   analyzeBaseChrOccupancy,
+  buildChrSlotRegionIndex,
   composeChrWithAllocatedTiles,
   classifyChrSlots,
   collectChrHighlightTileIndices,
@@ -18,7 +19,7 @@ import {
   type ChrHighlightScope,
   type ChrRegion,
   type ChrSlotClassification,
-  type ChrSlotOccupancy,
+  type ChrSlotRegionMembership,
   type ChrTileUsageDiagnostic,
   type ChrUsageHeatmapSummary,
   type SpritePatternTable,
@@ -494,6 +495,7 @@ function createPatternTableView(
   usageDiagnostics: readonly ChrTileUsageDiagnostic[],
   heatmapEnabled: boolean,
   onSelectTile?: (tileIndex: number | null) => void,
+  regionIndex?: readonly ChrSlotRegionMembership[],
 ): HTMLElement {
   const card = document.createElement('div');
   card.className = 'chr-pt-view-card';
@@ -634,11 +636,33 @@ function createPatternTableView(
       occupancyLabel = t('chrWorkspaceSlotOccupancyReserved');
     }
 
+    const regionMembership = regionIndex?.[physicalIndex];
+    const inRegion = regionMembership?.inRegion ?? false;
+    const inReservation = regionMembership?.inReservation ?? false;
+    const isRegionStart =
+      Boolean(
+        regionMembership?.regions.some((r) => r.startTile === localIndex),
+      ) ||
+      Boolean(
+        regionMembership?.reservations.some((r) => r.startTile === localIndex),
+      );
+    const isRegionEnd =
+      Boolean(
+        regionMembership?.regions.some((r) => r.endTile === localIndex),
+      ) ||
+      Boolean(
+        regionMembership?.reservations.some((r) => r.endTile === localIndex),
+      );
+
     const diag = usageDiagnostics[physicalIndex];
     const bucket = diag?.bucket ?? 'unused';
     const refCount = diag?.referenceCount ?? 0;
 
     let slotClass = `chr-tile-slot is-occupancy-${occupancy}`;
+    if (inRegion) slotClass += ' in-region';
+    if (inReservation) slotClass += ' in-reservation';
+    if (isRegionStart) slotClass += ' is-region-start';
+    if (isRegionEnd) slotClass += ' is-region-end';
     if (isHighlighted) slotClass += ' is-highlighted';
     if (isDimmed) slotClass += ' is-dimmed';
     if (isSlotSelected) slotClass += ' is-selected';
@@ -650,6 +674,26 @@ function createPatternTableView(
     slot.setAttribute('data-local-index', String(localIndex));
     slot.setAttribute('data-pattern-table', String(patternTable));
     slot.setAttribute('data-occupancy', occupancy);
+    slot.setAttribute('data-in-region', inRegion ? 'true' : 'false');
+    slot.setAttribute('data-in-reservation', inReservation ? 'true' : 'false');
+    if (regionMembership?.regions.length) {
+      slot.setAttribute(
+        'data-region-names',
+        regionMembership.regions.map((r) => r.name).join(', '),
+      );
+    }
+    if (regionMembership?.reservations.length) {
+      slot.setAttribute(
+        'data-reservation-names',
+        regionMembership.reservations.map((r) => r.name).join(', '),
+      );
+    }
+    if (regionMembership?.primaryColor) {
+      slot.style.setProperty(
+        '--slot-region-color',
+        regionMembership.primaryColor,
+      );
+    }
     slot.setAttribute('data-heatmap-bucket', bucket);
     slot.setAttribute('data-ref-count', String(refCount));
     slot.setAttribute('data-highlighted', isHighlighted ? 'true' : 'false');
@@ -659,6 +703,28 @@ function createPatternTableView(
     slot.setAttribute('aria-rowindex', String(row + 1));
     slot.setAttribute('aria-colindex', String(col + 1));
     slot.setAttribute('aria-selected', String(isSlotSelected));
+
+    let regionTooltipSnippet = '';
+    let reservationTooltipSnippet = '';
+    let regionAriaSnippet = '';
+    let reservationAriaSnippet = '';
+
+    if (regionMembership?.regions.length) {
+      const names = regionMembership.regions.map((r) => r.name).join(', ');
+      regionTooltipSnippet = t('chrWorkspaceTileTooltipRegionPart', {
+        name: names,
+      });
+      regionAriaSnippet = t('chrWorkspaceTileAriaRegionPart', { name: names });
+    }
+    if (regionMembership?.reservations.length) {
+      const names = regionMembership.reservations.map((r) => r.name).join(', ');
+      reservationTooltipSnippet = t('chrWorkspaceTileTooltipReservationPart', {
+        name: names,
+      });
+      reservationAriaSnippet = t('chrWorkspaceTileAriaReservationPart', {
+        name: names,
+      });
+    }
 
     const stateAndHighlight = isHighlighted
       ? `${occupancyLabel} · ${t('chrWorkspaceSlotHighlighted', { scope: highlightScopeLabel })}`
@@ -683,16 +749,16 @@ function createPatternTableView(
 
       slot.setAttribute(
         'aria-label',
-        t('chrWorkspaceTileHeatmapAriaLabel', {
+        `${t('chrWorkspaceTileHeatmapAriaLabel', {
           pt: patternTable,
           hex: hexLocal,
           id: physicalIndex,
           state: stateAndHighlight,
           refs: refCount,
           bucket: bucketText,
-        }),
+        })}${regionAriaSnippet}${reservationAriaSnippet}`,
       );
-      slot.title = t('chrWorkspaceTileHeatmapTooltip', {
+      slot.title = `${t('chrWorkspaceTileHeatmapTooltip', {
         pt: patternTable,
         hex: hexLocal,
         id: physicalIndex,
@@ -700,24 +766,24 @@ function createPatternTableView(
         refs: refCount,
         bucket: bucketText,
         addr: addrHex,
-      });
+      })}${regionTooltipSnippet}${reservationTooltipSnippet}`;
     } else {
       slot.setAttribute(
         'aria-label',
-        t('chrWorkspaceTileAriaLabel', {
+        `${t('chrWorkspaceTileAriaLabel', {
           pt: patternTable,
           hex: hexLocal,
           id: physicalIndex,
           state: stateAndHighlight,
-        }),
+        })}${regionAriaSnippet}${reservationAriaSnippet}`,
       );
-      slot.title = t('chrWorkspaceTileTooltip', {
+      slot.title = `${t('chrWorkspaceTileTooltip', {
         pt: patternTable,
         hex: hexLocal,
         id: physicalIndex,
         state: stateAndHighlight,
         addr: addrHex,
-      });
+      })}${regionTooltipSnippet}${reservationTooltipSnippet}`;
     }
 
     slot.addEventListener('click', () => {
@@ -1192,10 +1258,12 @@ function createViewerPanel(
   legend.setAttribute('role', 'group');
   legend.setAttribute('aria-label', t('chrWorkspaceLegendTitle'));
 
-  const legendItems: readonly { key: ChrSlotOccupancy; label: string }[] = [
+  const legendItems: readonly { key: string; label: string }[] = [
     { key: 'project', label: t('chrWorkspaceLegendProject') },
     { key: 'base', label: t('chrWorkspaceLegendBase') },
+    { key: 'reserved', label: t('chrWorkspaceLegendReserved') },
     { key: 'empty', label: t('chrWorkspaceLegendEmpty') },
+    { key: 'region', label: t('chrWorkspaceLegendRegion') },
   ];
 
   legendItems.forEach((item) => {
@@ -1295,6 +1363,7 @@ function createViewerPanel(
   ptContainer.className = 'chr-pattern-tables-container';
 
   const selectedTileIndex = options.selectedTileIndex ?? null;
+  const regionIndex = buildChrSlotRegionIndex(options.chrRegions ?? []);
 
   const pt0Card = createPatternTableView(
     0,
@@ -1310,6 +1379,7 @@ function createViewerPanel(
     usageDiagnostics,
     heatmapEnabled,
     options.onSelectTile,
+    regionIndex,
   );
   const pt1Card = createPatternTableView(
     1,
@@ -1325,6 +1395,7 @@ function createViewerPanel(
     usageDiagnostics,
     heatmapEnabled,
     options.onSelectTile,
+    regionIndex,
   );
 
   ptContainer.append(pt0Card, pt1Card);
@@ -1587,6 +1658,7 @@ export function createChrWorkspace(
     references: selectedReferences,
     diagnostic: selectedDiagnostic,
     heatmapEnabled,
+    chrRegions: options.chrRegions,
     history: options.history,
     editorState: options.editorState,
     onEditorStateChange: options.onEditorStateChange,
