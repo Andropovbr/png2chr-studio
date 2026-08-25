@@ -110,6 +110,7 @@ import {
   classifyChrSlots,
   composeChrWithAllocatedTiles,
 } from './core/chr-pattern-table';
+import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
 import {
   applyDerivedStatusUpdate,
@@ -3113,6 +3114,21 @@ function renderChrWorkspace(): void {
         )
       : undefined;
 
+  const chrAssetMappingIndex = buildChrAssetMappingIndex({
+    mode: project.mode,
+    animationModel: animModel,
+    animations: project.animation.animations,
+    playfieldNametable,
+    playfieldAssetId: 'asset-playfield',
+    tiles: project.tiles,
+    tilesetAssetId: 'asset-tileset',
+    baseChr: manualChr ?? undefined,
+    destinationPatternTable,
+    deduplicationEnabled: project.deduplicationEnabled,
+    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    chrRegions: project.chrRegions,
+  });
+
   const workspaceElement = createChrWorkspace({
     mode: project.mode,
     animationModel: animModel,
@@ -3126,6 +3142,15 @@ function renderChrWorkspace(): void {
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
     chrRegions: project.chrRegions,
+    chrAssetMappingIndex,
+    highlightedAssetId: workspace.chr.highlightedAssetId,
+    onHighlightAssetIdChange: (highlightedAssetId) => {
+      updateWorkspace({
+        ...workspace,
+        chr: { ...workspace.chr, highlightedAssetId },
+      });
+      render();
+    },
     zoom: workspace.chr.zoom,
     onZoomChange: (zoom) => {
       updateWorkspace({

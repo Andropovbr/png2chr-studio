@@ -18,6 +18,10 @@ import {
 import { createTileHistory, areTilePixelsEqual } from '../core/chr-tile-editor';
 import { applyWorkspaceUpdate } from './state-update';
 import { createWorkspaceState } from './workspace-state';
+import type {
+  ChrAssetMappingIndex,
+  PhysicalSlotAttribution,
+} from '../core/chr-asset-mapping';
 
 class MockElement {
   tagName: string;
@@ -2856,6 +2860,232 @@ describe('ChrWorkspace component', () => {
       );
       expect(slot00?.classList.contains('is-occupancy-reserved')).toBe(false);
       expect(slot00?.classList.contains('is-occupancy-empty')).toBe(true);
+    });
+  });
+
+  describe('Tile Ownership & Asset Mapping in CHR Workspace (Milestone 6)', () => {
+    function buildTestMappingIndex(
+      attributions: Partial<PhysicalSlotAttribution>[],
+    ): ChrAssetMappingIndex {
+      const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+        { length: 512 },
+        (_, idx) => ({
+          physicalIndex: idx,
+          patternTable: idx < 256 ? (0 as const) : (1 as const),
+          localIndex: idx % 256,
+          origin: undefined,
+          usages: [],
+          usageCount: 0,
+          isShared: false,
+        }),
+      );
+      const physicalIndicesByAsset = new Map<string, Set<number>>();
+      const usagesByLogicalKey = new Map();
+
+      for (const attr of attributions) {
+        if (attr.physicalIndex !== undefined) {
+          const existing = byPhysicalIndex[attr.physicalIndex];
+          if (existing) {
+            const fullAttr: PhysicalSlotAttribution = {
+              ...existing,
+              ...attr,
+              patternTable:
+                attr.physicalIndex < 256 ? (0 as const) : (1 as const),
+              localIndex: attr.physicalIndex % 256,
+            };
+            byPhysicalIndex[attr.physicalIndex] = fullAttr;
+          }
+          if (attr.origin?.primaryAssetId) {
+            const assetSet =
+              physicalIndicesByAsset.get(attr.origin.primaryAssetId) ??
+              new Set<number>();
+            assetSet.add(attr.physicalIndex);
+            physicalIndicesByAsset.set(attr.origin.primaryAssetId, assetSet);
+          }
+        }
+      }
+
+      return {
+        byPhysicalIndex,
+        physicalIndicesByAsset,
+        usagesByLogicalKey,
+      };
+    }
+
+    it('renders Asset Highlight dropdown in toolbar and invokes onHighlightAssetIdChange', () => {
+      const onHighlightAssetIdChange = vi.fn();
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 0,
+          origin: {
+            primaryAssetId: 'asset-hero',
+            primaryAssetName: 'Hero Sheet',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 1,
+          isShared: false,
+        },
+        {
+          physicalIndex: 1,
+          origin: {
+            primaryAssetId: 'asset-enemy',
+            primaryAssetName: 'Enemy Sheet',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 1,
+          isShared: false,
+        },
+      ]);
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrAssetMappingIndex: mockMappingIndex,
+        highlightedAssetId: null,
+        onHighlightAssetIdChange,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const assetSelect = mockWs.querySelector('.chr-highlight-asset-select');
+      expect(assetSelect).not.toBeNull();
+
+      const optionsList = assetSelect?.querySelectorAll('option') ?? [];
+      expect(optionsList.length).toBe(3); // None + Hero + Enemy
+      expect(optionsList[1]?.textContent).toContain('Hero Sheet (1)');
+      expect(optionsList[2]?.textContent).toContain('Enemy Sheet (1)');
+
+      if (assetSelect) {
+        assetSelect.value = 'asset-hero';
+      }
+      assetSelect?.eventListeners.get('change')?.forEach((fn) => {
+        fn();
+      });
+      expect(onHighlightAssetIdChange).toHaveBeenCalledWith('asset-hero');
+    });
+
+    it('highlights tiles associated with the asset across PT0/PT1 and dims other tiles', () => {
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 10,
+          origin: {
+            primaryAssetId: 'asset-hero',
+            primaryAssetName: 'Hero Sheet',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 1,
+          isShared: false,
+        },
+        {
+          physicalIndex: 260,
+          origin: {
+            primaryAssetId: 'asset-hero',
+            primaryAssetName: 'Hero Sheet',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 1,
+          isShared: false,
+        },
+      ]);
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrAssetMappingIndex: mockMappingIndex,
+        highlightedAssetId: 'asset-hero',
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const slot10 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="10"]',
+      );
+      const slot260 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="260"]',
+      );
+      const slot5 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="5"]',
+      );
+
+      expect(slot10?.classList.contains('is-highlighted')).toBe(true);
+      expect(slot10?.getAttribute('data-highlighted')).toBe('true');
+
+      expect(slot260?.classList.contains('is-highlighted')).toBe(true);
+      expect(slot260?.getAttribute('data-highlighted')).toBe('true');
+
+      expect(slot5?.classList.contains('is-highlighted')).toBe(false);
+      expect(slot5?.classList.contains('is-dimmed')).toBe(true);
+    });
+
+    it('triggers onNavigateToAnimation when Jump to Frame button in inspector is clicked', () => {
+      const onNavigateToAnimation = vi.fn();
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 4,
+          origin: {
+            primaryAssetId: 'asset-player',
+            primaryAssetName: 'Player',
+            creationKind: 'extracted',
+          },
+          usages: [
+            {
+              type: 'animation',
+              assetId: 'asset-player',
+              animationId: 'anim-attack',
+              animationName: 'attack',
+              frameIndex: 1,
+              spriteIndex: 0,
+              x: 0,
+              y: 0,
+              horizontalFlip: false,
+              verticalFlip: false,
+              physicalTileIndex: 4,
+            },
+          ],
+          usageCount: 1,
+          isShared: false,
+        },
+      ]);
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 4,
+        chrAssetMappingIndex: mockMappingIndex,
+        onNavigateToAnimation,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const jumpBtn = mockWs.querySelector('.chr-tile-ref-jump-btn');
+      expect(jumpBtn).not.toBeNull();
+
+      jumpBtn?.click();
+      expect(onNavigateToAnimation).toHaveBeenCalledWith('anim-attack', 1);
     });
   });
 });

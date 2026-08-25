@@ -11,6 +11,10 @@ import {
   renderEnlargedTileCanvas,
   resolveTileSlotDiagnosis,
 } from './chr-tile-inspector';
+import type {
+  ChrAssetMappingIndex,
+  PhysicalSlotAttribution,
+} from '../core/chr-asset-mapping';
 
 class MockElement {
   tagName: string;
@@ -793,6 +797,451 @@ describe('ChrTileInspector component and utilities', () => {
       );
       // Empty tile inside reservation becomes 'reserved'
       expect(diagnosisReserved.state).toBe('reserved');
+    });
+  });
+
+  describe('Tile Ownership & Asset Mapping Inspection (Milestone 6)', () => {
+    function buildTestMappingIndex(
+      attributions: Partial<PhysicalSlotAttribution>[],
+    ): ChrAssetMappingIndex {
+      const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+        { length: 512 },
+        (_, idx) => ({
+          physicalIndex: idx,
+          patternTable: idx < 256 ? (0 as const) : (1 as const),
+          localIndex: idx % 256,
+          origin: undefined,
+          usages: [],
+          usageCount: 0,
+          isShared: false,
+        }),
+      );
+      const physicalIndicesByAsset = new Map<string, Set<number>>();
+      const usagesByLogicalKey = new Map();
+
+      for (const attr of attributions) {
+        if (attr.physicalIndex !== undefined) {
+          const existing = byPhysicalIndex[attr.physicalIndex];
+          if (existing) {
+            const fullAttr: PhysicalSlotAttribution = {
+              ...existing,
+              ...attr,
+              patternTable:
+                attr.physicalIndex < 256 ? (0 as const) : (1 as const),
+              localIndex: attr.physicalIndex % 256,
+            };
+            byPhysicalIndex[attr.physicalIndex] = fullAttr;
+          }
+          if (attr.origin?.primaryAssetId) {
+            const assetSet =
+              physicalIndicesByAsset.get(attr.origin.primaryAssetId) ??
+              new Set<number>();
+            assetSet.add(attr.physicalIndex);
+            physicalIndicesByAsset.set(attr.origin.primaryAssetId, assetSet);
+          }
+        }
+      }
+
+      return {
+        byPhysicalIndex,
+        physicalIndicesByAsset,
+        usagesByLogicalKey,
+      };
+    }
+
+    it('renders structured Asset Origin & Usage section with extracted origin', () => {
+      const finalChr = new Uint8Array(8192);
+      finalChr[0] = 0x55;
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 0,
+          origin: {
+            primaryAssetId: 'asset-hero-sheet',
+            primaryAssetName: 'Hero Sprite Sheet',
+            logicalKey: 'asset-hero-sheet:0,0',
+            sourceCoordinates: {
+              tileX: 0,
+              tileY: 0,
+              pixelX: 0,
+              pixelY: 0,
+            },
+            creationKind: 'extracted',
+          },
+          usages: [
+            {
+              type: 'animation',
+              assetId: 'asset-hero-sheet',
+              entity: 'hero',
+              animationId: 'anim-idle',
+              animationName: 'idle',
+              frameIndex: 0,
+              spriteIndex: 0,
+              x: 0,
+              y: 0,
+              horizontalFlip: false,
+              verticalFlip: false,
+              physicalTileIndex: 0,
+              logicalKey: 'asset-hero-sheet:0,0',
+            },
+          ],
+          usageCount: 1,
+          isShared: false,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 0,
+        finalChrBytes: finalChr,
+        mode: 'animation',
+        mappingIndex: mockMappingIndex,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const ownershipSection = mockEl.querySelector(
+        '#chr-tile-ownership-section',
+      );
+      expect(ownershipSection).not.toBeNull();
+      expect(ownershipSection?.textContent).toContain('Asset Origin & Usage');
+      expect(ownershipSection?.textContent).toContain('Hero Sprite Sheet');
+      expect(ownershipSection?.textContent).toContain('asset-hero-sheet');
+      expect(ownershipSection?.textContent).toContain('(0, 0) · (px: 0, 0)');
+      expect(ownershipSection?.textContent).toContain('Extracted from asset');
+
+      const kindBadge = mockEl.querySelector('.chr-creation-kind-badge');
+      expect(kindBadge?.classList.contains('kind-extracted')).toBe(true);
+    });
+
+    it('renders shared badge distinguishing single asset and multiple assets sharing', () => {
+      const finalChr = new Uint8Array(8192);
+
+      const mockMappingIndexMulti = buildTestMappingIndex([
+        {
+          physicalIndex: 12,
+          origin: {
+            primaryAssetId: 'asset-hero',
+            primaryAssetName: 'Hero',
+            creationKind: 'extracted',
+          },
+          usages: [
+            {
+              type: 'animation',
+              assetId: 'asset-hero',
+              animationId: 'anim-walk',
+              animationName: 'walk',
+              frameIndex: 0,
+              spriteIndex: 0,
+              x: 0,
+              y: 0,
+              horizontalFlip: false,
+              verticalFlip: false,
+              physicalTileIndex: 12,
+            },
+            {
+              type: 'animation',
+              assetId: 'asset-enemy',
+              animationId: 'anim-patrol',
+              animationName: 'patrol',
+              frameIndex: 1,
+              spriteIndex: 0,
+              x: 8,
+              y: 0,
+              horizontalFlip: true,
+              verticalFlip: false,
+              physicalTileIndex: 12,
+            },
+          ],
+          usageCount: 2,
+          isShared: true,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 12,
+        finalChrBytes: finalChr,
+        mode: 'animation',
+        mappingIndex: mockMappingIndexMulti,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const sharedBadge = mockEl.querySelector('.chr-tile-shared-badge');
+      expect(sharedBadge).not.toBeNull();
+      expect(sharedBadge?.textContent).toContain(
+        'Shared (2 references across 2 assets)',
+      );
+    });
+
+    it('renders highlight asset action button and triggers callback', () => {
+      const finalChr = new Uint8Array(8192);
+      const onHighlightAssetId = vi.fn();
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 5,
+          origin: {
+            primaryAssetId: 'asset-soldier',
+            primaryAssetName: 'Soldier',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 0,
+          isShared: false,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: finalChr,
+        mappingIndex: mockMappingIndex,
+        highlightedAssetId: null,
+        onHighlightAssetId,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const highlightBtn = mockEl.querySelector('.chr-origin-highlight-btn');
+      expect(highlightBtn).not.toBeNull();
+      expect(highlightBtn?.textContent).toBe('Highlight asset tiles');
+
+      highlightBtn?.click();
+      expect(onHighlightAssetId).toHaveBeenCalledWith('asset-soldier');
+    });
+
+    it('renders clear highlight button when the asset is already highlighted', () => {
+      const finalChr = new Uint8Array(8192);
+      const onHighlightAssetId = vi.fn();
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 5,
+          origin: {
+            primaryAssetId: 'asset-soldier',
+            primaryAssetName: 'Soldier',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 0,
+          isShared: false,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: finalChr,
+        mappingIndex: mockMappingIndex,
+        highlightedAssetId: 'asset-soldier',
+        onHighlightAssetId,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const highlightBtn = mockEl.querySelector('.chr-origin-highlight-btn');
+      expect(highlightBtn).not.toBeNull();
+      expect(highlightBtn?.textContent).toBe('Clear asset highlight');
+      expect(highlightBtn?.classList.contains('is-active')).toBe(true);
+
+      highlightBtn?.click();
+      expect(onHighlightAssetId).toHaveBeenCalledWith(null);
+    });
+
+    it('renders structured Usages with Jump to Frame button invoking navigation callback', () => {
+      const finalChr = new Uint8Array(8192);
+      const onNavigateToAnimation = vi.fn();
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 8,
+          origin: {
+            primaryAssetId: 'asset-hero',
+            primaryAssetName: 'Hero',
+            creationKind: 'extracted',
+          },
+          usages: [
+            {
+              type: 'animation',
+              assetId: 'asset-hero',
+              entity: 'player',
+              animationId: 'anim-jump',
+              animationName: 'jump',
+              frameIndex: 2,
+              spriteIndex: 1,
+              x: 8,
+              y: 16,
+              horizontalFlip: true,
+              verticalFlip: false,
+              physicalTileIndex: 8,
+            },
+          ],
+          usageCount: 1,
+          isShared: false,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 8,
+        finalChrBytes: finalChr,
+        mappingIndex: mockMappingIndex,
+        onNavigateToAnimation,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const usageItem = mockEl.querySelector('.chr-tile-ref-item');
+      expect(usageItem).not.toBeNull();
+      expect(usageItem?.textContent).toContain(
+        'player · jump · Frame #2 · sprite (8, 16) [Flip H]',
+      );
+
+      const jumpBtn = mockEl.querySelector('.chr-tile-ref-jump-btn');
+      expect(jumpBtn).not.toBeNull();
+      jumpBtn?.click();
+
+      expect(onNavigateToAnimation).toHaveBeenCalledWith('anim-jump', 2);
+    });
+
+    it('renders structured Playfield and Tileset usages with jump callbacks', () => {
+      const finalChr = new Uint8Array(8192);
+      const onNavigateToPlayfield = vi.fn();
+      const onNavigateToTileset = vi.fn();
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 20,
+          origin: {
+            primaryAssetId: 'asset-world',
+            creationKind: 'extracted',
+          },
+          usages: [
+            {
+              type: 'playfield',
+              assetId: 'asset-world',
+              column: 4,
+              row: 6,
+              nametableIndex: 196,
+              localTileIndex: 20,
+              physicalTileIndex: 20,
+            },
+            {
+              type: 'tileset',
+              assetId: 'asset-world',
+              tileIndex: 20,
+              sourceCoordinates: { tileX: 2, tileY: 1 },
+              physicalTileIndex: 20,
+            },
+          ],
+          usageCount: 2,
+          isShared: true,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 20,
+        finalChrBytes: finalChr,
+        mappingIndex: mockMappingIndex,
+        onNavigateToPlayfield,
+        onNavigateToTileset,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const jumpButtons = mockEl.querySelectorAll('.chr-tile-ref-jump-btn');
+      expect(jumpButtons.length).toBe(2);
+
+      jumpButtons[0]?.click();
+      expect(onNavigateToPlayfield).toHaveBeenCalledWith(4, 6);
+
+      jumpButtons[1]?.click();
+      expect(onNavigateToTileset).toHaveBeenCalledWith(20);
+    });
+
+    it('renders empty slot message when slot is empty and unallocated', () => {
+      const finalChr = new Uint8Array(8192);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 50,
+        finalChrBytes: finalChr,
+        mappingIndex: buildTestMappingIndex([]),
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const emptyMsg = mockEl.querySelector('.chr-origin-empty-msg');
+      expect(emptyMsg).not.toBeNull();
+      expect(emptyMsg?.textContent).toBe(
+        'No project asset is associated with this slot.',
+      );
+    });
+
+    it('renders manual-materialized creation kind badge for manual CHR edit', () => {
+      const finalChr = new Uint8Array(8192);
+      finalChr[0x30 * 16] = 0x33;
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 0x30,
+          origin: {
+            primaryAssetId: 'asset-manual',
+            primaryAssetName: 'Manual Tile',
+            creationKind: 'manual-materialized',
+          },
+          usages: [],
+          usageCount: 0,
+          isShared: false,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 0x30,
+        finalChrBytes: finalChr,
+        mappingIndex: mockMappingIndex,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const kindBadge = mockEl.querySelector('.chr-creation-kind-badge');
+      expect(kindBadge?.textContent).toBe('Manual CHR edit');
+      expect(kindBadge?.classList.contains('kind-manual-materialized')).toBe(
+        true,
+      );
+    });
+
+    it('renders in Portuguese pt-BR with full translation parity', () => {
+      setLocale('pt-BR');
+      const finalChr = new Uint8Array(8192);
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 1,
+          origin: {
+            primaryAssetId: 'asset-heroi',
+            primaryAssetName: 'Herói',
+            creationKind: 'extracted',
+          },
+          usages: [
+            {
+              type: 'animation',
+              assetId: 'asset-heroi',
+              animationId: 'anim-correr',
+              animationName: 'correr',
+              frameIndex: 0,
+              spriteIndex: 0,
+              x: 0,
+              y: 0,
+              horizontalFlip: true,
+              verticalFlip: false,
+              physicalTileIndex: 1,
+            },
+          ],
+          usageCount: 1,
+          isShared: false,
+        },
+      ]);
+
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 1,
+        finalChrBytes: finalChr,
+        mappingIndex: mockMappingIndex,
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      expect(mockEl.textContent).toContain('Origem e Uso do Asset');
+      expect(mockEl.textContent).toContain('Origem');
+      expect(mockEl.textContent).toContain('Extraído do asset');
+      expect(mockEl.textContent).toContain('Ir para origem');
     });
   });
 });
