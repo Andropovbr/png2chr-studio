@@ -407,3 +407,24 @@ No hardware do NES, onde 256 slots por Pattern Table exigem deduplicação inten
 - Cobre exaustivamente os 512 slots físicos (PT0: 0..255 e PT1: 256..511).
 - Fornece lookup reverso O(1) através de `physicalIndicesByAsset` (todos os slots físicos associados a um `ProjectAssetId` como origem ou consumidor).
 - **Sem Persistência:** O índice é inteiramente recalculável sob demanda a partir do estado canônico do projeto (`StudioProject`). Nenhuma tabela de atribuição física é serializada no `.p2c`.
+
+### 9.5 Reconciliação do Ciclo de Vida de Assets (`src/core/asset-lifecycle.ts`)
+
+A reconciliação do ciclo de vida trata de mutações temporais nos assets do projeto (adição, substituição, remoção, alteração de dimensões e edições manuais):
+
+- **Substituição de Asset (`planAssetReplacement`):**
+  - O `ProjectAssetId` estável é rigorosamente preservado (a substituição de PNG ou arquivo-fonte não é tratada como exclusão + adição).
+  - Se o novo arquivo for graficamente idêntico ou contiver padrões inalterados, as alocações físicas úteis e compartilhamentos são preservados, evitando churn de CHR.
+  - Tiles físicos exclusivos tornados obsoletos pelo novo PNG são liberados para reciclagem.
+  - _Pixel Overrides:_ Overrides manuais com coordenadas lógicas fora das novas dimensões são limpos deterministicamente (`reconcilePixelOverridesForGeometry`), enquanto overrides em coordenadas válidas são preservados.
+- **Remoção de Asset (`planAssetRemoval`):**
+  - Remover um asset exclui todas as suas ocorrências em `usages`.
+  - Se o asset removido for a origem primária de um slot compartilhado que ainda possui outros consumidores ativos, a posse da origem é transferida deterministicamente para o primeiro consumidor sobrevivente (`transferredOrigins`).
+  - Slots físicos que eram exclusivos do asset removido e sem outros consumidores são liberados para alocação.
+  - _Segurança de Base CHR e Reservations:_ Remover um consumidor de projeto de um tile da Base CHR **nunca** apaga o conteúdo da Base CHR nem o torna órfão. Slots pertencentes a Reservations retornam ao status de ocupação reservada (`reserved`).
+- **Detecção e Classificação de Órfãos (`detectOrphanedPhysicalTiles`, `classifyOrphanedPhysicalTiles`):**
+  - Um slot físico é classificado como **órfão** estritamente quando: proveniência do projeto (`creationKind === 'extracted'`), zero consumidores ativos (`usageCount === 0`), não protegido por Base CHR, não protegido por Reserva e não marcado como `manual-materialized`.
+  - Tiles criados ou materializados manualmente pelo usuário no CHR Editor (`creationKind === 'manual-materialized'`) são de autoria intencional e **não** são coletados como lixo como órfãos gerados ordinários.
+- **Divergência de Edição no CHR Editor (`analyzeChrEditDivergence`):**
+  - Quando um tile compartilhado por múltiplos assets é editado manualmente no CHR Editor, o sistema analisa a divergência antes de mutar, permitindo derivar e desacoplar o asset-alvo sem mutar silenciosamente os demais consumidores.
+- **Sem Desfragmentação Global Automática:** A coleta e reconciliação liberam slots no local sem compactação global ou reindexação em massa, preservando o layout físico estável da CHR-ROM.
