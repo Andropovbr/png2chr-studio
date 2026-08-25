@@ -27,6 +27,7 @@ import {
 
 export type { ProjectScenePreviewConfig, ScenePreviewInstance, ChrRegion };
 export * from './asset-identity';
+export * from './chr-asset-mapping';
 
 export const CURRENT_PROJECT_FORMAT_VERSION = 1;
 export const SUPPORTED_PROJECT_FORMAT_VERSIONS = [1] as const;

@@ -26,7 +26,9 @@ src/
 │   ├── animation-mapping.ts    # Projeção de tiles OAM locais vs físicos CHR
 │   ├── animation-model.ts      # Modelo de metasprites, frames e animações
 │   ├── animation-palette.ts    # Resolução hierárquica de paletas de animação
+│   ├── asset-identity.ts       # Identidades lógicas de assets e chaves de tiles canônicas
 │   ├── c-identifier.ts         # Normalização e sanitização de identificadores C
+│   ├── chr-asset-mapping.ts    # Índice de posse, proveniência e usos bidirecionais de CHR
 │   ├── chr-decoder.ts          # Decodificação de binário 2bpp para pixels
 │   ├── chr-encoder.ts          # Codificação de pixels para formato planar 2bpp
 │   ├── chr-pattern-table.ts    # Gerenciamento de pattern tables de 4 KiB / 8 KiB
@@ -372,3 +374,36 @@ O gerenciamento de paletas no Studio replica com fidelidade a arquitetura de cor
 - O arquivo de projeto (`.p2c`) armazena a estrutura canônica completa do projeto em JSON estruturado.
 - **Auto-Contenção:** Imagens PNG importadas são armazenadas também como `dataUrl` em Base64 no arquivo de projeto, garantindo que o usuário possa reabrir o projeto em qualquer máquina mesmo sem os arquivos de imagem originais na mesma pasta.
 - **Migração Retrocompatível (`src/core/project.ts`):** Suporte a migração automática de formatos antigos de projeto (como projetos legados sem paletas nomeadas ou com índices de paleta numéricos), garantindo que projetos salvos em versões anteriores continuem abrindo sem perda de dados.
+
+---
+
+## 9. Posse de Tiles, Identidade de Assets e Mapeamento Bidirecional (Milestone 6)
+
+A Milestone 6 consolida o modelo arquitetural de **Identidade de Assets**, **Posse de Tiles (Ownership)** e **Mapeamento Bidirecional (Asset-to-CHR Mapping)** implementado em `src/core/chr-asset-mapping.ts`.
+
+### 9.1 Distinção Fundamental: Origem (Ownership) versus Uso (Usage)
+
+No hardware do NES, onde 256 slots por Pattern Table exigem deduplicação intensiva:
+
+- **Origem / Proveniência (`PhysicalTileOrigin`):** Cada slot físico (0..511) possui no máximo uma única origem primária que descreve qual asset e coordenada lógica gerou o padrão (`primaryAssetId`, `logicalKey`, `creationKind: 'extracted' | 'base-chr' | 'manual-materialized'`).
+- **Usos / Referências (`PhysicalTileUsage`):** Coleção estruturada de todos os consumidores ativos daquele slot físico (sprites de frames de animação, células de nametable do playfield ou entradas do catálogo de tileset).
+
+### 9.2 Semântica de Compartilhamento (`isShared`) e Deduplicação
+
+- **Compartilhamento Derivado:** `isShared` é verdadeiro quando `usageCount > 1` (múltiplas referências lógicas distintas apontam para o mesmo slot físico). Não é persistido no `.p2c`.
+- **Deduplicação Interna (Same-Asset):** Múltiplos tiles lógicos do mesmo asset (`asset-hero:0:0` e `asset-hero:4:1`) com pixels idênticos reutilizam o mesmo slot físico, preservando ambas as referências de uso.
+- **Deduplicação Cruzada (Cross-Asset):** Dois assets distintos (`asset-hero` e `asset-enemy`) que compartilham um padrão idêntico apontam para o mesmo slot físico. A origem primária permanece com o primeiro alocador, e ambos figuram em `usages`.
+- **Deduplicação Flip-Aware:** Reúso por espelhamento horizontal ou vertical preserva os metadados de flip no `AnimationTileUsage` sem duplicar alocações nem alterar a origem.
+
+### 9.3 Proveniência de Base CHR
+
+- Slots ocupados da Base CHR (com bytes diferentes de zero) recebem origem do tipo `'base-chr'` vinculada ao asset de Base CHR (`asset-base-chr`).
+- Slots preenchidos com zero (livres) na Base CHR **não** recebem origem de Base CHR.
+- Quando o projeto reutiliza um tile da Base CHR por deduplicação, a origem permanece como Base CHR e o consumidor é registrado em `usages`.
+
+### 9.4 Índice Derivado e Não-Persistido (`ChrAssetMappingIndex`)
+
+- Construído pela função pura e determinística `buildChrAssetMappingIndex(...)`.
+- Cobre exaustivamente os 512 slots físicos (PT0: 0..255 e PT1: 256..511).
+- Fornece lookup reverso O(1) através de `physicalIndicesByAsset` (todos os slots físicos associados a um `ProjectAssetId` como origem ou consumidor).
+- **Sem Persistência:** O índice é inteiramente recalculável sob demanda a partir do estado canônico do projeto (`StudioProject`). Nenhuma tabela de atribuição física é serializada no `.p2c`.
