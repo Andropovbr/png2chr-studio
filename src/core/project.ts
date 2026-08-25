@@ -19,13 +19,21 @@ import {
   generateInstanceId,
 } from './scene-preview';
 import { validateChrRegion, type ChrRegion } from './chr-pattern-table';
+import {
+  normalizeProjectAssetId,
+  type ProjectAssetId,
+  type ProjectAssetKind,
+} from './asset-identity';
 
 export type { ProjectScenePreviewConfig, ScenePreviewInstance, ChrRegion };
+export * from './asset-identity';
 
 export const CURRENT_PROJECT_FORMAT_VERSION = 1;
 export const SUPPORTED_PROJECT_FORMAT_VERSIONS = [1] as const;
 
 export interface ProjectAssetReference {
+  /** Stable unique logical asset identifier. */
+  readonly id?: ProjectAssetId;
   /** Path to the asset file (relative to project file whenever possible). */
   readonly path: string;
   /** Optional original file name. */
@@ -472,7 +480,7 @@ export function deserializeProject(
   if (typeof raw.tileset === 'object' && raw.tileset !== null) {
     const rawTileset = raw.tileset as Record<string, unknown>;
     tileset = {
-      asset: parseAssetReference(rawTileset.asset),
+      asset: parseAssetReference(rawTileset.asset, 'tileset-image'),
       paletteAssignments: parseNumberArray(rawTileset.paletteAssignments),
       pixelOverrides: parseNumberArray(rawTileset.pixelOverrides),
     };
@@ -482,7 +490,7 @@ export function deserializeProject(
   if (typeof raw.playfield === 'object' && raw.playfield !== null) {
     const rawPlayfield = raw.playfield as Record<string, unknown>;
     playfield = {
-      asset: parseAssetReference(rawPlayfield.asset),
+      asset: parseAssetReference(rawPlayfield.asset, 'playfield-image'),
       collisionCells: parseNumberArray(rawPlayfield.collisionCells),
       activeCollisionType:
         typeof rawPlayfield.activeCollisionType === 'number'
@@ -508,6 +516,11 @@ export function deserializeProject(
     for (const item of rawItems) {
       if (typeof item !== 'object' || item === null) continue;
       const rawItem = item as Record<string, unknown>;
+
+      const animId =
+        typeof rawItem.id === 'string' && rawItem.id.trim() !== ''
+          ? rawItem.id.trim()
+          : `anim-${String(items.length + 1)}`;
 
       const rawPaletteId =
         typeof rawItem.paletteId === 'string' && rawItem.paletteId.trim() !== ''
@@ -542,10 +555,7 @@ export function deserializeProject(
           : undefined);
 
       items.push({
-        id:
-          typeof rawItem.id === 'string' && rawItem.id.trim() !== ''
-            ? rawItem.id.trim()
-            : 'anim-1',
+        id: animId,
         name:
           typeof rawItem.name === 'string' && rawItem.name.trim() !== ''
             ? rawItem.name.trim()
@@ -554,7 +564,7 @@ export function deserializeProject(
           typeof rawItem.entity === 'string' && rawItem.entity.trim() !== ''
             ? rawItem.entity.trim()
             : 'entity',
-        asset: parseAssetReference(rawItem.asset),
+        asset: parseAssetReference(rawItem.asset, 'spritesheet', animId),
         paletteId: resolvedPaletteId,
         paletteIndex: rawPaletteIndex,
         framePaletteIds: resolvedFramePaletteIds,
@@ -635,7 +645,7 @@ export function deserializeProject(
           : 1,
       patternTable: rawAnim.patternTable === 1 ? 1 : 0,
       destinationPatternTable: rawAnim.destinationPatternTable === 1 ? 1 : 0,
-      destinationChr: parseAssetReference(rawAnim.destinationChr),
+      destinationChr: parseAssetReference(rawAnim.destinationChr, 'base-chr'),
       animations: items,
     };
   }
@@ -744,11 +754,23 @@ function parseStringArray(value: unknown): (string | null)[] | undefined {
   );
 }
 
-function parseAssetReference(value: unknown): ProjectAssetReference | null {
+function parseAssetReference(
+  value: unknown,
+  fallbackKind?: ProjectAssetKind,
+  fallbackSecondaryKey?: string | number,
+): ProjectAssetReference | null {
   if (typeof value !== 'object' || value === null) return null;
   const raw = value as Record<string, unknown>;
   if (typeof raw.path !== 'string' || raw.path.trim() === '') return null;
+  const rawId =
+    typeof raw.id === 'string' && raw.id.trim() !== ''
+      ? raw.id.trim()
+      : undefined;
+  const id = fallbackKind
+    ? normalizeProjectAssetId(rawId, fallbackKind, fallbackSecondaryKey)
+    : rawId;
   return {
+    ...(id ? { id } : {}),
     path: normalizePath(raw.path.trim()),
     name: typeof raw.name === 'string' ? raw.name.trim() : undefined,
     sourceKind:

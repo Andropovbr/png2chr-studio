@@ -221,6 +221,7 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
     "patternTable": 0,
     "destinationPatternTable": 0,
     "destinationChr": {
+      "id": "asset-base-chr-default",
       "path": "chr/base.chr",
       "name": "base.chr",
       "sourceKind": "chr",
@@ -232,6 +233,7 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
         "name": "walk",
         "entity": "hero",
         "asset": {
+          "id": "asset-anim-walk-sheet",
           "path": "sprites/hero_walk.png",
           "name": "hero_walk.png",
           "sourceKind": "png",
@@ -279,7 +281,12 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
 
 ### Detalhamento dos Campos
 
-- **Portabilidade de Assets (`ProjectAssetReference`):** Cada referência a arquivo (`asset` ou `destinationChr`) armazena tanto o caminho relativo normalizado (`path`) quanto os dados embutidos codificados em Base64 (`dataUrl`). Isso garante que arquivos de projeto salvos sejam 100% portáveis e funcionem offline de forma auto-suficiente, sem depender da existência do arquivo original no disco.
+- **Portabilidade e Identidade de Assets (`ProjectAssetReference`):** Cada referência a arquivo (`asset` ou `destinationChr`) armazena:
+  - `id` (`ProjectAssetId`): identificador estável único do asset lógico (ex: `asset-anim-walk-sheet`, `asset-tileset-dungeon`). Projetos legados sem `id` são automaticamente normalizados com IDs determinísticos (`asset-tileset-default`, `asset-playfield-default`, `asset-base-chr-default`, `asset-anim-<animId>`), mantendo compatibilidade estrita (`formatVersion: 1`).
+  - `path`: caminho relativo normalizado do arquivo.
+  - `dataUrl`: dados binários embutidos codificados em Base64 para garantir portabilidade completa offline.
+  - `sourceKind` e `name`: tipo de origem (`png`, `chr`, `nes`) e nome de exibição.
+- **Chaves Canônicas de Tiles Lógicos (`LogicalTileKey`):** Identifica tiles na grade lógica de origem no formato `${assetId}:${tileX}:${tileY}` (ex: `asset-hero:0:0`), estritamente desacoplada da alocação de slots físicos em CHR (Pattern Tables, offsets ou deduplicação).
 - **Gerenciador de Paletas (`palette`):** Armazena a matriz clássica 4×4 (`paletteSet`), a lista de definições nomeadas (`PaletteDefinition`), os 4 slots de paleta de hardware de sprites (`activeSpritePaletteSlots`), e os índices da paleta/cor de edição ativas.
 - **Regiões e Reservas de CHR (`chrRegions`):** Lista opcional de partições lógicas e reservas de exclusão de CHR (`ChrRegion`). Cada item contém `id`, `name`, `patternTable` (`0` ou `1`), `startTile` e `endTile` (índices locais `$00..$FF` / `0..255`, inclusive), `kind` (`"region"` para faixas organizacionais neutras ou `"reservation"` para reservas que bloqueiam novas alocações automáticas de tiles), além de `notes` e `color` opcionais. Uma reserva bloqueia novas alocações sem mover, apagar ou alterar tiles físicos existentes, permitindo que tiles reais pré-existentes na faixa sejam referenciados por deduplicação. Mantém total retrocompatibilidade (`formatVersion: 1`).
 - **Tileset & Playfield:** Persiste caminhos/dados de imagem, atribuições de paleta por tile/metatile, substituições de pixels 8×8 (`pixelOverrides`), mapa de colisão de 480 bytes (`collisionCells` com 11 tipos), tipo de colisão ativo e parâmetros de geração procedural.
