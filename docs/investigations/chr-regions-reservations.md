@@ -1,6 +1,6 @@
 # Investigação Técnica: CHR Regions & Reservations (Milestone 5)
 
-**Status:** Concluído / Pronto para Revisão  
+**Status:** Implementado e Validado (Milestone 5 Concluída)  
 **Data:** 25 de Agosto de 2026  
 **Autores:** Equipe de Engenharia PNG2CHR Studio  
 **Milestone Alvo:** [Milestone 5 — CHR Regions & Reservations](https://github.com/Andropovbr/png2chr-studio/milestone/6)  
@@ -607,14 +607,10 @@ Recomendamos decompor a Milestone 5 nas seguintes **6 issues executáveis**:
 
 ---
 
-## 20. Decisões Abertas
+## 20. Decisões Arquiteturais Consolidadas na Milestone 5
 
-Os seguintes tópicos devem ser validados pelo mantenedor antes do início da implementação da Issue 1:
+As seguintes decisões técnicas foram validadas e consolidadas durante a implementação da Milestone 5:
 
-1. **Localização do Region Manager na Navegação:**
-   - _Opção Recomendada:_ Integrar como uma seção colapsável (`#section-chr-regions`) dentro do workspace de **Memória CHR**, mantendo toda a gestão de CHR centralizada em um único hub.
-   - _Alternativa:_ Criar uma aba dedicada na barra lateral ("Regiões CHR"). (Menos recomendado para não fragmentar o fluxo).
-2. **Cores de Destaque para Regiões:**
-   - _Opção Recomendada:_ Oferecer uma paleta predefinida de 8 cores sutis de destaque para o usuário escolher ao criar uma região (ou atribuir automaticamente em sequência), permitindo rápida diferenciação visual na grade.
-3. **Inclusão Opcional de Regiões nos Metadados JSON Exportados:**
-   - _Opção Recomendada:_ Incluir o array `regions` no JSON de metadados da animação (`.json`), fornecendo às ferramentas de build externas o mapa completo de memória configurado.
+1. **Localização do Region Manager:** Integrado como a seção `#section-chr-regions` dentro do workspace de **Memória CHR**, mantendo todo o gerenciamento de CHR-ROM e alocação centralizado em um único hub.
+2. **Cores de Destaque:** Cores customizáveis via color picker HTML com sanitização de injeção CSS e valores padrão semânticos (`#38bdf8` para Region organizacional, `#a855f7` para Reservation restritiva).
+3. **Escopo dos Metadados:** `chrRegions` é mantido estritamente como metadado de projeto no `.p2c`, sem contaminar os binários de exportação `.chr`, arquivos C/ASM ou metadados de animação JSON.

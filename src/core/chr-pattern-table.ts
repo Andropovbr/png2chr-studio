@@ -1407,8 +1407,8 @@ export function classifyChrSlots(
       });
     } else if (slot?.source === 'imported') {
       const matchedTile =
-        (options.tiles ?? []).find((tItem) => tItem.id === physicalIndex) ??
-        slot.tile;
+        slot.tile ??
+        (options.tiles ?? []).find((tItem) => tItem.id === physicalIndex);
       const attribution = matchedTile
         ? `Tile #${String(matchedTile.id)} (Col ${String(matchedTile.column)}, Row ${String(matchedTile.row)})`
         : 'Project Tile';
@@ -1429,12 +1429,10 @@ export function classifyChrSlots(
               .some((b: number) => b !== 0)
           : false;
 
-      const matchedDirect = (options.tiles ?? []).find(
-        (tItem) => tItem.id === physicalIndex,
-      );
-
-      if (isNonZero || matchedDirect !== undefined) {
-        const matchedTile = matchedDirect ?? slot?.tile;
+      if (isNonZero) {
+        const matchedTile = (options.tiles ?? []).find(
+          (tItem) => tItem.id === physicalIndex,
+        );
         const attribution = matchedTile
           ? `Tile #${String(matchedTile.id)} (Col ${String(matchedTile.column)}, Row ${String(matchedTile.row)})`
           : 'Project Tile';
