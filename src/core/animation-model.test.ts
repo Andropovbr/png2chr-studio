@@ -1853,4 +1853,221 @@ describe('animation project model', () => {
     // Deduplicates to 1 tile
     expect(modelWithOverride.chr.finalTileCount).toBe(1);
   });
+
+  describe('Reservation-aware CHR allocation in animation model', () => {
+    it('skips reserved ranges when allocating animation tiles on PT0', () => {
+      const tile1 = tileWith([[0, 0]]);
+      const tile2 = tileWith([[1, 1]]);
+      const sheet = sheetFromTiles([tile1, tile2]);
+
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        image: sheet,
+        frameWidth: 16,
+        frameHeight: 8,
+        patternTable: 0,
+        animations: [
+          {
+            name: 'walk',
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+        chrRegions: [
+          {
+            id: 'res-header',
+            name: 'Header Reserved',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 3, // $00..$03 (slots 0..3 reserved)
+            kind: 'reservation',
+          },
+        ],
+      });
+
+      const sprites = model.animations[0]?.frames[0]?.sprites;
+      expect(sprites).toBeDefined();
+      expect(sprites).toHaveLength(2);
+
+      // Sprites allocated starting at local tile $04 (physical 4)
+      expect(sprites?.[0]?.tile).toBe(4);
+      expect(sprites?.[0]?.physicalTileIndex).toBe(4);
+      expect(sprites?.[1]?.tile).toBe(5);
+      expect(sprites?.[1]?.physicalTileIndex).toBe(5);
+
+      // Physical CHR bytes for slots 0..3 are zero
+      expect(model.finalChr.subarray(0, 64)).toEqual(new Uint8Array(64));
+    });
+
+    it('skips reserved ranges on PT1 and produces correct local OAM indices', () => {
+      const tile1 = tileWith([[2, 2]]);
+      const tile2 = tileWith([[3, 3]]);
+      const sheet = sheetFromTiles([tile1, tile2]);
+
+      const model = buildAnimationProjectModel({
+        name: 'enemy',
+        image: sheet,
+        frameWidth: 16,
+        frameHeight: 8,
+        patternTable: 1,
+        animations: [
+          {
+            name: 'attack',
+            frameIndices: [0],
+            frameDuration: 8,
+          },
+        ],
+        chrRegions: [
+          {
+            id: 'res-pt1',
+            name: 'PT1 Reserved Bank',
+            patternTable: 1,
+            startTile: 0,
+            endTile: 7, // PT1 $00..$07 (physical 256..263)
+            kind: 'reservation',
+          },
+        ],
+      });
+
+      const sprites = model.animations[0]?.frames[0]?.sprites;
+      expect(sprites).toBeDefined();
+      expect(sprites).toHaveLength(2);
+
+      // Local OAM indices are $08 and $09
+      expect(sprites?.[0]?.tile).toBe(8);
+      expect(sprites?.[0]?.physicalTileIndex).toBe(256 + 8);
+
+      expect(sprites?.[1]?.tile).toBe(9);
+      expect(sprites?.[1]?.physicalTileIndex).toBe(256 + 9);
+    });
+
+    it('ignores organizational regions (kind: region) without altering tile allocation', () => {
+      const tile1 = tileWith([[0, 0]]);
+      const tile2 = tileWith([[1, 1]]);
+      const sheet = sheetFromTiles([tile1, tile2]);
+
+      const modelWithOrgRegion = buildAnimationProjectModel({
+        name: 'hero',
+        image: sheet,
+        frameWidth: 16,
+        frameHeight: 8,
+        patternTable: 0,
+        animations: [
+          {
+            name: 'idle',
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+        chrRegions: [
+          {
+            id: 'reg-info',
+            name: 'Organizational Header',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 15,
+            kind: 'region', // Not a reservation!
+          },
+        ],
+      });
+
+      const sprites = modelWithOrgRegion.animations[0]?.frames[0]?.sprites;
+      // Normal allocation starts at $00 and $01
+      expect(sprites?.[0]?.tile).toBe(0);
+      expect(sprites?.[0]?.physicalTileIndex).toBe(0);
+      expect(sprites?.[1]?.tile).toBe(1);
+      expect(sprites?.[1]?.physicalTileIndex).toBe(1);
+    });
+
+    it('allows deduplication to reuse pre-existing Base CHR tiles inside reservations', () => {
+      const tileA = tileWith([[4, 4]]);
+      const tileB = tileWith([[5, 5]]);
+
+      // Create Base CHR with tileA at physical slot 32 (PT0 $20)
+      const base = new Uint8Array(8192);
+      base.set(encodeChr([tileA]), 32 * 16);
+
+      // Reserve PT0 $20..$3F (slots 32..63)
+      const reservations = [
+        {
+          id: 'res-bank',
+          name: 'Reserved Bank',
+          patternTable: 0 as const,
+          startTile: 32, // $20
+          endTile: 63, // $3F
+          kind: 'reservation' as const,
+        },
+      ];
+
+      // Sheet contains tileA (matching Base CHR) and tileB (new)
+      const sheet = sheetFromTiles([tileA, tileB]);
+
+      const model = buildAnimationProjectModel({
+        name: 'hero',
+        image: sheet,
+        frameWidth: 16,
+        frameHeight: 8,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        baseChr: base,
+        chrRegions: reservations,
+        animations: [
+          {
+            name: 'idle',
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+      });
+
+      const sprites = model.animations[0]?.frames[0]?.sprites;
+      expect(sprites).toHaveLength(2);
+
+      // First sprite matches tileA at PT0 $20 (physical 32) inside the reservation!
+      expect(sprites?.[0]?.tile).toBe(32);
+      expect(sprites?.[0]?.physicalTileIndex).toBe(32);
+      expect(sprites?.[0]?.reuse).toBe('destination');
+
+      // Second sprite (tileB) is new, so it allocates at first available slot ($00)
+      expect(sprites?.[1]?.tile).toBe(0);
+      expect(sprites?.[1]?.physicalTileIndex).toBe(0);
+      expect(sprites?.[1]?.reuse).toBe('new');
+    });
+
+    it('throws capacity overflow when reservations leave insufficient available slots', () => {
+      const tile1 = tileWith([[0, 0]]);
+      const tile2 = tileWith([[1, 1]]);
+      const sheet = sheetFromTiles([tile1, tile2]);
+
+      // Reserve PT0 $00..$FE (255 tiles out of 256), leaving only slot $FF available
+      const nearFullReservation = [
+        {
+          id: 'res-almost-full',
+          name: 'Near Full Table',
+          patternTable: 0 as const,
+          startTile: 0,
+          endTile: 254, // $00..$FE
+          kind: 'reservation' as const,
+        },
+      ];
+
+      expect(() => {
+        buildAnimationProjectModel({
+          name: 'overflow',
+          image: sheet, // Needs 2 unique slots
+          frameWidth: 16,
+          frameHeight: 8,
+          patternTable: 0,
+          animations: [
+            {
+              name: 'anim',
+              frameIndices: [0],
+              frameDuration: 6,
+            },
+          ],
+          chrRegions: nearFullReservation,
+        });
+      }).toThrow(AnimationModelError);
+    });
+  });
 });

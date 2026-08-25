@@ -16,6 +16,7 @@ import {
   NES_PATTERN_TABLE_TILE_COUNT,
   type ChrHeatmapBucket,
   type ChrHighlightScope,
+  type ChrRegion,
   type ChrSlotClassification,
   type ChrSlotOccupancy,
   type ChrTileUsageDiagnostic,
@@ -86,6 +87,7 @@ export interface ChrWorkspaceOptions {
   readonly paletteSet?: NesPaletteSet;
   readonly palettes?: readonly PaletteDefinition[];
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly chrRegions?: readonly ChrRegion[];
   readonly loading?: boolean;
   readonly error?: DisplayError | null;
   readonly onNavigateToWorkspace?: (workspace: WorkspaceView) => void;
@@ -217,6 +219,14 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
       options.baseChr,
       options.destinationPatternTable,
       deduplicated,
+      options.chrRegions,
+    );
+  } else if (options.chrRegions && options.chrRegions.length > 0) {
+    finalChrBytes = composeChrWithAllocatedTiles(
+      new Uint8Array(NES_CHR_ROM_SIZE),
+      0,
+      deduplicated,
+      options.chrRegions,
     );
   } else {
     finalChrBytes = padChrRom(encodeChr(deduplicated));
@@ -1415,6 +1425,7 @@ export function createChrWorkspace(
     tiles: options.tiles,
     deduplicationEnabled: options.deduplicationEnabled,
     flipDeduplicationEnabled: options.flipDeduplicationEnabled,
+    chrRegions: options.chrRegions,
   });
 
   // Calculate pre-indexed physical tile references & usage diagnostics

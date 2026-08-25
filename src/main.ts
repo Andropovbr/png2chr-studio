@@ -792,6 +792,7 @@ async function loadProjectFile(
         pixelOverrides: new Uint8Array(),
         activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
         activeColorIndex: loaded.palette.activeColorIndex ?? 1,
+        chrRegions: loaded.chrRegions ?? [],
         animation,
         scenePreview: loaded.scenePreview ?? { instances: [] },
         quantizationSettings: loaded.settings.quantization,
@@ -1001,6 +1002,7 @@ async function loadProjectFile(
       pixelOverrides,
       activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
       activeColorIndex: loaded.palette.activeColorIndex ?? 1,
+      chrRegions: loaded.chrRegions ?? [],
       animation: createDefaultAnimationSettings(),
       scenePreview: loaded.scenePreview ?? { instances: [] },
       quantizationSettings: loaded.settings.quantization,
@@ -2463,6 +2465,7 @@ function resolveAnimationProjectModel(prj: ProjectView): {
         destinationPatternTable: prj.animation.destinationPatternTable,
         flipDeduplication: prj.animation.flipDeduplication,
         spritePalette: prj.animation.spritePalette,
+        chrRegions: prj.chrRegions,
       });
     }
   } catch (error: unknown) {
@@ -3075,10 +3078,18 @@ function renderChrWorkspace(): void {
           manualChr,
           destinationPatternTable,
           projectedTiles,
+          project.chrRegions,
         )
-      : project.tiles.length > 0
-        ? padChrRom(encodeChr(projectedTiles))
-        : new Uint8Array(8192));
+      : project.chrRegions && project.chrRegions.length > 0
+        ? composeChrWithAllocatedTiles(
+            new Uint8Array(8192),
+            0,
+            projectedTiles,
+            project.chrRegions,
+          )
+        : project.tiles.length > 0
+          ? padChrRom(encodeChr(projectedTiles))
+          : new Uint8Array(8192));
 
   const tileHistory =
     selectedPhysicalTile !== null &&
@@ -3102,6 +3113,7 @@ function renderChrWorkspace(): void {
     tiles: project.tiles,
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    chrRegions: project.chrRegions,
     zoom: workspace.chr.zoom,
     onZoomChange: (zoom) => {
       updateWorkspace({
@@ -3306,8 +3318,16 @@ function renderDeliveryWorkspace(): void {
             project.animation.destinationChr,
             project.animation.destinationPatternTable,
             tilesToEncode,
+            project.chrRegions,
           )
-        : padChrRom(encodeChr(tilesToEncode));
+        : project.chrRegions && project.chrRegions.length > 0
+          ? composeChrWithAllocatedTiles(
+              new Uint8Array(8192),
+              0,
+              tilesToEncode,
+              project.chrRegions,
+            )
+          : padChrRom(encodeChr(tilesToEncode));
 
     if (project.mode === 'playfield' && project.indexedImage !== null) {
       const regionSize = PLAYFIELD_PALETTE_REGION_SIZE;

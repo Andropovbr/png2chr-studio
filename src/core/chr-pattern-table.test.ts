@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AnimationProjectModel } from './animation-model';
-import { encodeChr } from './chr-encoder';
+import { encodeChr, encodeTile } from './chr-encoder';
 import {
   analyzeBaseChrOccupancy,
   classifyChrSlots,
@@ -34,8 +34,11 @@ import {
   findChrRegionOverlaps,
   collectReservedPhysicalTileIndices,
   collectReservedLocalTileIndices,
+  isChrSlotAvailableForAllocation,
+  findNextAvailableChrSlot,
   type ChrRegion,
   type ChrSlotClassification,
+  type PatternTableSlot,
 } from './chr-pattern-table';
 import type { Tile } from './types';
 
@@ -1235,6 +1238,210 @@ describe('NES sprite pattern tables', () => {
       expect(pt1LocalReserved.has(0)).toBe(true);
       expect(pt1LocalReserved.has(31)).toBe(true);
       expect(pt1LocalReserved.has(32)).toBe(false);
+    });
+  });
+
+  describe('Reservation-aware slot allocation and CHR composition', () => {
+    it('isChrSlotAvailableForAllocation evaluates slot eligibility accurately', () => {
+      const emptySlot = { physicalTileIndex: 5, tile: null, source: null };
+      const occupiedSlot = {
+        physicalTileIndex: 5,
+        tile: tile(1),
+        source: 'imported' as const,
+      };
+      const reservedSet = new Set<number>([5, 6, 7]);
+
+      // Empty unreserved slot is available
+      expect(isChrSlotAvailableForAllocation(emptySlot)).toBe(true);
+      expect(isChrSlotAvailableForAllocation(emptySlot, new Set([1, 2]))).toBe(
+        true,
+      );
+
+      // Occupied slot is NOT available
+      expect(isChrSlotAvailableForAllocation(occupiedSlot)).toBe(false);
+
+      // Empty reserved slot is NOT available
+      expect(isChrSlotAvailableForAllocation(emptySlot, reservedSet)).toBe(
+        false,
+      );
+
+      // Null/undefined slot
+      expect(isChrSlotAvailableForAllocation(null)).toBe(false);
+      expect(isChrSlotAvailableForAllocation(undefined)).toBe(false);
+    });
+
+    it('findNextAvailableChrSlot skips occupied and reserved slots in pattern table', () => {
+      const slots: PatternTableSlot[] = Array.from({ length: 512 }, (_, i) => ({
+        physicalTileIndex: i,
+        tile: null,
+        source: null,
+      }));
+
+      // Occupy slot 0
+      slots[0] = { physicalTileIndex: 0, tile: tile(1), source: 'destination' };
+
+      // Reserve slots 1..3
+      const reserved = new Set([1, 2, 3]);
+
+      // Next available slot in PT0 should be 4
+      const nextSlot = findNextAvailableChrSlot(slots, {
+        patternTable: 0,
+        reservedIndices: reserved,
+      });
+
+      expect(nextSlot).toBeDefined();
+      expect(nextSlot?.physicalTileIndex).toBe(4);
+    });
+
+    it('composeChrWithAllocatedTiles without reservations produces baseline output', () => {
+      const base = new Uint8Array(NES_CHR_ROM_SIZE);
+      const tiles = [tile(1), tile(2), tile(3)];
+
+      const composedDefault = composeChrWithAllocatedTiles(base, 0, tiles);
+      const composedWithEmptyRegions = composeChrWithAllocatedTiles(
+        base,
+        0,
+        tiles,
+        [],
+      );
+      const composedWithNonReservations = composeChrWithAllocatedTiles(
+        base,
+        0,
+        tiles,
+        [
+          {
+            id: 'reg-info',
+            name: 'Informational Region',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 10,
+            kind: 'region',
+          },
+        ],
+      );
+
+      expect(composedDefault).toEqual(composedWithEmptyRegions);
+      expect(composedDefault).toEqual(composedWithNonReservations);
+
+      // Slots 0, 1, 2 contain tiles 1, 2, 3
+      expect(composedDefault.subarray(0, 16)).toEqual(encodeTile(tile(1)));
+      expect(composedDefault.subarray(16, 32)).toEqual(encodeTile(tile(2)));
+      expect(composedDefault.subarray(32, 48)).toEqual(encodeTile(tile(3)));
+    });
+
+    it('composeChrWithAllocatedTiles skips reserved ranges in PT0 and PT1', () => {
+      const base = new Uint8Array(NES_CHR_ROM_SIZE);
+      const tiles = [tile(1), tile(2)];
+
+      // Reserve PT0 $00..$03 (tiles 0..3)
+      const reservations: ChrRegion[] = [
+        {
+          id: 'res-pt0',
+          name: 'Reserved Header',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 3,
+          kind: 'reservation',
+        },
+      ];
+
+      const composed = composeChrWithAllocatedTiles(
+        base,
+        0,
+        tiles,
+        reservations,
+      );
+
+      // Slots 0..3 are empty (zero bytes)
+      expect(composed.subarray(0, 64)).toEqual(new Uint8Array(64));
+
+      // Tile 1 is placed at physical slot 4 (byte offset 64..79)
+      expect(composed.subarray(64, 80)).toEqual(encodeTile(tile(1)));
+
+      // Tile 2 is placed at physical slot 5 (byte offset 80..95)
+      expect(composed.subarray(80, 96)).toEqual(encodeTile(tile(2)));
+    });
+
+    it('composeChrWithAllocatedTiles preserves Base CHR graphics inside and outside reservations', () => {
+      const base = new Uint8Array(NES_CHR_ROM_SIZE);
+      // Place existing Base CHR tile at slot 0 ($00) and slot 10 ($0A)
+      base.set(encodeTile(tile(3)), 0); // Slot 0
+      base.set(encodeTile(tile(2)), 10 * 16); // Slot 10
+
+      // Reservation covering $00..$05
+      const reservations: ChrRegion[] = [
+        {
+          id: 'res-overlap-base',
+          name: 'Base Overlap Zone',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 5,
+          kind: 'reservation',
+        },
+      ];
+
+      const newTiles = [tile(1), tile(2)];
+      const composed = composeChrWithAllocatedTiles(
+        base,
+        0,
+        newTiles,
+        reservations,
+      );
+
+      // Base CHR at slot 0 is preserved intact!
+      expect(composed.subarray(0, 16)).toEqual(encodeTile(tile(3)));
+
+      // Slots 1..5 in reservation remain empty
+      expect(composed.subarray(16, 6 * 16)).toEqual(new Uint8Array(5 * 16));
+
+      // First new tile goes to slot 6 ($06)
+      expect(composed.subarray(6 * 16, 7 * 16)).toEqual(encodeTile(tile(1)));
+
+      // Second new tile goes to slot 7 ($07)
+      expect(composed.subarray(7 * 16, 8 * 16)).toEqual(encodeTile(tile(2)));
+
+      // Base CHR at slot 10 is preserved intact!
+      expect(composed.subarray(10 * 16, 11 * 16)).toEqual(encodeTile(tile(2)));
+    });
+
+    it('classifyChrSlots marks unallocated reserved slots as reserved while preserving occupied slots', () => {
+      const base = new Uint8Array(NES_CHR_ROM_SIZE);
+      base.set(encodeTile(tile(3)), 0); // Base CHR at slot 0
+
+      const reservations: ChrRegion[] = [
+        {
+          id: 'res-mixed',
+          name: 'Mixed Zone',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 3, // $00..$03 (slots 0..3)
+          kind: 'reservation',
+        },
+      ];
+
+      const tiles = [tile(1)]; // Will allocate at slot 4
+
+      const classifications = classifyChrSlots({
+        mode: 'tileset',
+        baseChr: base,
+        destinationPatternTable: 0,
+        tiles,
+        chrRegions: reservations,
+      });
+
+      // Slot 0 has Base CHR data -> 'base' (occupied != reserved)
+      expect(classifications[0]?.occupancy).toBe('base');
+
+      // Slots 1, 2, 3 are empty inside reservation -> 'reserved'
+      expect(classifications[1]?.occupancy).toBe('reserved');
+      expect(classifications[2]?.occupancy).toBe('reserved');
+      expect(classifications[3]?.occupancy).toBe('reserved');
+
+      // Slot 4 has project tile -> 'project'
+      expect(classifications[4]?.occupancy).toBe('project');
+
+      // Slot 5 is empty outside reservation -> 'empty'
+      expect(classifications[5]?.occupancy).toBe('empty');
     });
   });
 });

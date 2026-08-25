@@ -1,5 +1,6 @@
 import type { PlayfieldEncodingError } from '../core/playfield-encoder';
 import type { AnimationPlayback } from '../core/animation-model';
+import type { ChrRegion } from '../core/chr-pattern-table';
 import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
@@ -109,6 +110,7 @@ export interface ProjectView {
   readonly pixelOverrides: Uint8Array;
   readonly activePaletteIndex: number;
   readonly activeColorIndex: number;
+  readonly chrRegions?: readonly ChrRegion[];
   readonly animation: AnimationSettings;
   readonly scenePreview?: ProjectScenePreviewConfig;
   readonly quantizationSettings: QuantizationSettings;
