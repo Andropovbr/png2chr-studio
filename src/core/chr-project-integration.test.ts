@@ -5,10 +5,13 @@ import {
 } from './chr-project-integration';
 import {
   createEmptyTilePixels,
+  cloneTilePixels,
   decodeChrTileToPixels,
   encodeChrTileFromPixels,
   copyTileToClipboard,
   pasteTileFromClipboard,
+  createTileHistory,
+  areTilePixelsEqual,
 } from './chr-tile-editor';
 import { buildAnimationProjectModel } from './animation-model';
 import { createDefaultNesPaletteSet } from './nes-palette';
@@ -486,6 +489,278 @@ describe('chr-project-integration', () => {
 
       // Tile A in source remains independent
       expect(tileA[0]).toBe(3);
+    });
+
+    it('handles full Undo / Redo lifecycle on Animation tile pixelOverrides and round-trip persistence', () => {
+      const project = createDefaultProject('Hero Project', 'animation');
+      const initialPixels = createEmptyTilePixels(0);
+      const editedPixels = createEmptyTilePixels(3);
+      editedPixels[0] = 1;
+
+      const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+
+      const firstAnim = project.animation?.animations[0];
+      const animSetting: AnimationItemSetting = {
+        id: firstAnim?.id ?? 'anim-1',
+        name: firstAnim?.name ?? 'idle',
+        frameWidth: 16,
+        frameHeight: 16,
+        frameIndices: [0],
+        frameDurations: [6],
+        defaultDuration: 6,
+        playback: 'loop',
+        originX: 0,
+        originY: 0,
+        allowHorizontalFlip: false,
+        allowVerticalFlip: false,
+        source: null,
+      };
+
+      const target = {
+        type: 'animation' as const,
+        animationId: animSetting.id,
+        animationName: animSetting.name,
+        frameIndex: 0,
+        tileX: 0,
+        tileY: 0,
+      };
+
+      // 1. Perform Edit (e.g. pencil stroke / transform)
+      history.pushState(cloneTilePixels(editedPixels));
+      const editResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: editedPixels,
+        target,
+        animations: [animSetting],
+      });
+      expect(editResult.success).toBe(true);
+      expect(history.canUndo).toBe(true);
+
+      const editedOverrides = editResult.updatedAnimations?.[0]?.pixelOverrides;
+      expect(editedOverrides?.['0_0']?.[0]).toBe(1);
+
+      // 2. Perform Undo
+      const undonePixels = history.undo();
+      expect(undonePixels).toBeDefined();
+      if (!undonePixels) throw new Error('Expected undonePixels');
+      expect(history.canUndo).toBe(false);
+      expect(history.canRedo).toBe(true);
+
+      const undoResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: undonePixels,
+        target,
+        animations: [
+          {
+            ...animSetting,
+            pixelOverrides: editedOverrides,
+          },
+        ],
+      });
+      expect(undoResult.success).toBe(true);
+      const restoredOverrides =
+        undoResult.updatedAnimations?.[0]?.pixelOverrides;
+      expect(restoredOverrides?.['0_0']?.[0]).toBe(0);
+
+      // 3. Round-trip persistence in undone state
+      if (!project.animation) throw new Error('Missing animation config');
+      const projectUndone = {
+        ...project,
+        animation: {
+          ...project.animation,
+          animations: project.animation.animations.map((a, i) =>
+            i === 0 ? { ...a, pixelOverrides: restoredOverrides } : a,
+          ),
+        },
+      };
+      const jsonUndone = serializeProject(projectUndone);
+      const deserializedUndone = deserializeProject(jsonUndone);
+      expect(deserializedUndone.success).toBe(true);
+      if (deserializedUndone.success) {
+        expect(
+          deserializedUndone.project.animation?.animations[0]?.pixelOverrides?.[
+            '0_0'
+          ]?.[0],
+        ).toBe(0);
+      }
+
+      // 4. Perform Redo
+      const redonePixels = history.redo();
+      expect(redonePixels).toBeDefined();
+      if (!redonePixels) throw new Error('Expected redonePixels');
+      expect(history.canUndo).toBe(true);
+      expect(history.canRedo).toBe(false);
+
+      const redoResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: redonePixels,
+        target,
+        animations: [
+          {
+            ...animSetting,
+            pixelOverrides: restoredOverrides,
+          },
+        ],
+      });
+      expect(redoResult.success).toBe(true);
+      const reAppliedOverrides =
+        redoResult.updatedAnimations?.[0]?.pixelOverrides;
+      expect(reAppliedOverrides?.['0_0']?.[0]).toBe(1);
+
+      // 5. Round-trip persistence in redone state
+      const projectRedone = {
+        ...project,
+        animation: {
+          ...project.animation,
+          animations: project.animation.animations.map((a, i) =>
+            i === 0 ? { ...a, pixelOverrides: reAppliedOverrides } : a,
+          ),
+        },
+      };
+      const jsonRedone = serializeProject(projectRedone);
+      const deserializedRedone = deserializeProject(jsonRedone);
+      expect(deserializedRedone.success).toBe(true);
+      if (deserializedRedone.success) {
+        expect(
+          deserializedRedone.project.animation?.animations[0]?.pixelOverrides?.[
+            '0_0'
+          ]?.[0],
+        ).toBe(1);
+      }
+    });
+
+    it('handles full Undo / Redo lifecycle on Base CHR tile bytes and round-trip persistence', () => {
+      const initialBase = new Uint8Array(4096);
+      initialBase[0] = 0x11;
+      const initialPixels = decodeChrTileToPixels(initialBase.subarray(0, 16));
+
+      const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+
+      const editedPixels = createEmptyTilePixels(2);
+      editedPixels[0] = 3;
+
+      const target = {
+        type: 'base' as const,
+        physicalIndex: 0,
+        byteOffsetInBaseChr: 0,
+        destinationPatternTable: 0 as const,
+      };
+
+      // 1. Edit Base CHR tile
+      history.pushState(cloneTilePixels(editedPixels));
+      const editResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: editedPixels,
+        target,
+        baseChr: initialBase,
+        destinationPatternTable: 0,
+      });
+      expect(editResult.success).toBe(true);
+      const editedBase = editResult.updatedDestinationChr;
+      expect(editedBase).toBeDefined();
+      expect(editedBase?.[0]).not.toBe(0x11);
+
+      // 2. Undo Base CHR edit
+      const undonePixels = history.undo();
+      expect(undonePixels).toBeDefined();
+      if (!undonePixels) throw new Error('Expected undonePixels');
+      const undoResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: undonePixels,
+        target,
+        baseChr: editedBase,
+        destinationPatternTable: 0,
+      });
+      expect(undoResult.success).toBe(true);
+      const restoredBase = undoResult.updatedDestinationChr;
+      expect(restoredBase?.[0]).toBe(0x11);
+
+      // 3. Redo Base CHR edit
+      const redonePixels = history.redo();
+      expect(redonePixels).toBeDefined();
+      if (!redonePixels) throw new Error('Expected redonePixels');
+      const redoResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: redonePixels,
+        target,
+        baseChr: restoredBase,
+        destinationPatternTable: 0,
+      });
+      expect(redoResult.success).toBe(true);
+      expect(redoResult.updatedDestinationChr?.[0]).toBe(editedBase?.[0]);
+    });
+
+    it('handles full Undo / Redo lifecycle on Tileset pixelOverrides and round-trip persistence', () => {
+      const project = createDefaultProject('Tileset Project', 'tileset');
+      const img = createDummyIndexedImage(16, 16, 0);
+      const initialPixels = createEmptyTilePixels(0);
+      const editedPixels = createEmptyTilePixels(2);
+
+      const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+
+      const target = {
+        type: 'tileset' as const,
+        tileIndex: 0,
+        tileX: 0,
+        tileY: 0,
+        column: 0,
+        row: 0,
+      };
+
+      // 1. Edit
+      history.pushState(cloneTilePixels(editedPixels));
+      const editResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: editedPixels,
+        target,
+        indexedImage: img,
+      });
+      expect(editResult.success).toBe(true);
+      expect(editResult.updatedPixelOverrides?.[0]).toBe(2);
+
+      // 2. Undo
+      const undonePixels = history.undo();
+      expect(undonePixels).toBeDefined();
+      if (!undonePixels) throw new Error('Expected undonePixels');
+      const undoResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: undonePixels,
+        target,
+        indexedImage: img,
+        pixelOverrides: editResult.updatedPixelOverrides,
+      });
+      expect(undoResult.success).toBe(true);
+      expect(undoResult.updatedPixelOverrides?.[0]).toBe(0);
+
+      // 3. Redo
+      const redonePixels = history.redo();
+      expect(redonePixels).toBeDefined();
+      if (!redonePixels) throw new Error('Expected redonePixels');
+      const redoResult = applyChrTileEdit({
+        physicalIndex: 0,
+        newPixels: redonePixels,
+        target,
+        indexedImage: img,
+        pixelOverrides: undoResult.updatedPixelOverrides,
+      });
+      expect(redoResult.success).toBe(true);
+      expect(redoResult.updatedPixelOverrides?.[0]).toBe(2);
+
+      // 4. Persistence round-trip in undone state
+      if (!project.tileset) throw new Error('Missing tileset config');
+      const projectUndone = {
+        ...project,
+        tileset: {
+          ...project.tileset,
+          pixelOverrides: Array.from(undoResult.updatedPixelOverrides ?? []),
+        },
+      };
+      const jsonUndone = serializeProject(projectUndone);
+      const deserializedUndone = deserializeProject(jsonUndone);
+      expect(deserializedUndone.success).toBe(true);
+      if (deserializedUndone.success) {
+        expect(deserializedUndone.project.tileset?.pixelOverrides?.[0]).toBe(0);
+      }
     });
   });
 });

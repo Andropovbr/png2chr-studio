@@ -15,6 +15,7 @@ import {
   NEUTRAL_NES_GRAYSCALE,
   resolveChrPreviewPaletteColors,
 } from './chr-workspace';
+import { createTileHistory, areTilePixelsEqual } from '../core/chr-tile-editor';
 import { applyWorkspaceUpdate } from './state-update';
 import { createWorkspaceState } from './workspace-state';
 
@@ -2202,6 +2203,157 @@ describe('ChrWorkspace component', () => {
         0,
         expect.any(Uint8Array),
       );
+    });
+
+    it('preserves history instance across workspace re-renders and allows Undo/Redo to update project via onTilePixelsChange', () => {
+      const onTilePixelsChange = vi.fn();
+      const initialPixels = new Uint8Array(64);
+      initialPixels[0] = 3;
+      const history = createTileHistory(initialPixels, 50, areTilePixelsEqual);
+
+      // Initial render of workspace
+      const ws1 = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [{ id: 0, column: 0, row: 0, pixels: initialPixels }],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+        history,
+        onTilePixelsChange,
+      });
+
+      const mockWs1 = ws1 as unknown as MockElement;
+      const rotateBtn = mockWs1.querySelector(
+        '.chr-editor-action-btn[data-action="rotate-cw"]',
+      );
+      expect(rotateBtn).not.toBeNull();
+      rotateBtn?.click();
+
+      expect(onTilePixelsChange).toHaveBeenCalledTimes(1);
+      const editedPixels = onTilePixelsChange.mock.calls[0]?.[1] as Uint8Array;
+      expect(history.canUndo).toBe(true);
+
+      // Workspace re-render (e.g. after project update) with the SAME history instance
+      const ws2 = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [{ id: 0, column: 0, row: 0, pixels: editedPixels }],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+        history,
+        onTilePixelsChange,
+      });
+
+      const mockWs2 = ws2 as unknown as MockElement;
+      const undoBtn = mockWs2.querySelector(
+        '.chr-editor-action-btn[data-action="undo"]',
+      );
+      expect(undoBtn).not.toBeNull();
+      expect(undoBtn?.attributes.get('aria-disabled')).toBe('false');
+
+      // Click Undo
+      undoBtn?.click();
+      expect(onTilePixelsChange).toHaveBeenCalledTimes(2);
+      const undonePixels = onTilePixelsChange.mock.calls[1]?.[1] as Uint8Array;
+      expect(areTilePixelsEqual(undonePixels, initialPixels)).toBe(true);
+      expect(history.canRedo).toBe(true);
+
+      // Workspace re-render after Undo with the SAME history instance
+      const ws3 = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [{ id: 0, column: 0, row: 0, pixels: undonePixels }],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+        history,
+        onTilePixelsChange,
+      });
+
+      const mockWs3 = ws3 as unknown as MockElement;
+      const redoBtn = mockWs3.querySelector(
+        '.chr-editor-action-btn[data-action="redo"]',
+      );
+      expect(redoBtn).not.toBeNull();
+      expect(redoBtn?.attributes.get('aria-disabled')).toBe('false');
+
+      // Click Redo
+      redoBtn?.click();
+      expect(onTilePixelsChange).toHaveBeenCalledTimes(3);
+      const redonePixels = onTilePixelsChange.mock.calls[2]?.[1] as Uint8Array;
+      expect(areTilePixelsEqual(redonePixels, editedPixels)).toBe(true);
+    });
+
+    it('isolates history when switching between different selected tile indices', () => {
+      const pixels0 = new Uint8Array(64);
+      pixels0[0] = 1;
+      const pixels1 = new Uint8Array(64);
+      pixels1[0] = 2;
+
+      const history0 = createTileHistory(pixels0, 50, areTilePixelsEqual);
+      const history1 = createTileHistory(pixels1, 50, areTilePixelsEqual);
+
+      // Edit tile 0
+      const ws0 = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [
+          { id: 0, column: 0, row: 0, pixels: pixels0 },
+          { id: 1, column: 1, row: 0, pixels: pixels1 },
+        ],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 0,
+        history: history0,
+      });
+      const mockWs0 = ws0 as unknown as MockElement;
+      const rotate0 = mockWs0.querySelector(
+        '.chr-editor-action-btn[data-action="rotate-cw"]',
+      );
+      rotate0?.click();
+      expect(history0.canUndo).toBe(true);
+
+      // Select tile 1 (with isolated history1)
+      const ws1 = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [
+          { id: 0, column: 0, row: 0, pixels: pixels0 },
+          { id: 1, column: 1, row: 0, pixels: pixels1 },
+        ],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 1,
+        history: history1,
+      });
+      const mockWs1 = ws1 as unknown as MockElement;
+      const undo1 = mockWs1.querySelector(
+        '.chr-editor-action-btn[data-action="undo"]',
+      );
+      expect(undo1?.attributes.get('aria-disabled')).toBe('true');
+      expect(history1.canUndo).toBe(false);
     });
   });
 });

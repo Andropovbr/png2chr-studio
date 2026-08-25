@@ -556,6 +556,7 @@ async function loadProjectFile(
   quantizationPreviews = [];
   quantizationPreviewsLoading = false;
   quantizationPreviewCache.clear();
+  resetAllTileHistories();
 
   try {
     const text = await file.text();
@@ -1236,6 +1237,7 @@ async function changeQuantizationSettings(
 }
 
 function changeMode(mode: ProjectMode): void {
+  resetAllTileHistories();
   if (
     mode !== 'tileset' &&
     (project.sourceKind === 'chr' || project.sourceKind === 'nes')
@@ -1699,30 +1701,30 @@ function resetTile(animationId: string, tileX: number, tileY: number): void {
   render();
 }
 
-let activeChrEditorTileIndex: number | null = null;
-let activeChrEditorHistory: TileHistory<Uint8Array> | null = null;
+const chrTileHistoryMap = new Map<string, TileHistory<Uint8Array>>();
+
+export function resetAllTileHistories(): void {
+  chrTileHistoryMap.clear();
+}
 
 function getActiveTileHistory(
   physicalIndex: number | null,
   initialPixels: Uint8Array,
 ): TileHistory<Uint8Array> | undefined {
-  if (physicalIndex === null) {
-    activeChrEditorTileIndex = null;
-    activeChrEditorHistory = null;
+  if (physicalIndex === null || physicalIndex < 0 || physicalIndex >= 512) {
     return undefined;
   }
-  if (
-    activeChrEditorTileIndex !== physicalIndex ||
-    activeChrEditorHistory === null
-  ) {
-    activeChrEditorTileIndex = physicalIndex;
-    activeChrEditorHistory = createTileHistory(
+  const historyKey = `${projectName}:${project.mode}:${String(physicalIndex)}`;
+  let history = chrTileHistoryMap.get(historyKey);
+  if (!history) {
+    history = createTileHistory(
       cloneTilePixels(initialPixels),
       50,
       areTilePixelsEqual,
     );
+    chrTileHistoryMap.set(historyKey, history);
   }
-  return activeChrEditorHistory;
+  return history;
 }
 
 function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {

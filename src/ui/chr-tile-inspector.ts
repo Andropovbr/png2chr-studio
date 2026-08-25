@@ -323,7 +323,6 @@ export function createChrTileInspector(
         onPixelsChange: (nextPixels) => {
           localTilePixels = nextPixels;
           options.onTilePixelsChange?.(selectedIdx, nextPixels);
-          renderLocalEditor();
         },
         onSelectColorIndex: (colorIdx) => {
           localSelectedColor = colorIdx;
