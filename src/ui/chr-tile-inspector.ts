@@ -60,6 +60,18 @@ export interface ChrTileInspectorOptions {
     newPixels: Uint8Array,
   ) => void;
   readonly history?: TileHistory<Uint8Array>;
+  readonly editorState?: {
+    readonly activeTool: ChrDrawingTool;
+    readonly selectedColorIndex: number;
+    readonly showGrid: boolean;
+    readonly shiftWrap: boolean;
+  };
+  readonly onEditorStateChange?: (state: {
+    readonly activeTool: ChrDrawingTool;
+    readonly selectedColorIndex: number;
+    readonly showGrid: boolean;
+    readonly shiftWrap: boolean;
+  }) => void;
 }
 
 export function resolveTileSlotDiagnosis(
@@ -295,10 +307,12 @@ export function createChrTileInspector(
         ? options.finalChrBytes.subarray(startByte, startByte + 16)
         : new Uint8Array(16);
     let localTilePixels = decodeChrTileToPixels(tileBytes);
-    let localActiveTool: ChrDrawingTool = 'pencil';
-    let localSelectedColor = 1;
-    let localShowGrid = true;
-    let localShiftWrap = false;
+    let localEditorState = options.editorState ?? {
+      activeTool: 'pencil' as ChrDrawingTool,
+      selectedColorIndex: 1,
+      showGrid: true,
+      shiftWrap: false,
+    };
     const editorHistory =
       options.history ??
       createTileHistory(
@@ -314,31 +328,38 @@ export function createChrTileInspector(
       editorContainer.replaceChildren();
       const editor = createChrTileEditor({
         pixels: localTilePixels,
-        selectedColorIndex: localSelectedColor,
-        activeTool: localActiveTool,
+        selectedColorIndex: localEditorState.selectedColorIndex,
+        activeTool: localEditorState.activeTool,
         paletteColors: options.colors ?? NEUTRAL_NES_GRAYSCALE,
-        showGrid: localShowGrid,
-        shiftWrap: localShiftWrap,
+        showGrid: localEditorState.showGrid,
+        shiftWrap: localEditorState.shiftWrap,
         history: editorHistory,
         onPixelsChange: (nextPixels) => {
           localTilePixels = nextPixels;
           options.onTilePixelsChange?.(selectedIdx, nextPixels);
         },
         onSelectColorIndex: (colorIdx) => {
-          localSelectedColor = colorIdx;
-          renderLocalEditor();
+          localEditorState = {
+            ...localEditorState,
+            selectedColorIndex: colorIdx,
+          };
+          options.onEditorStateChange?.(localEditorState);
+          if (!options.onEditorStateChange) renderLocalEditor();
         },
         onSelectTool: (tool) => {
-          localActiveTool = tool;
-          renderLocalEditor();
+          localEditorState = { ...localEditorState, activeTool: tool };
+          options.onEditorStateChange?.(localEditorState);
+          if (!options.onEditorStateChange) renderLocalEditor();
         },
         onToggleGrid: (gridState) => {
-          localShowGrid = gridState;
-          renderLocalEditor();
+          localEditorState = { ...localEditorState, showGrid: gridState };
+          options.onEditorStateChange?.(localEditorState);
+          if (!options.onEditorStateChange) renderLocalEditor();
         },
         onToggleShiftWrap: (wrapState) => {
-          localShiftWrap = wrapState;
-          renderLocalEditor();
+          localEditorState = { ...localEditorState, shiftWrap: wrapState };
+          options.onEditorStateChange?.(localEditorState);
+          if (!options.onEditorStateChange) renderLocalEditor();
         },
         onUndo: () => {
           renderLocalEditor();

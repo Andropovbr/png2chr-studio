@@ -4,13 +4,12 @@ import type {
 } from '../core/animation-model';
 import {
   analyzeBaseChrOccupancy,
+  composeChrWithAllocatedTiles,
   classifyChrSlots,
   collectChrHighlightTileIndices,
   buildPhysicalTileReferenceIndex,
   calculateTileUsageDiagnostics,
   calculateChrUsageHeatmapSummary,
-  createPatternTableSlots,
-  encodePatternTableSlots,
   NES_CHR_ROM_SIZE,
   NES_CHR_ROM_TILE_COUNT,
   NES_PATTERN_TABLE_SIZE,
@@ -40,6 +39,7 @@ import {
 import { encodeChr } from '../core/chr-encoder';
 import { padChrRom } from '../core/chr-rom';
 import type { TileHistory } from '../core/chr-tile-editor';
+import type { ChrDrawingTool } from './chr-tile-editor';
 import type { Tile } from '../core/types';
 import { t } from '../i18n';
 import { createChrTileInspector } from './chr-tile-inspector';
@@ -102,6 +102,18 @@ export interface ChrWorkspaceOptions {
     newPixels: Uint8Array,
   ) => void;
   readonly history?: TileHistory<Uint8Array>;
+  readonly editorState?: {
+    readonly activeTool: ChrDrawingTool;
+    readonly selectedColorIndex: number;
+    readonly showGrid: boolean;
+    readonly shiftWrap: boolean;
+  };
+  readonly onEditorStateChange?: (state: {
+    readonly activeTool: ChrDrawingTool;
+    readonly selectedColorIndex: number;
+    readonly showGrid: boolean;
+    readonly shiftWrap: boolean;
+  }) => void;
 }
 
 export type ChrWorkspaceElement = HTMLElement & {
@@ -201,25 +213,11 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
 
   let finalChrBytes: Uint8Array;
   if (options.baseChr && options.baseChr.length > 0) {
-    const slots = createPatternTableSlots(
+    finalChrBytes = composeChrWithAllocatedTiles(
       options.baseChr,
       options.destinationPatternTable,
+      deduplicated,
     );
-    let insertIndex = 0;
-    for (const tile of deduplicated) {
-      while (insertIndex < slots.length && slots[insertIndex]?.tile !== null) {
-        insertIndex += 1;
-      }
-      if (insertIndex < slots.length) {
-        slots[insertIndex] = {
-          physicalTileIndex: insertIndex,
-          tile,
-          source: 'imported',
-        };
-        insertIndex += 1;
-      }
-    }
-    finalChrBytes = encodePatternTableSlots(slots);
   } else {
     finalChrBytes = padChrRom(encodeChr(deduplicated));
   }
@@ -1579,6 +1577,8 @@ export function createChrWorkspace(
     diagnostic: selectedDiagnostic,
     heatmapEnabled,
     history: options.history,
+    editorState: options.editorState,
+    onEditorStateChange: options.onEditorStateChange,
     onTilePixelsChange: options.onTilePixelsChange,
     onNavigateToReference: (ref) => {
       if (ref.type === 'animation') {

@@ -14,6 +14,7 @@ import {
   collectFramePhysicalTileUsage,
   collectPhysicalTileReferences,
   buildPhysicalTileReferenceIndex,
+  composeChrWithAllocatedTiles,
   createPatternTableSlots,
   encodePatternTableSlots,
   localPatternTableTileIndex,
@@ -90,6 +91,17 @@ describe('NES sprite pattern tables', () => {
         },
       ],
     });
+  });
+
+  it('preserves a materialized PT1 slot while allocating derived tiles into free slots', () => {
+    const base = new Uint8Array(NES_CHR_ROM_SIZE);
+    base[256 * 16] = 0x80;
+
+    const composed = composeChrWithAllocatedTiles(base, 0, [tile(2)]);
+
+    expect(composed).toHaveLength(NES_CHR_ROM_SIZE);
+    expect(composed[256 * 16]).toBe(0x80);
+    expect(composed.subarray(0, 16).some((byte) => byte !== 0)).toBe(true);
   });
 
   it('reports every slot occupied in a completely non-zero 8 KiB CHR', () => {

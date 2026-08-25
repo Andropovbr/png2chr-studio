@@ -485,6 +485,8 @@ const en = {
   chrEditorCoordsLabel: 'X: {x}, Y: {y}',
   chrEditorGridToggle: 'Toggle Pixel Grid',
   chrEditorCanvasAriaLabel: '8×8 NES CHR Tile Pixel Editor Canvas',
+  chrEditorCanvasKeyboardHint:
+    'Focus the canvas to use editor keyboard shortcuts. Pixel drawing currently requires pointer input.',
   chrEditorTransformGroup: 'Transformations',
   chrEditorShiftGroup: 'Shift Tile',
   chrEditorActionsGroup: 'Tile Actions',
@@ -1258,6 +1260,8 @@ const ptBr = {
   chrEditorCoordsLabel: 'X: {x}, Y: {y}',
   chrEditorGridToggle: 'Alternar Grade de Pixels',
   chrEditorCanvasAriaLabel: 'Canvas de Edição de Pixels do Tile CHR NES 8×8',
+  chrEditorCanvasKeyboardHint:
+    'Foque o canvas para usar os atalhos do editor. O desenho de pixels atualmente requer entrada por ponteiro.',
   chrEditorTransformGroup: 'Transformações',
   chrEditorShiftGroup: 'Deslocamento do Tile',
   chrEditorActionsGroup: 'Ações do Tile',

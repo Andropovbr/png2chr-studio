@@ -350,6 +350,28 @@ export function encodePatternTableSlots(
   return bytes;
 }
 
+export function composeChrWithAllocatedTiles(
+  baseChr: Uint8Array,
+  destinationPatternTable: SpritePatternTable,
+  tiles: readonly Tile[],
+): Uint8Array {
+  const slots = createPatternTableSlots(baseChr, destinationPatternTable);
+  let insertIndex = 0;
+  for (const tile of tiles) {
+    while (insertIndex < slots.length && slots[insertIndex]?.tile !== null) {
+      insertIndex += 1;
+    }
+    if (insertIndex >= slots.length) break;
+    slots[insertIndex] = {
+      physicalTileIndex: insertIndex,
+      tile,
+      source: 'imported',
+    };
+    insertIndex += 1;
+  }
+  return encodePatternTableSlots(slots);
+}
+
 export function classifyChrSlots(
   options: ClassifyChrSlotsOptions = {},
 ): readonly ChrSlotClassification[] {

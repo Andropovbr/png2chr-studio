@@ -41,6 +41,7 @@ Detailed technical documentation is available in the [`docs/`](docs/) directory:
 
 - [**Documentation Index (`docs/README.md`)**](docs/README.md) — Overview of available documentation.
 - [**Architecture Guide (`docs/arquitetura.md`)**](docs/arquitetura.md) — Application structure, modules, state flow, processing pipeline, and NES hardware handling.
+- [**CHR Editor Guide (`docs/chr-editor.md`)**](docs/chr-editor.md) — Tools, keyboard shortcuts, focus behavior, PT0/PT1 and Base CHR integration, persistence, and known limitations.
 - [**Development Guide (`docs/desenvolvimento.md`)**](docs/desenvolvimento.md) — Prerequisites, local environment, tests, linting, formatting, coding standards, and CI pipeline.
 - [**Formats & Export Specification (`docs/formatos-e-exportacao.md`)**](docs/formatos-e-exportacao.md) — Binary layouts, file formats (PNG, CHR, iNES, `.nam`, `.atr`, `.pal`, `.col`, `.p2c`, JSON, cc65 C, ca65 ASM).
 - [**Project State Boundaries (`docs/project-state-boundaries.md`)**](docs/project-state-boundaries.md) — State segregation rules between persistable project data and transient workspace state.

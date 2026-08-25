@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createChrTileEditor,
   DEFAULT_CHR_EDITOR_PALETTE,
@@ -212,6 +212,10 @@ describe('ChrTileEditor component', () => {
     });
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   function getPixelCallArg(
     fn: { mock: { calls: unknown[][] } },
     callIndex: number,
@@ -284,6 +288,16 @@ describe('ChrTileEditor component', () => {
 
     const paletteBtns = element.querySelectorAll('.chr-editor-color-btn');
     expect(paletteBtns.length).toBe(4);
+    expect(paletteBtns.map((button) => button.tabIndex)).toEqual([
+      -1, -1, 0, -1,
+    ]);
+
+    const canvas = element.querySelector('.chr-tile-editor-canvas');
+    expect(element.tabIndex).toBe(0);
+    expect(canvas?.tabIndex).toBe(0);
+    expect(canvas?.getAttribute('aria-describedby')).toBe(
+      'chr-editor-keyboard-hint',
+    );
 
     const canvasWrapper = element.querySelector(
       '.chr-tile-editor-canvas-wrapper',
@@ -295,6 +309,42 @@ describe('ChrTileEditor component', () => {
     expect(gridOverlay).not.toBeNull();
     expect(gridOverlay?.classList.contains('is-visible')).toBe(true);
     expect(gridOverlay?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('uses roving tabindex and arrow-key selection for drawing tools and color indices', () => {
+    const onSelectColorIndex = vi.fn();
+    const element = createChrTileEditor(
+      createTestOptions({ onSelectColorIndex }),
+    ) as unknown as MockElement;
+
+    const toolButtons = element.querySelectorAll('.chr-editor-tool-btn');
+    expect(toolButtons.map((button) => button.tabIndex)).toEqual([
+      0, -1, -1, -1,
+    ]);
+    toolButtons[0]?.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
+    expect(toolButtons[0]?.tabIndex).toBe(-1);
+    expect(toolButtons[1]?.tabIndex).toBe(0);
+    expect(toolButtons[1]?.focus).toHaveBeenCalledTimes(1);
+
+    const colorButtons = element.querySelectorAll('.chr-editor-color-btn');
+    colorButtons[2]?.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
+    expect(colorButtons[2]?.tabIndex).toBe(-1);
+    expect(colorButtons[3]?.tabIndex).toBe(0);
+    expect(colorButtons[3]?.focus).toHaveBeenCalledTimes(1);
+    expect(onSelectColorIndex).toHaveBeenCalledWith(3);
+
+    colorButtons[3]?.dispatchEvent({ type: 'keydown', key: 'Home' });
+    expect(colorButtons[0]?.tabIndex).toBe(0);
+    expect(onSelectColorIndex).toHaveBeenLastCalledWith(0);
+  });
+
+  it('scopes shortcuts to the editor DOM instead of registering a window listener', () => {
+    const addEventListener = vi.fn();
+    vi.stubGlobal('window', { addEventListener });
+
+    createChrTileEditor(createTestOptions());
+
+    expect(addEventListener).not.toHaveBeenCalled();
   });
 
   it('renders without grid overlay when showGrid is false and toggles grid state', () => {
