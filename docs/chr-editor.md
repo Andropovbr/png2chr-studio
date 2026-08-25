@@ -43,6 +43,23 @@ O canvas pode receber foco para que os atalhos permaneçam disponíveis. A ediç
 
 As edições canônicas são salvas no `.p2c.json` e restauradas ao reabrir o projeto. O histórico é mantido em memória por tile enquanto o usuário permanece no mesmo projeto e modo, inclusive ao voltar a um tile já editado. Ele é descartado ao criar ou carregar um projeto, trocar de modo ou encerrar a sessão; Undo/Redo não é persistido no arquivo.
 
+## Inspeção de Origem e Uso do Asset (Tile Ownership)
+
+No Inspetor de Tile do workspace **Memória CHR**, a seção **Origem e Uso do Asset** exibe a rastreabilidade completa e bidirecional do slot selecionado:
+
+- **Endereço Físico:** Identificação do slot em PT0 ($0000..$0FFF) ou PT1 ($1000..$1FFF), com offset planar exato em bytes.
+- **Origem do Asset:** Nome do asset primário, identificador canônico persistente (`ProjectAssetId`), coordenadas lógicas (`sourceCoordinates`) e chave canônica (`LogicalTileKey`).
+- **Tipo de Criação:** Badges informativas indicando a proveniência:
+  - `Extraído do asset` (`extracted`): Tile derivado de imagem ou spritesheet do projeto.
+  - `CHR-Base` (`base-chr`): Tile pré-existente carregado do arquivo CHR-Base.
+  - `Edição manual no CHR` (`manual-materialized`): Tile desenhado ou modificado diretamente no CHR Editor.
+- **Status Compartilhado:** Badge de destaque para tiles reutilizados, diferenciando compartilhamento interno (mesmo asset) e compartilhamento entre múltiplos assets do projeto.
+- **Usos no Projeto:** Lista estruturada de referências ativas:
+  - **Animação:** Nome da animação, entidade, índice do quadro, índice do sprite, coordenadas e flags de espelhamento horizontal/vertical. Botão **Ir para origem** salta diretamente para o workspace de animação no quadro e animação corretos.
+  - **Playfield:** Posição (coluna, linha) e índice na nametable.
+  - **Tileset:** Índice do tile e coordenadas fonte.
+- **Destacar Tiles do Asset:** Ação que aplica filtro de realce em todos os slots físicos pertencentes ao mesmo asset, com seletor correspondente na barra de ferramentas superior do visualizador CHR. O estado de realce é mantido em `WorkspaceState.chr.highlightedAssetId`.
+
 ## Limitações conhecidas
 
 - O clipboard é interno ao PNG2CHR Studio e não lê nem escreve o System Clipboard.

@@ -12,6 +12,11 @@ import {
   type TileAddressingMetadata,
 } from '../core/chr-pattern-table';
 import {
+  getPhysicalSlotAttribution,
+  type ChrAssetMappingIndex,
+  type PhysicalTileUsage,
+} from '../core/chr-asset-mapping';
+import {
   areTilePixelsEqual,
   cloneTilePixels,
   createTileHistory,
@@ -54,11 +59,22 @@ export interface ChrTileInspectorOptions {
   }[];
   readonly isHighlighted?: boolean;
   readonly highlightScopeLabel?: string | null;
+  readonly highlightedAssetId?: string | null;
+  readonly onHighlightAssetId?: (assetId: string | null) => void;
   readonly references?: readonly ChrTileReference[];
   readonly diagnostic?: ChrTileUsageDiagnostic | null;
   readonly heatmapEnabled?: boolean;
   readonly chrRegions?: readonly ChrRegion[];
-  readonly onNavigateToReference?: (reference: ChrTileReference) => void;
+  readonly mappingIndex?: ChrAssetMappingIndex;
+  readonly onNavigateToReference?: (
+    reference: ChrTileReference | PhysicalTileUsage,
+  ) => void;
+  readonly onNavigateToAnimation?: (
+    animationId: string,
+    frameIndex: number,
+  ) => void;
+  readonly onNavigateToPlayfield?: (column: number, row: number) => void;
+  readonly onNavigateToTileset?: (tileIndex: number) => void;
   readonly onDeselect?: () => void;
   readonly onTilePixelsChange?: (
     physicalIndex: number,
@@ -567,7 +583,425 @@ export function createChrTileInspector(
       addMetric(t('chrWorkspaceHighlightLabel'), highlightBadge);
     }
 
-    // 3. Reuse & Usage Diagnostics Section
+    // 3. Asset Origin & Usage Section (#chr-tile-ownership-section)
+    const slotAttribution = options.mappingIndex
+      ? getPhysicalSlotAttribution(
+          options.selectedTileIndex,
+          options.mappingIndex,
+        )
+      : undefined;
+
+    const ownershipSection = document.createElement('div');
+    ownershipSection.className = 'chr-tile-ownership-section';
+    ownershipSection.id = 'chr-tile-ownership-section';
+
+    const ownershipHeader = document.createElement('div');
+    ownershipHeader.className = 'chr-tile-ownership-header';
+
+    const ownershipTitle = document.createElement('h4');
+    ownershipTitle.className = 'chr-tile-ownership-title';
+    ownershipTitle.textContent = t('chrTileInspectorOwnershipTitle');
+
+    ownershipHeader.append(ownershipTitle);
+
+    if (slotAttribution?.isShared) {
+      const sharedBadge = document.createElement('span');
+      sharedBadge.className = 'status-badge chr-tile-shared-badge';
+
+      const distinctAssetCount = new Set(
+        slotAttribution.usages
+          .map((u) => u.assetId)
+          .filter((id): id is string => Boolean(id)),
+      ).size;
+
+      if (distinctAssetCount > 1) {
+        sharedBadge.textContent = t('chrTileInspectorSharedMultiAssetBadge', {
+          count: slotAttribution.usageCount,
+          assets: distinctAssetCount,
+        });
+      } else {
+        sharedBadge.textContent = t('chrTileInspectorSharedBadge', {
+          count: slotAttribution.usageCount,
+        });
+      }
+      ownershipHeader.append(sharedBadge);
+    }
+    ownershipSection.append(ownershipHeader);
+
+    // Provenance / Origin
+    const originCard = document.createElement('div');
+    originCard.className = 'chr-tile-origin-card';
+
+    if (slotAttribution?.origin) {
+      const originDl = document.createElement('dl');
+      originDl.className = 'chr-tile-origin-metrics';
+
+      // Primary Asset
+      const assetItem = document.createElement('div');
+      assetItem.className = 'chr-origin-asset-item';
+
+      const assetDt = document.createElement('dt');
+      assetDt.textContent = t('chrTileInspectorOriginLabel');
+
+      const assetDd = document.createElement('dd');
+      assetDd.className = 'chr-origin-asset-dd';
+
+      const assetNameSpan = document.createElement('span');
+      assetNameSpan.className = 'chr-origin-asset-name';
+      assetNameSpan.textContent =
+        slotAttribution.origin.primaryAssetName ??
+        slotAttribution.origin.primaryAssetId;
+
+      const assetIdCode = document.createElement('code');
+      assetIdCode.className = 'chr-origin-asset-id muted';
+      assetIdCode.textContent = slotAttribution.origin.primaryAssetId;
+
+      assetDd.append(assetNameSpan, assetIdCode);
+
+      // Highlight asset action button
+      if (options.onHighlightAssetId) {
+        const isAssetHighlighted =
+          options.highlightedAssetId === slotAttribution.origin.primaryAssetId;
+        const highlightBtn = document.createElement('button');
+        highlightBtn.type = 'button';
+        highlightBtn.className = `btn btn-secondary chr-origin-highlight-btn${isAssetHighlighted ? ' is-active' : ''}`;
+        highlightBtn.textContent = isAssetHighlighted
+          ? t('chrTileInspectorClearHighlightAssetAction')
+          : t('chrTileInspectorHighlightAssetAction');
+        highlightBtn.setAttribute(
+          'aria-pressed',
+          isAssetHighlighted ? 'true' : 'false',
+        );
+        const targetAssetId = slotAttribution.origin.primaryAssetId;
+        highlightBtn.addEventListener('click', () => {
+          options.onHighlightAssetId?.(
+            isAssetHighlighted ? null : targetAssetId,
+          );
+        });
+        assetDd.append(highlightBtn);
+      }
+
+      assetItem.append(assetDt, assetDd);
+      originDl.append(assetItem);
+
+      // Logical Tile Key / Coordinates
+      const logicalItem = document.createElement('div');
+      const logicalDt = document.createElement('dt');
+      logicalDt.textContent = t('chrTileInspectorLogicalTileLabel');
+      const logicalDd = document.createElement('dd');
+      if (slotAttribution.origin.sourceCoordinates) {
+        const coords = slotAttribution.origin.sourceCoordinates;
+        logicalDd.textContent = `(${String(coords.tileX)}, ${String(coords.tileY)}) · (px: ${String(coords.pixelX)}, ${String(coords.pixelY)})`;
+      } else if (slotAttribution.origin.logicalKey) {
+        logicalDd.textContent = slotAttribution.origin.logicalKey;
+      } else {
+        logicalDd.textContent = '—';
+      }
+      logicalItem.append(logicalDt, logicalDd);
+      originDl.append(logicalItem);
+
+      // Creation Kind
+      const kindItem = document.createElement('div');
+      const kindDt = document.createElement('dt');
+      kindDt.textContent = t('chrTileInspectorCreatedAsLabel');
+      const kindDd = document.createElement('dd');
+      const kindBadge = document.createElement('span');
+      kindBadge.className = `status-badge chr-creation-kind-badge kind-${slotAttribution.origin.creationKind}`;
+      kindBadge.textContent =
+        slotAttribution.origin.creationKind === 'extracted'
+          ? t('chrTileInspectorCreationExtracted')
+          : slotAttribution.origin.creationKind === 'base-chr'
+            ? t('chrTileInspectorCreationBaseChr')
+            : t('chrTileInspectorCreationManual');
+      kindDd.append(kindBadge);
+      kindItem.append(kindDt, kindDd);
+      originDl.append(kindItem);
+
+      originCard.append(originDl);
+    } else if (diagnosis.state === 'empty') {
+      const emptyMsg = document.createElement('p');
+      emptyMsg.className = 'empty-message chr-origin-empty-msg';
+      emptyMsg.textContent = t('chrTileInspectorNoAssociatedAsset');
+      originCard.append(emptyMsg);
+    } else if (diagnosis.state === 'base') {
+      const baseMsg = document.createElement('div');
+      baseMsg.className = 'chr-origin-base-desc';
+      const baseLabel = document.createElement('strong');
+      baseLabel.textContent = options.baseChrName
+        ? `Base CHR — ${options.baseChrName}`
+        : t('chrTileInspectorCreationBaseChr');
+      const kindBadge = document.createElement('span');
+      kindBadge.className =
+        'status-badge chr-creation-kind-badge kind-base-chr';
+      kindBadge.textContent = t('chrTileInspectorCreationBaseChr');
+      baseMsg.append(baseLabel, kindBadge);
+      originCard.append(baseMsg);
+    } else {
+      const unknownMsg = document.createElement('p');
+      unknownMsg.className = 'muted chr-origin-unknown-msg';
+      unknownMsg.textContent = t('chrTileInspectorUnknownProvenance');
+      originCard.append(unknownMsg);
+    }
+
+    ownershipSection.append(originCard);
+
+    // 4. Reverse Lookup: "Used by" Section
+    const usedBySection = document.createElement('div');
+    usedBySection.className = 'chr-tile-used-by-section';
+
+    const usedByHeader = document.createElement('div');
+    usedByHeader.className = 'chr-tile-used-by-header';
+
+    const usedByTitle = document.createElement('h4');
+    usedByTitle.className = 'chr-tile-used-by-title';
+
+    // Usages can come from slotAttribution or options.references fallback
+    const rawUsages = slotAttribution?.usages;
+    const hasStructuredUsages = rawUsages !== undefined && rawUsages.length > 0;
+    const legacyReferences = options.references ?? [];
+    const usageCount = hasStructuredUsages
+      ? rawUsages.length
+      : legacyReferences.length;
+
+    usedByTitle.textContent = t('chrTileInspectorUsedBy', {
+      count: usageCount,
+    });
+    usedByHeader.append(usedByTitle);
+    usedBySection.append(usedByHeader);
+
+    if (usageCount === 0) {
+      const emptyRefs = document.createElement('p');
+      emptyRefs.className = 'empty-message chr-tile-used-by-empty';
+      emptyRefs.textContent = t('chrTileInspectorUsedByEmpty');
+      usedBySection.append(emptyRefs);
+    } else {
+      const refList = document.createElement('div');
+      refList.className = 'chr-tile-used-by-list';
+
+      const INITIAL_VISIBLE_COUNT = 6;
+      let showAll = false;
+
+      const renderUsageItems = (): void => {
+        const itemNodes: HTMLElement[] = [];
+
+        if (hasStructuredUsages) {
+          const visibleUsages = showAll
+            ? rawUsages
+            : rawUsages.slice(0, INITIAL_VISIBLE_COUNT);
+
+          visibleUsages.forEach((u) => {
+            const item = document.createElement('div');
+            item.className = `chr-tile-ref-item ref-type-${u.type}`;
+
+            const infoWrap = document.createElement('div');
+            infoWrap.className = 'chr-tile-ref-info';
+
+            const typeBadge = document.createElement('span');
+            typeBadge.className = `status-badge chr-tile-ref-badge badge-${u.type}`;
+            typeBadge.textContent =
+              u.type === 'animation'
+                ? 'Animation'
+                : u.type === 'playfield'
+                  ? 'Playfield'
+                  : 'Tileset';
+
+            const desc = document.createElement('span');
+            desc.className = 'chr-tile-ref-desc';
+
+            if (u.type === 'animation') {
+              const flips: string[] = [];
+              if (u.horizontalFlip)
+                flips.push(t('chrTileInspectorFlipHorizontal'));
+              if (u.verticalFlip) flips.push(t('chrTileInspectorFlipVertical'));
+              const flipText = flips.length > 0 ? ` [${flips.join(', ')}]` : '';
+              const entityPrefix = u.entity ? `${u.entity} · ` : '';
+              const animLabel = u.animationName ?? u.animationId;
+              desc.textContent = `${entityPrefix}${animLabel} · Frame #${String(u.frameIndex)} · sprite (${String(u.x)}, ${String(u.y)})${flipText}`;
+            } else if (u.type === 'playfield') {
+              desc.textContent = `(${String(u.column)}, ${String(u.row)}) · tile $${u.localTileIndex.toString(16).toUpperCase().padStart(2, '0')}`;
+            } else {
+              const coordStr = u.sourceCoordinates
+                ? ` (${String(u.sourceCoordinates.tileX)}, ${String(u.sourceCoordinates.tileY)})`
+                : '';
+              desc.textContent = `tile #${String(u.tileIndex)}${coordStr}`;
+            }
+
+            infoWrap.append(typeBadge, desc);
+
+            // Jump Action
+            const jumpBtn = document.createElement('button');
+            jumpBtn.type = 'button';
+            jumpBtn.className = 'button secondary-button chr-tile-ref-jump-btn';
+            jumpBtn.textContent = t('chrTileInspectorJumpAction');
+
+            if (u.type === 'animation') {
+              jumpBtn.title = t('chrTileInspectorJumpAnimation', {
+                name: u.animationName ?? u.animationId,
+                frame: u.frameIndex,
+              });
+            } else if (u.type === 'playfield') {
+              jumpBtn.title = t('chrTileInspectorJumpPlayfield', {
+                col: u.column,
+                row: u.row,
+              });
+            } else {
+              jumpBtn.title = t('chrTileInspectorJumpTileset', {
+                index: u.tileIndex,
+              });
+            }
+            jumpBtn.setAttribute(
+              'aria-label',
+              jumpBtn.title || t('chrTileInspectorJumpAction'),
+            );
+
+            jumpBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (u.type === 'animation') {
+                if (options.onNavigateToAnimation) {
+                  options.onNavigateToAnimation(u.animationId, u.frameIndex);
+                } else {
+                  options.onNavigateToReference?.(u);
+                }
+              } else if (u.type === 'playfield') {
+                if (options.onNavigateToPlayfield) {
+                  options.onNavigateToPlayfield(u.column, u.row);
+                } else {
+                  options.onNavigateToReference?.(u);
+                }
+              } else {
+                if (options.onNavigateToTileset) {
+                  options.onNavigateToTileset(u.tileIndex);
+                } else {
+                  options.onNavigateToReference?.(u);
+                }
+              }
+            });
+
+            item.append(infoWrap, jumpBtn);
+            itemNodes.push(item);
+          });
+
+          if (rawUsages.length > INITIAL_VISIBLE_COUNT) {
+            const toggleMoreBtn = document.createElement('button');
+            toggleMoreBtn.type = 'button';
+            toggleMoreBtn.className =
+              'button secondary-button chr-tile-refs-toggle-btn';
+            toggleMoreBtn.textContent = showAll
+              ? t('chrTileInspectorShowLessRefs')
+              : t('chrTileInspectorShowAllRefs', {
+                  count: rawUsages.length,
+                });
+            toggleMoreBtn.setAttribute('aria-expanded', String(showAll));
+            toggleMoreBtn.addEventListener('click', () => {
+              showAll = !showAll;
+              renderUsageItems();
+            });
+            itemNodes.push(toggleMoreBtn);
+          }
+        } else {
+          // Legacy references fallback
+          const visibleRefs = showAll
+            ? legacyReferences
+            : legacyReferences.slice(0, INITIAL_VISIBLE_COUNT);
+
+          visibleRefs.forEach((ref) => {
+            const item = document.createElement('div');
+            item.className = `chr-tile-ref-item ref-type-${ref.type}`;
+
+            const infoWrap = document.createElement('div');
+            infoWrap.className = 'chr-tile-ref-info';
+
+            const typeBadge = document.createElement('span');
+            typeBadge.className = `status-badge chr-tile-ref-badge badge-${ref.type}`;
+            typeBadge.textContent =
+              ref.type === 'animation'
+                ? 'Animation'
+                : ref.type === 'playfield'
+                  ? 'Playfield'
+                  : 'Tileset';
+
+            const desc = document.createElement('span');
+            desc.className = 'chr-tile-ref-desc';
+
+            if (ref.type === 'animation') {
+              const flips: string[] = [];
+              if (ref.horizontalFlip) flips.push('Flip H');
+              if (ref.verticalFlip) flips.push('Flip V');
+              const flipText = flips.length > 0 ? ` [${flips.join(', ')}]` : '';
+              const entityPrefix = ref.entity ? `${ref.entity} · ` : '';
+              desc.textContent = `${entityPrefix}${ref.animationName} · Frame #${String(ref.frameIndex)} · sprite (${String(ref.x)}, ${String(ref.y)})${flipText}`;
+            } else if (ref.type === 'playfield') {
+              desc.textContent = `(${String(ref.column)}, ${String(ref.row)}) · tile $${ref.tileIndex.toString(16).toUpperCase().padStart(2, '0')}`;
+            } else {
+              desc.textContent = `tile #${String(ref.tileIndex)}${ref.sourceIndex !== undefined ? ` (src: ${String(ref.sourceIndex)})` : ''}`;
+            }
+
+            infoWrap.append(typeBadge, desc);
+
+            if (options.onNavigateToReference) {
+              const jumpBtn = document.createElement('button');
+              jumpBtn.type = 'button';
+              jumpBtn.className =
+                'button secondary-button chr-tile-ref-jump-btn';
+              jumpBtn.textContent = t('chrTileInspectorJumpAction');
+              if (ref.type === 'animation') {
+                jumpBtn.title = t('chrTileInspectorJumpAnimation', {
+                  name: ref.animationName,
+                  frame: ref.frameIndex,
+                });
+              } else if (ref.type === 'playfield') {
+                jumpBtn.title = t('chrTileInspectorJumpPlayfield', {
+                  col: ref.column,
+                  row: ref.row,
+                });
+              } else {
+                jumpBtn.title = t('chrTileInspectorJumpTileset', {
+                  index: ref.tileIndex,
+                });
+              }
+              jumpBtn.setAttribute(
+                'aria-label',
+                jumpBtn.title || t('chrTileInspectorJumpAction'),
+              );
+              jumpBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                options.onNavigateToReference?.(ref);
+              });
+              item.append(infoWrap, jumpBtn);
+            } else {
+              item.append(infoWrap);
+            }
+
+            itemNodes.push(item);
+          });
+
+          if (legacyReferences.length > INITIAL_VISIBLE_COUNT) {
+            const toggleMoreBtn = document.createElement('button');
+            toggleMoreBtn.type = 'button';
+            toggleMoreBtn.className =
+              'button secondary-button chr-tile-refs-toggle-btn';
+            toggleMoreBtn.textContent = showAll
+              ? t('chrTileInspectorShowLessRefs')
+              : t('chrTileInspectorShowAllRefs', {
+                  count: legacyReferences.length,
+                });
+            toggleMoreBtn.setAttribute('aria-expanded', String(showAll));
+            toggleMoreBtn.addEventListener('click', () => {
+              showAll = !showAll;
+              renderUsageItems();
+            });
+            itemNodes.push(toggleMoreBtn);
+          }
+        }
+
+        refList.replaceChildren(...itemNodes);
+      };
+
+      renderUsageItems();
+      usedBySection.append(refList);
+    }
+
+    // 5. Reuse & Usage Diagnostics Section
     const diag = options.diagnostic;
     let usageSection: HTMLElement | null = null;
     if (diag !== undefined && diag !== null) {
@@ -644,140 +1078,21 @@ export function createChrTileInspector(
       }
     }
 
-    // 4. Reverse Lookup: "Used by" Section
-    const usedBySection = document.createElement('div');
-    usedBySection.className = 'chr-tile-used-by-section';
-
-    const usedByHeader = document.createElement('div');
-    usedByHeader.className = 'chr-tile-used-by-header';
-
-    const usedByTitle = document.createElement('h4');
-    usedByTitle.className = 'chr-tile-used-by-title';
-    const references = options.references ?? [];
-    usedByTitle.textContent = t('chrTileInspectorUsedBy', {
-      count: references.length,
-    });
-    usedByHeader.append(usedByTitle);
-    usedBySection.append(usedByHeader);
-
-    if (references.length === 0) {
-      const emptyRefs = document.createElement('p');
-      emptyRefs.className = 'empty-message chr-tile-used-by-empty';
-      emptyRefs.textContent = t('chrTileInspectorUsedByEmpty');
-      usedBySection.append(emptyRefs);
-    } else {
-      const refList = document.createElement('div');
-      refList.className = 'chr-tile-used-by-list';
-
-      const INITIAL_VISIBLE_COUNT = 6;
-      let showAll = false;
-
-      const renderRefs = (): void => {
-        const visibleRefs = showAll
-          ? references
-          : references.slice(0, INITIAL_VISIBLE_COUNT);
-
-        const itemNodes: HTMLElement[] = [];
-
-        visibleRefs.forEach((ref) => {
-          const item = document.createElement('div');
-          item.className = `chr-tile-ref-item ref-type-${ref.type}`;
-
-          const infoWrap = document.createElement('div');
-          infoWrap.className = 'chr-tile-ref-info';
-
-          const typeBadge = document.createElement('span');
-          typeBadge.className = `status-badge chr-tile-ref-badge badge-${ref.type}`;
-          typeBadge.textContent =
-            ref.type === 'animation'
-              ? 'Animation'
-              : ref.type === 'playfield'
-                ? 'Playfield'
-                : 'Tileset';
-
-          const desc = document.createElement('span');
-          desc.className = 'chr-tile-ref-desc';
-
-          if (ref.type === 'animation') {
-            const flips: string[] = [];
-            if (ref.horizontalFlip) flips.push('Flip H');
-            if (ref.verticalFlip) flips.push('Flip V');
-            const flipText = flips.length > 0 ? ` [${flips.join(', ')}]` : '';
-            const entityPrefix = ref.entity ? `${ref.entity} · ` : '';
-            desc.textContent = `${entityPrefix}${ref.animationName} · Frame #${String(ref.frameIndex)} · sprite (${String(ref.x)}, ${String(ref.y)})${flipText}`;
-          } else if (ref.type === 'playfield') {
-            desc.textContent = `(${String(ref.column)}, ${String(ref.row)}) · tile $${ref.tileIndex.toString(16).toUpperCase().padStart(2, '0')}`;
-          } else {
-            desc.textContent = `tile #${String(ref.tileIndex)}${ref.sourceIndex !== undefined ? ` (src: ${String(ref.sourceIndex)})` : ''}`;
-          }
-
-          infoWrap.append(typeBadge, desc);
-
-          if (options.onNavigateToReference) {
-            const jumpBtn = document.createElement('button');
-            jumpBtn.type = 'button';
-            jumpBtn.className = 'button secondary-button chr-tile-ref-jump-btn';
-            jumpBtn.textContent = t('chrTileInspectorJumpAction');
-            if (ref.type === 'animation') {
-              jumpBtn.title = t('chrTileInspectorJumpAnimation', {
-                name: ref.animationName,
-                frame: ref.frameIndex,
-              });
-            } else if (ref.type === 'playfield') {
-              jumpBtn.title = t('chrTileInspectorJumpPlayfield', {
-                col: ref.column,
-                row: ref.row,
-              });
-            } else {
-              jumpBtn.title = t('chrTileInspectorJumpTileset', {
-                index: ref.tileIndex,
-              });
-            }
-            jumpBtn.setAttribute(
-              'aria-label',
-              jumpBtn.title || t('chrTileInspectorJumpAction'),
-            );
-            jumpBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              options.onNavigateToReference?.(ref);
-            });
-            item.append(infoWrap, jumpBtn);
-          } else {
-            item.append(infoWrap);
-          }
-
-          itemNodes.push(item);
-        });
-
-        if (references.length > INITIAL_VISIBLE_COUNT) {
-          const toggleMoreBtn = document.createElement('button');
-          toggleMoreBtn.type = 'button';
-          toggleMoreBtn.className =
-            'button secondary-button chr-tile-refs-toggle-btn';
-          toggleMoreBtn.textContent = showAll
-            ? t('chrTileInspectorShowLessRefs')
-            : t('chrTileInspectorShowAllRefs', {
-                count: references.length,
-              });
-          toggleMoreBtn.setAttribute('aria-expanded', String(showAll));
-          toggleMoreBtn.addEventListener('click', () => {
-            showAll = !showAll;
-            renderRefs();
-          });
-          itemNodes.push(toggleMoreBtn);
-        }
-
-        refList.replaceChildren(...itemNodes);
-      };
-
-      renderRefs();
-      usedBySection.append(refList);
-    }
-
     if (usageSection) {
-      content.append(previewSection, metricsList, usageSection, usedBySection);
+      content.append(
+        previewSection,
+        metricsList,
+        ownershipSection,
+        usedBySection,
+        usageSection,
+      );
     } else {
-      content.append(previewSection, metricsList, usedBySection);
+      content.append(
+        previewSection,
+        metricsList,
+        ownershipSection,
+        usedBySection,
+      );
     }
     panel.append(content);
   } else {
