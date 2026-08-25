@@ -37,6 +37,7 @@ import {
   isChrSlotAvailableForAllocation,
   findNextAvailableChrSlot,
   formatTileIndexHex,
+  formatChrTileIndex,
   formatTileRangeHex,
   formatConsecutiveTileRanges,
   calculatePatternTableCapacity,
@@ -46,6 +47,8 @@ import {
   findChrRegionsForLocalTile,
   sanitizeRegionColor,
   buildChrSlotRegionIndex,
+  parseChrTileIndex,
+  generateChrRegionId,
   type ChrRegion,
   type ChrSlotClassification,
   type PatternTableSlot,
@@ -2117,6 +2120,53 @@ describe('NES sprite pattern tables', () => {
         // Slot 300 (PT1, local 44): empty
         expect(index[300]?.inRegion).toBe(false);
         expect(index[300]?.inReservation).toBe(false);
+      });
+    });
+
+    describe('parseChrTileIndex', () => {
+      it('correctly parses valid hex notations ($00..$FF, 00..FF, 0x00..0xFF, single hex digits)', () => {
+        expect(parseChrTileIndex('$00')).toBe(0);
+        expect(parseChrTileIndex('00')).toBe(0);
+        expect(parseChrTileIndex('$1F')).toBe(31);
+        expect(parseChrTileIndex('1f')).toBe(31);
+        expect(parseChrTileIndex('0x1F')).toBe(31);
+        expect(parseChrTileIndex('0X1F')).toBe(31);
+        expect(parseChrTileIndex('$FF')).toBe(255);
+        expect(parseChrTileIndex('ff')).toBe(255);
+        expect(parseChrTileIndex('a')).toBe(10);
+        expect(parseChrTileIndex('$A')).toBe(10);
+        expect(parseChrTileIndex('  $20  ')).toBe(32);
+      });
+
+      it('rejects invalid, malformed, or out-of-range inputs by returning null', () => {
+        expect(parseChrTileIndex('$1G')).toBeNull();
+        expect(parseChrTileIndex('banana')).toBeNull();
+        expect(parseChrTileIndex('100')).toBeNull(); // 3 hex digits > 255
+        expect(parseChrTileIndex('$100')).toBeNull();
+        expect(parseChrTileIndex('-1')).toBeNull();
+        expect(parseChrTileIndex('')).toBeNull();
+        expect(parseChrTileIndex('   ')).toBeNull();
+        expect(parseChrTileIndex(null)).toBeNull();
+        expect(parseChrTileIndex(undefined)).toBeNull();
+      });
+    });
+
+    describe('formatChrTileIndex', () => {
+      it('formats tile index into uppercase hex notation ($00..$FF)', () => {
+        expect(formatChrTileIndex(0)).toBe('$00');
+        expect(formatChrTileIndex(31)).toBe('$1F');
+        expect(formatChrTileIndex(255)).toBe('$FF');
+        expect(formatChrTileIndex(0x20)).toBe('$20');
+      });
+    });
+
+    describe('generateChrRegionId', () => {
+      it('generates non-empty unique string IDs', () => {
+        const id1 = generateChrRegionId();
+        const id2 = generateChrRegionId();
+        expect(typeof id1).toBe('string');
+        expect(id1.length).toBeGreaterThan(0);
+        expect(id1).not.toBe(id2);
       });
     });
   });

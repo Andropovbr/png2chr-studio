@@ -438,6 +438,52 @@ export function formatTileIndexHex(value: number): string {
   return `$${(value & 0xff).toString(16).toUpperCase().padStart(2, '0')}`;
 }
 
+export const formatChrTileIndex = formatTileIndexHex;
+
+/**
+ * Parses a user input string representing a local pattern table tile index ($00..$FF).
+ * Accepts variations like "$1F", "1f", "0x1F", "0X1F", "1F", "00", "0", etc.
+ * Returns the canonical integer index (0..255), or null if invalid (e.g., "$1G", "256", "-1", "").
+ */
+export function parseChrTileIndex(
+  input: string | null | undefined,
+): number | null {
+  if (input === null || input === undefined) return null;
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return null;
+
+  let clean = trimmed;
+  if (clean.startsWith('$')) {
+    clean = clean.slice(1).trim();
+  } else if (/^0x/i.test(clean)) {
+    clean = clean.slice(2).trim();
+  }
+
+  if (!/^[0-9a-fA-F]{1,2}$/.test(clean)) {
+    return null;
+  }
+
+  const parsed = parseInt(clean, 16);
+  if (Number.isNaN(parsed) || parsed < 0 || parsed > 255) {
+    return null;
+  }
+
+  return parsed;
+}
+
+/**
+ * Generates a stable unique ID for a new ChrRegion.
+ */
+export function generateChrRegionId(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID();
+  }
+  return `chr-reg-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
 /**
  * Formats a tile index interval ($00..$FF) into canonical NES hex range notation.
  */

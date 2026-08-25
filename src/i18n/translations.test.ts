@@ -64,4 +64,39 @@ describe('translations', () => {
     expect(translations.en.chrWorkspaceLegendRegion).toBe('Region');
     expect(translations['pt-BR'].chrWorkspaceLegendRegion).toBe('Região');
   });
+
+  it('provides translations for CHR Region Manager panel and form in English and Portuguese', () => {
+    expect(translations.en.chrRegionManagerSectionTitle).toBe(
+      'CHR Regions & Reservations',
+    );
+    expect(translations['pt-BR'].chrRegionManagerSectionTitle).toBe(
+      'Regiões e Reservas de CHR',
+    );
+    expect(translations.en.chrRegionManagerAddAction).toBe('+ New Region');
+    expect(translations['pt-BR'].chrRegionManagerAddAction).toBe(
+      '+ Nova Região',
+    );
+    expect(translations.en.chrRegionManagerActionSave).toBe('Save');
+    expect(translations['pt-BR'].chrRegionManagerActionSave).toBe('Salvar');
+    expect(translations.en.chrRegionManagerActionCancel).toBe('Cancel');
+    expect(translations['pt-BR'].chrRegionManagerActionCancel).toBe('Cancelar');
+    expect(translations.en.chrRegionManagerValStartInvalid).toContain(
+      'Invalid start tile',
+    );
+    expect(translations['pt-BR'].chrRegionManagerValStartInvalid).toContain(
+      'Tile inicial inválido',
+    );
+    expect(translations.en.chrRegionManagerDeleteRegionConfirm).toContain(
+      'Remove organizational Region',
+    );
+    expect(translations['pt-BR'].chrRegionManagerDeleteRegionConfirm).toContain(
+      'Remover a região organizacional',
+    );
+    expect(translations.en.chrRegionManagerDeleteReservationConfirm).toContain(
+      'Slots previously protected from automatic allocation',
+    );
+    expect(
+      translations['pt-BR'].chrRegionManagerDeleteReservationConfirm,
+    ).toContain('Slots anteriormente protegidos contra alocação automática');
+  });
 });
