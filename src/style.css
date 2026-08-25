@@ -3194,6 +3194,24 @@ input:focus-visible + label {
   background: transparent;
 }
 
+.chr-legend-item.is-reserved .chr-legend-indicator {
+  border: 1px dashed rgb(168 85 247 / 70%);
+  background-color: rgb(168 85 247 / 20%);
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(168 85 247 / 60%) 0,
+    rgb(168 85 247 / 60%) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+}
+
+.chr-legend-item.is-region .chr-legend-indicator {
+  border: 1px solid rgb(56 189 248 / 40%);
+  border-top: 3px solid #38bdf8;
+  background: transparent;
+}
+
 /* CHR Heatmap Controls */
 .chr-heatmap-controls {
   display: inline-flex;
@@ -3465,8 +3483,15 @@ input:focus-visible + label {
 /* Reserved Slot */
 .chr-tile-slot[data-occupancy='reserved'],
 .chr-tile-slot.is-occupancy-reserved {
-  border: 1px dashed rgb(168 85 247 / 50%);
-  background-color: rgb(168 85 247 / 10%);
+  border: 1px dashed rgb(168 85 247 / 60%);
+  background-color: rgb(168 85 247 / 12%);
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(168 85 247 / 25%) 0,
+    rgb(168 85 247 / 25%) 2px,
+    transparent 2px,
+    transparent 6px
+  );
 }
 
 .chr-tile-slot[data-occupancy='reserved']::before,
@@ -3481,6 +3506,24 @@ input:focus-visible + label {
   border-radius: 50%;
   pointer-events: none;
   opacity: 0.9;
+}
+
+/* Slot in organizational Region (accent top stripe) */
+.chr-tile-slot.in-region::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--slot-region-color, #38bdf8);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Slot in Reservation (accent bottom border for occupied tiles inside a reservation) */
+.chr-tile-slot.in-reservation:not(.is-occupancy-reserved) {
+  border-bottom: 2px solid rgb(168 85 247 / 70%);
 }
 
 /* Hover State */
@@ -3807,14 +3850,60 @@ input:focus-visible + label {
 }
 
 .chr-slot-state-badge.state-base {
-  background: rgb(168 85 247 / 15%);
+  background: rgb(245 158 11 / 15%);
+  color: #f59e0b;
+  border: 1px solid rgb(245 158 11 / 30%);
+}
+
+.chr-slot-state-badge.state-reserved {
+  background: rgb(168 85 247 / 20%);
   color: #c084fc;
-  border: 1px solid rgb(168 85 247 / 30%);
+  border: 1px dashed rgb(168 85 247 / 60%);
 }
 
 .chr-attribution-text {
   word-break: break-word;
   font-size: 0.85rem;
+}
+
+.chr-inspector-region-list,
+.chr-inspector-reservation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chr-region-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.25rem;
+  background: rgb(56 189 248 / 15%);
+  border: 1px solid rgb(56 189 248 / 35%);
+  color: var(--text, #eaf0f5);
+}
+
+.chr-reservation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.25rem;
+  background: rgb(168 85 247 / 15%);
+  border: 1px dashed rgb(168 85 247 / 45%);
+  color: #c084fc;
+}
+
+.chr-region-color-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 40%);
+  flex-shrink: 0;
 }
 
 /* CHR Tile Inspector Usage Diagnostics */
@@ -4869,6 +4958,31 @@ input:focus-visible + label {
 }
 
 @media (forced-colors: active) {
+  .chr-tile-slot.in-region::after {
+    background: Highlight;
+  }
+
+  .chr-tile-slot.in-reservation:not(.is-occupancy-reserved) {
+    border-bottom: 2px dashed Highlight;
+  }
+
+  .chr-tile-slot.is-occupancy-reserved {
+    outline: 1px dashed Highlight;
+  }
+
+  .chr-region-badge,
+  .chr-reservation-badge {
+    border: 1px solid Highlight;
+  }
+
+  .chr-legend-item.is-region .chr-legend-indicator {
+    border-top: 3px solid Highlight;
+  }
+
+  .chr-legend-item.is-reserved .chr-legend-indicator {
+    border: 1px dashed Highlight;
+  }
+
   .chr-editor-tool-btn.is-active,
   .chr-editor-color-btn.is-active,
   .chr-editor-grid-btn.is-active,

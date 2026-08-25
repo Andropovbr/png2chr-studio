@@ -31,7 +31,9 @@ class MockElement {
   title = '';
   width = 0;
   height = 0;
-  style: Record<string, string> = {};
+  style: Record<string, string> & {
+    setProperty: (k: string, v: string) => void;
+  };
   open = false;
   tabIndex = -1;
   focus = vi.fn();
@@ -39,6 +41,17 @@ class MockElement {
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
+    const styleObj: Record<string, string> = {};
+    Object.defineProperty(styleObj, 'setProperty', {
+      value: (k: string, v: string) => {
+        styleObj[k] = v;
+      },
+      writable: true,
+      configurable: true,
+    });
+    this.style = styleObj as Record<string, string> & {
+      setProperty: (k: string, v: string) => void;
+    };
   }
 
   get textContent(): string {
@@ -1228,10 +1241,12 @@ describe('ChrWorkspace component', () => {
       expect(legend?.getAttribute('role')).toBe('group');
 
       const items = legend?.querySelectorAll('.chr-legend-item') ?? [];
-      expect(items.length).toBe(3);
+      expect(items.length).toBe(5);
       expect(items[0]?.textContent).toContain('Project');
       expect(items[1]?.textContent).toContain('Base CHR');
-      expect(items[2]?.textContent).toContain('Free');
+      expect(items[2]?.textContent).toContain('Reserved');
+      expect(items[3]?.textContent).toContain('Free');
+      expect(items[4]?.textContent).toContain('Region');
     });
 
     it('renders pattern table occupancy badges and utilization subtitles on PT cards', () => {
@@ -2576,6 +2591,191 @@ describe('ChrWorkspace component', () => {
       expect(canonicalCommits).toBe(1);
       expect(history.canUndo).toBe(true);
       expect(currentTilePixels[1 * 8 + 1]).toBe(1);
+    });
+  });
+
+  describe('CHR regions and reservations visualization', () => {
+    it('decorates slots in PT0 and PT1 with region classes, data attributes, and custom colors', () => {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrRegions: [
+          {
+            id: 'reg-player',
+            name: 'Player Sprites',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 15,
+            kind: 'region',
+            color: '#38bdf8',
+          },
+          {
+            id: 'res-runtime',
+            name: 'Runtime FX',
+            patternTable: 0,
+            startTile: 10,
+            endTile: 20,
+            kind: 'reservation',
+          },
+          {
+            id: 'reg-bg',
+            name: 'Background Forest',
+            patternTable: 1,
+            startTile: 0,
+            endTile: 31,
+            kind: 'region',
+          },
+        ],
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+
+      // Slot 0 in PT0 (Physical 0, Local 0): Start of Player Sprites
+      const slot0 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="0"]',
+      );
+      expect(slot0).not.toBeNull();
+      expect(slot0?.classList.contains('in-region')).toBe(true);
+      expect(slot0?.classList.contains('is-region-start')).toBe(true);
+      expect(slot0?.getAttribute('data-in-region')).toBe('true');
+      expect(slot0?.getAttribute('data-region-names')).toBe('Player Sprites');
+      expect(slot0?.title).toContain('Region: Player Sprites');
+      expect(slot0?.getAttribute('aria-label')).toContain(
+        'Region: Player Sprites',
+      );
+
+      // Slot 12 in PT0 (Physical 12, Local 12): Inside both Player Sprites and Runtime FX reservation
+      const slot12 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="12"]',
+      );
+      expect(slot12).not.toBeNull();
+      expect(slot12?.classList.contains('in-region')).toBe(true);
+      expect(slot12?.classList.contains('in-reservation')).toBe(true);
+      expect(slot12?.getAttribute('data-in-region')).toBe('true');
+      expect(slot12?.getAttribute('data-in-reservation')).toBe('true');
+      expect(slot12?.getAttribute('data-region-names')).toBe('Player Sprites');
+      expect(slot12?.getAttribute('data-reservation-names')).toBe('Runtime FX');
+      expect(slot12?.title).toContain('Region: Player Sprites');
+      expect(slot12?.title).toContain('Reservation: Runtime FX');
+      expect(slot12?.getAttribute('aria-label')).toContain(
+        'Region: Player Sprites',
+      );
+      expect(slot12?.getAttribute('aria-label')).toContain(
+        'Reservation: Runtime FX',
+      );
+
+      // Slot 15 in PT0 (Physical 15, Local 15): End of Player Sprites
+      const slot15 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="15"]',
+      );
+      expect(slot15?.classList.contains('is-region-end')).toBe(true);
+
+      // Slot 256 in PT1 (Physical 256, Local 0): Start of Background Forest on PT1
+      const slot256 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="256"]',
+      );
+      expect(slot256).not.toBeNull();
+      expect(slot256?.classList.contains('in-region')).toBe(true);
+      expect(slot256?.classList.contains('is-region-start')).toBe(true);
+      expect(slot256?.getAttribute('data-region-names')).toBe(
+        'Background Forest',
+      );
+    });
+
+    it('classifies empty slots inside reservation as reserved while preserving occupied base tiles', () => {
+      const baseChr = new Uint8Array(4096);
+      baseChr[10 * 16] = 0x55; // Base tile at slot 10
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr,
+        baseChrName: 'base.chr',
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrRegions: [
+          {
+            id: 'res-runtime',
+            name: 'Runtime FX',
+            patternTable: 0,
+            startTile: 10,
+            endTile: 20,
+            kind: 'reservation',
+          },
+        ],
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+
+      // Slot 10 is occupied by Base CHR: occupancy remains 'base', in-reservation is true
+      const slot10 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="10"]',
+      );
+      expect(slot10?.getAttribute('data-occupancy')).toBe('base');
+      expect(slot10?.classList.contains('is-occupancy-base')).toBe(true);
+      expect(slot10?.classList.contains('in-reservation')).toBe(true);
+
+      // Slot 11 is empty within reservation: occupancy is 'reserved', in-reservation is true
+      const slot11 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="11"]',
+      );
+      expect(slot11?.getAttribute('data-occupancy')).toBe('reserved');
+      expect(slot11?.classList.contains('is-occupancy-reserved')).toBe(true);
+      expect(slot11?.classList.contains('in-reservation')).toBe(true);
+
+      // Slot 0 is empty outside reservation: occupancy is 'empty', in-reservation is false
+      const slot0 = mockWs.querySelector(
+        '.chr-tile-slot[data-physical-index="0"]',
+      );
+      expect(slot0?.getAttribute('data-occupancy')).toBe('empty');
+      expect(slot0?.classList.contains('is-occupancy-empty')).toBe(true);
+      expect(slot0?.classList.contains('in-reservation')).toBe(false);
+    });
+
+    it('does not add extra tab stops or break keyboard navigation with region overlays', () => {
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        selectedTileIndex: 5,
+        chrRegions: [
+          {
+            id: 'reg-1',
+            name: 'Region 1',
+            patternTable: 0,
+            startTile: 0,
+            endTile: 10,
+            kind: 'region',
+          },
+        ],
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const pt0Overlay = mockWs.querySelector(
+        '.chr-pt-view-card[data-pattern-table="0"] .chr-pt-grid-overlay',
+      );
+      const allSlots = pt0Overlay?.querySelectorAll('.chr-tile-slot') ?? [];
+      expect(allSlots.length).toBe(256);
+
+      const tabStops = Array.from(allSlots).filter((s) => s.tabIndex === 0);
+      expect(tabStops.length).toBe(1);
+      expect(tabStops[0]?.getAttribute('data-local-index')).toBe('5');
     });
   });
 });

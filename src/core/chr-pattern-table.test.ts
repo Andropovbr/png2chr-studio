@@ -42,6 +42,10 @@ import {
   calculatePatternTableCapacity,
   calculateChrRegionCapacity,
   analyzeChrRegionDiagnostics,
+  findChrRegionsForPhysicalTile,
+  findChrRegionsForLocalTile,
+  sanitizeRegionColor,
+  buildChrSlotRegionIndex,
   type ChrRegion,
   type ChrSlotClassification,
   type PatternTableSlot,
@@ -1968,6 +1972,151 @@ describe('NES sprite pattern tables', () => {
           expect(fullFact.totalTiles).toBe(16);
           expect(fullFact.id).toBe('chr-region-full:player-sprites');
         }
+      });
+    });
+
+    describe('findChrRegionsForPhysicalTile & findChrRegionsForLocalTile', () => {
+      const reg0: ChrRegion = {
+        id: 'reg-0',
+        name: 'Player',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 31,
+        kind: 'region',
+      };
+      const reg1: ChrRegion = {
+        id: 'reg-1',
+        name: 'Enemies',
+        patternTable: 0,
+        startTile: 20,
+        endTile: 60,
+        kind: 'region',
+      };
+      const regPt1: ChrRegion = {
+        id: 'reg-pt1',
+        name: 'Background',
+        patternTable: 1,
+        startTile: 0,
+        endTile: 15,
+        kind: 'reservation',
+      };
+      const regions = [reg0, reg1, regPt1];
+
+      it('returns covering regions for physical tile indices', () => {
+        // Physical index 10 (PT0 local 10): only reg0
+        expect(findChrRegionsForPhysicalTile(10, regions)).toEqual([reg0]);
+
+        // Physical index 25 (PT0 local 25): reg0 and reg1 (overlap)
+        expect(findChrRegionsForPhysicalTile(25, regions)).toEqual([
+          reg0,
+          reg1,
+        ]);
+
+        // Physical index 256 (PT1 local 0): regPt1
+        expect(findChrRegionsForPhysicalTile(256, regions)).toEqual([regPt1]);
+
+        // Physical index 300 (PT1 local 44): none
+        expect(findChrRegionsForPhysicalTile(300, regions)).toEqual([]);
+
+        // Default empty regions
+        expect(findChrRegionsForPhysicalTile(10)).toEqual([]);
+      });
+
+      it('returns covering regions for local tile indices with pattern table', () => {
+        expect(findChrRegionsForLocalTile(0, 10, regions)).toEqual([reg0]);
+        expect(findChrRegionsForLocalTile(0, 25, regions)).toEqual([
+          reg0,
+          reg1,
+        ]);
+        expect(findChrRegionsForLocalTile(1, 0, regions)).toEqual([regPt1]);
+        expect(findChrRegionsForLocalTile(1, 100, regions)).toEqual([]);
+        expect(findChrRegionsForLocalTile(0, 10)).toEqual([]);
+      });
+    });
+
+    describe('sanitizeRegionColor', () => {
+      it('accepts valid hex, rgb, and hsl colors', () => {
+        expect(sanitizeRegionColor('#fff')).toBe('#fff');
+        expect(sanitizeRegionColor('#38bdf8')).toBe('#38bdf8');
+        expect(sanitizeRegionColor('#38bdf8aa')).toBe('#38bdf8aa');
+        expect(sanitizeRegionColor('rgb(56, 189, 248)')).toBe(
+          'rgb(56, 189, 248)',
+        );
+        expect(sanitizeRegionColor('rgba(56, 189, 248, 0.5)')).toBe(
+          'rgba(56, 189, 248, 0.5)',
+        );
+        expect(sanitizeRegionColor('hsl(200, 80%, 50%)')).toBe(
+          'hsl(200, 80%, 50%)',
+        );
+      });
+
+      it('rejects invalid or unsafe strings', () => {
+        expect(sanitizeRegionColor(undefined)).toBeUndefined();
+        expect(sanitizeRegionColor(null)).toBeUndefined();
+        expect(sanitizeRegionColor('')).toBeUndefined();
+        expect(sanitizeRegionColor('url(evil.com)')).toBeUndefined();
+        expect(sanitizeRegionColor('<script>')).toBeUndefined();
+        expect(sanitizeRegionColor('not-a-color-123456789')).toBeUndefined();
+      });
+    });
+
+    describe('buildChrSlotRegionIndex', () => {
+      it('pre-computes accurate memberships across all 512 physical slots', () => {
+        const reg0: ChrRegion = {
+          id: 'reg-0',
+          name: 'Player',
+          patternTable: 0,
+          startTile: 0,
+          endTile: 15,
+          kind: 'region',
+          color: '#38bdf8',
+        };
+        const res0: ChrRegion = {
+          id: 'res-0',
+          name: 'Buffer',
+          patternTable: 0,
+          startTile: 10,
+          endTile: 20,
+          kind: 'reservation',
+        };
+        const reg1: ChrRegion = {
+          id: 'reg-1',
+          name: 'BG',
+          patternTable: 1,
+          startTile: 0,
+          endTile: 7,
+          kind: 'region',
+        };
+
+        const index = buildChrSlotRegionIndex([reg0, res0, reg1]);
+        expect(index.length).toBe(512);
+
+        // Slot 5 (PT0, local 5): in region Player, not in reservation
+        expect(index[5]?.inRegion).toBe(true);
+        expect(index[5]?.inReservation).toBe(false);
+        expect(index[5]?.regions).toEqual([reg0]);
+        expect(index[5]?.reservations).toEqual([]);
+        expect(index[5]?.primaryColor).toBe('#38bdf8');
+
+        // Slot 12 (PT0, local 12): in region Player AND reservation Buffer
+        expect(index[12]?.inRegion).toBe(true);
+        expect(index[12]?.inReservation).toBe(true);
+        expect(index[12]?.regions).toEqual([reg0]);
+        expect(index[12]?.reservations).toEqual([res0]);
+
+        // Slot 18 (PT0, local 18): only in reservation Buffer
+        expect(index[18]?.inRegion).toBe(false);
+        expect(index[18]?.inReservation).toBe(true);
+
+        // Slot 256 (PT1, local 0): in region BG
+        expect(index[256]?.inRegion).toBe(true);
+        expect(index[256]?.inReservation).toBe(false);
+        expect(index[256]?.patternTable).toBe(1);
+        expect(index[256]?.localIndex).toBe(0);
+
+        // Slot 300 (PT1, local 44): empty
+        expect(index[300]?.inRegion).toBe(false);
+        expect(index[300]?.inReservation).toBe(false);
       });
     });
   });

@@ -49,4 +49,19 @@ describe('translations', () => {
       'A Pattern Table {patternTable} não possui slots disponíveis para alocação',
     );
   });
+
+  it('provides translations for CHR region and reservation visualization in English and Portuguese', () => {
+    expect(translations.en.chrTileInspectorRegionLabel).toBe('Region');
+    expect(translations['pt-BR'].chrTileInspectorRegionLabel).toBe('Região');
+    expect(translations.en.chrTileInspectorReservationLabel).toBe(
+      'Reservation',
+    );
+    expect(translations['pt-BR'].chrTileInspectorReservationLabel).toBe(
+      'Reserva',
+    );
+    expect(translations.en.chrWorkspaceLegendReserved).toBe('Reserved');
+    expect(translations['pt-BR'].chrWorkspaceLegendReserved).toBe('Reservado');
+    expect(translations.en.chrWorkspaceLegendRegion).toBe('Region');
+    expect(translations['pt-BR'].chrWorkspaceLegendRegion).toBe('Região');
+  });
 });

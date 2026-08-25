@@ -2,6 +2,10 @@ import type { AnimationProjectModel } from '../core/animation-model';
 import {
   classifyChrSlots,
   computeTileAddressingMetadata,
+  findChrRegionsForPhysicalTile,
+  formatTileRangeHex,
+  sanitizeRegionColor,
+  type ChrRegion,
   type ChrTileReference,
   type ChrTileUsageDiagnostic,
   type SpritePatternTable,
@@ -53,6 +57,7 @@ export interface ChrTileInspectorOptions {
   readonly references?: readonly ChrTileReference[];
   readonly diagnostic?: ChrTileUsageDiagnostic | null;
   readonly heatmapEnabled?: boolean;
+  readonly chrRegions?: readonly ChrRegion[];
   readonly onNavigateToReference?: (reference: ChrTileReference) => void;
   readonly onDeselect?: () => void;
   readonly onTilePixelsChange?: (
@@ -85,6 +90,7 @@ export function resolveTileSlotDiagnosis(
   tiles: readonly Tile[] = [],
   deduplicationEnabled = true,
   flipDeduplicationEnabled = false,
+  chrRegions: readonly ChrRegion[] = [],
 ): TileSlotDiagnosis {
   const classifications = classifyChrSlots({
     mode,
@@ -95,6 +101,7 @@ export function resolveTileSlotDiagnosis(
     tiles,
     deduplicationEnabled,
     flipDeduplicationEnabled,
+    chrRegions,
     finalChrBytes,
   });
 
@@ -384,6 +391,9 @@ export function createChrTileInspector(
       options.baseChrName,
       options.destinationPatternTable,
       options.tiles,
+      true,
+      false,
+      options.chrRegions ?? [],
     );
 
     const metricsList = document.createElement('dl');
@@ -470,6 +480,81 @@ export function createChrTileInspector(
     attrText.className = 'chr-attribution-text';
     attrText.textContent = diagnosis.attribution;
     addMetric(t('chrTileInspectorAttribution'), attrText);
+
+    // Region Membership
+    const covering = findChrRegionsForPhysicalTile(
+      meta.physicalIndex,
+      options.chrRegions ?? [],
+    );
+    const organizationalRegions = covering.filter((r) => r.kind === 'region');
+    const reservations = covering.filter((r) => r.kind === 'reservation');
+
+    const regionLabel =
+      organizationalRegions.length > 1
+        ? t('chrTileInspectorRegionsLabel')
+        : t('chrTileInspectorRegionLabel');
+
+    if (organizationalRegions.length === 0) {
+      const noRegionSpan = document.createElement('span');
+      noRegionSpan.className = 'muted';
+      noRegionSpan.textContent = t('chrTileInspectorNoRegion');
+      addMetric(regionLabel, noRegionSpan, 'chr-metric-region');
+    } else {
+      const regionList = document.createElement('div');
+      regionList.className = 'chr-inspector-region-list';
+      for (const reg of organizationalRegions) {
+        const badge = document.createElement('span');
+        badge.className = 'status-badge chr-region-badge';
+        const rangeStr = formatTileRangeHex(reg.startTile, reg.endTile);
+        const safeColor = sanitizeRegionColor(reg.color);
+        if (safeColor) {
+          const swatch = document.createElement('span');
+          swatch.className = 'chr-region-color-swatch';
+          swatch.style.backgroundColor = safeColor;
+          swatch.setAttribute('aria-hidden', 'true');
+          badge.append(swatch);
+        }
+        const textSpan = document.createElement('span');
+        textSpan.textContent = `${reg.name} (${rangeStr})`;
+        badge.append(textSpan);
+        regionList.append(badge);
+      }
+      addMetric(regionLabel, regionList, 'chr-metric-region');
+    }
+
+    // Reservation Membership
+    const reservationLabel =
+      reservations.length > 1
+        ? t('chrTileInspectorReservationsLabel')
+        : t('chrTileInspectorReservationLabel');
+
+    if (reservations.length === 0) {
+      const noResSpan = document.createElement('span');
+      noResSpan.className = 'muted';
+      noResSpan.textContent = t('chrTileInspectorNoReservation');
+      addMetric(reservationLabel, noResSpan, 'chr-metric-reservation');
+    } else {
+      const resList = document.createElement('div');
+      resList.className = 'chr-inspector-reservation-list';
+      for (const res of reservations) {
+        const badge = document.createElement('span');
+        badge.className = 'status-badge chr-reservation-badge';
+        const rangeStr = formatTileRangeHex(res.startTile, res.endTile);
+        const safeColor = sanitizeRegionColor(res.color);
+        if (safeColor) {
+          const swatch = document.createElement('span');
+          swatch.className = 'chr-region-color-swatch';
+          swatch.style.backgroundColor = safeColor;
+          swatch.setAttribute('aria-hidden', 'true');
+          badge.append(swatch);
+        }
+        const textSpan = document.createElement('span');
+        textSpan.textContent = `${res.name} (${rangeStr})`;
+        badge.append(textSpan);
+        resList.append(badge);
+      }
+      addMetric(reservationLabel, resList, 'chr-metric-reservation');
+    }
 
     // Active Highlight Status (if highlighted in active scope)
     if (options.isHighlighted && options.highlightScopeLabel) {
