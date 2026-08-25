@@ -19,9 +19,20 @@ import {
   serializeProject,
   deserializeProject,
   createDefaultProject,
+  type StudioProject,
 } from './project';
+import { encodeTile } from './chr-encoder';
+import {
+  classifyChrSlots,
+  calculatePatternTableCapacity,
+  calculateChrRegionCapacity,
+  analyzeChrRegionDiagnostics,
+  NES_CHR_ROM_SIZE,
+  type ChrRegion,
+  type ChrSlotClassification,
+} from './chr-pattern-table';
 import type { AnimationItemSetting } from '../ui/types';
-import type { IndexedImage } from './types';
+import type { IndexedImage, Tile } from './types';
 
 function createDummyIndexedImage(
   width: number,
@@ -761,6 +772,352 @@ describe('chr-project-integration', () => {
       if (deserializedUndone.success) {
         expect(deserializedUndone.project.tileset?.pixelOverrides?.[0]).toBe(0);
       }
+    });
+  });
+
+  describe('Milestone 5: CHR Regions & Reservations End-to-End Integration', () => {
+    function makeTile(id: number, fillVal: number): Tile {
+      return {
+        id,
+        column: 0,
+        row: 0,
+        pixels: new Uint8Array(64).fill(fillVal),
+      };
+    }
+
+    it('guarantees identical reservation-aware allocation start index ($04) across Animation, Tileset, and Playfield modes', () => {
+      const reservation: ChrRegion = {
+        id: 'res-runtime-fx',
+        name: 'Runtime FX',
+        patternTable: 0,
+        startTile: 0x00,
+        endTile: 0x03,
+        kind: 'reservation',
+      };
+
+      // 1. Animation Mode: Add a 16x16 frame (4 non-transparent 8x8 tiles)
+      const animImage = createDummyIndexedImage(16, 16, 0);
+      for (let y = 0; y < 16; y += 1) {
+        for (let x = 0; x < 16; x += 1) {
+          animImage.pixels[y * 16 + x] = 1; // non-transparent
+        }
+      }
+
+      const animModel = buildAnimationProjectModel({
+        name: 'hero',
+        image: animImage,
+        frameWidth: 16,
+        frameHeight: 16,
+        patternTable: 0,
+        chrRegions: [reservation],
+        animations: [
+          {
+            id: 'anim-1',
+            name: 'idle',
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+      });
+
+      // The 4 sprite tiles should be placed starting at slot $04 (physical indices 4, 5, 6, 7 in PT0)
+      const allocatedAnimSlots =
+        animModel.animations[0]?.frames[0]?.sprites.map(
+          (s) => s.physicalTileIndex,
+        );
+      expect(allocatedAnimSlots).toBeDefined();
+      expect(allocatedAnimSlots).toEqual([4, 4, 4, 4]); // all 4 cells have identical content -> deduped to index 4
+      expect(allocatedAnimSlots?.[0]).toBe(4); // Starts at $04, NOT $00!
+
+      // 2. Tileset Mode: Encode distinct tiles with reservation
+      const tilesetTiles = [makeTile(0, 1), makeTile(1, 2), makeTile(2, 3)];
+      const tilesetClassifications = classifyChrSlots({
+        mode: 'tileset',
+        destinationPatternTable: 0,
+        tiles: tilesetTiles,
+        deduplicationEnabled: false,
+        chrRegions: [reservation],
+      });
+
+      // Slots 0..3 are reserved (empty)
+      expect(tilesetClassifications[0]?.occupancy).toBe('reserved');
+      expect(tilesetClassifications[1]?.occupancy).toBe('reserved');
+      expect(tilesetClassifications[2]?.occupancy).toBe('reserved');
+      expect(tilesetClassifications[3]?.occupancy).toBe('reserved');
+
+      // Slots 4..6 contain the 3 tiles
+      expect(tilesetClassifications[4]?.occupancy).toBe('project');
+      expect(tilesetClassifications[5]?.occupancy).toBe('project');
+      expect(tilesetClassifications[6]?.occupancy).toBe('project');
+
+      // 3. Playfield Mode: Same behavior
+      const playfieldClassifications = classifyChrSlots({
+        mode: 'playfield',
+        destinationPatternTable: 0,
+        tiles: tilesetTiles,
+        deduplicationEnabled: false,
+        chrRegions: [reservation],
+      });
+
+      expect(playfieldClassifications[0]?.occupancy).toBe('reserved');
+      expect(playfieldClassifications[3]?.occupancy).toBe('reserved');
+      expect(playfieldClassifications[4]?.occupancy).toBe('project');
+      expect(playfieldClassifications[5]?.occupancy).toBe('project');
+      expect(playfieldClassifications[6]?.occupancy).toBe('project');
+    });
+
+    it('correctly reuses Base CHR content inside a reservation for candidate tiles and NEVER matches empty reserved slots for dedup', () => {
+      // Create Base CHR with a unique tile at slot $01 in PT0
+      const baseChr = new Uint8Array(NES_CHR_ROM_SIZE);
+      // Encode a unique pattern in slot 1 (offset 16..31)
+      const baseTile = makeTile(1, 2);
+      const encodedTileBytes = encodeTile(baseTile);
+      baseChr.set(encodedTileBytes, 16);
+
+      // Reservation covers slots $00..$03
+      const reservation: ChrRegion = {
+        id: 'res-base-block',
+        name: 'Protected Base',
+        patternTable: 0,
+        startTile: 0x00,
+        endTile: 0x03,
+        kind: 'reservation',
+      };
+
+      // 1. Candidate tile in left cell matches baseTile at slot $01 (color 2)
+      // 2. Candidate tile in right cell is completely different (color 3)
+      const animImage = createDummyIndexedImage(16, 8, 0);
+      // Left 8x8 cell: color 2 (matches base tile at slot 1)
+      for (let y = 0; y < 8; y += 1) {
+        for (let x = 0; x < 8; x += 1) {
+          animImage.pixels[y * 16 + x] = 2;
+        }
+      }
+      // Right 8x8 cell: color 3 (new distinct tile)
+      for (let y = 0; y < 8; y += 1) {
+        for (let x = 8; x < 16; x += 1) {
+          animImage.pixels[y * 16 + x] = 3;
+        }
+      }
+
+      const animModel = buildAnimationProjectModel({
+        name: 'hero',
+        image: animImage,
+        frameWidth: 16,
+        frameHeight: 8,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        baseChr,
+        chrRegions: [reservation],
+        animations: [
+          {
+            id: 'anim-1',
+            name: 'idle',
+            frameIndices: [0],
+            frameDuration: 6,
+          },
+        ],
+      });
+
+      const sprites = animModel.animations[0]?.frames[0]?.sprites;
+      expect(sprites?.length).toBe(2);
+
+      // Cell 0 should be deduplicated to Base CHR slot 1 (inside the reservation)
+      expect(sprites?.[0]?.physicalTileIndex).toBe(1);
+
+      // Cell 1 (new tile) should skip the reservation ($00..$03) and allocate at slot $04!
+      expect(sprites?.[1]?.physicalTileIndex).toBe(4);
+
+      // Empty reserved slots ($00, $02, $03) were NEVER matched for deduplication!
+      expect(sprites?.[1]?.physicalTileIndex).not.toBe(0);
+      expect(sprites?.[1]?.physicalTileIndex).not.toBe(2);
+      expect(sprites?.[1]?.physicalTileIndex).not.toBe(3);
+    });
+
+    it('guarantees capacity calculation prevents double counting when reservation covers occupied content', () => {
+      // 512 classifications:
+      // In PT0 ($00..$FF):
+      // - Slot 0: Base CHR
+      // - Slot 1: Project tile
+      // - Slots 2..3: empty reserved
+      // - Slots 4..255: empty unreserved (252 slots)
+      const classifications: ChrSlotClassification[] = [];
+      for (let i = 0; i < 512; i += 1) {
+        let occupancy: 'base' | 'project' | 'reserved' | 'empty' = 'empty';
+        if (i === 0) occupancy = 'base';
+        else if (i === 1) occupancy = 'project';
+        else if (i === 2 || i === 3) occupancy = 'reserved';
+
+        classifications.push({
+          physicalIndex: i,
+          localIndex: i % 256,
+          patternTable: i < 256 ? 0 : 1,
+          occupancy,
+        });
+      }
+
+      const reservation: ChrRegion = {
+        id: 'res-mixed',
+        name: 'Mixed Reservation',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 3,
+        kind: 'reservation',
+      };
+
+      const pt0Cap = calculatePatternTableCapacity(classifications, 0);
+      expect(pt0Cap.totalOccupiedTiles).toBe(2); // Slot 0 + Slot 1
+      expect(pt0Cap.totalReservedEmptyTiles).toBe(2); // Slot 2 + Slot 3
+      expect(pt0Cap.totalEmptyTiles).toBe(252);
+      expect(pt0Cap.availableSlots).toBe(252); // EXACT: 256 - 2 - 2 = 252 (NO double counting!)
+
+      const regCap = calculateChrRegionCapacity(reservation, classifications);
+      expect(regCap.totalTiles).toBe(4);
+      expect(regCap.occupiedTiles).toBe(2);
+      expect(regCap.reservedEmptyTiles).toBe(2);
+      expect(regCap.availableTiles).toBe(0);
+      expect(regCap.isFull).toBe(false); // only 2 of 4 are occupied
+    });
+
+    it('generates deterministic diagnostics and maintains stable IDs across lifecycle', () => {
+      const region1: ChrRegion = {
+        id: 'reg-player',
+        name: 'Player',
+        patternTable: 0,
+        startTile: 0,
+        endTile: 15,
+        kind: 'region',
+      };
+      const region2: ChrRegion = {
+        id: 'reg-shared',
+        name: 'Shared FX',
+        patternTable: 0,
+        startTile: 10,
+        endTile: 25,
+        kind: 'region',
+      };
+      const reservation1: ChrRegion = {
+        id: 'res-runtime',
+        name: 'Runtime',
+        patternTable: 0,
+        startTile: 20,
+        endTile: 30,
+        kind: 'reservation',
+      };
+
+      const facts = analyzeChrRegionDiagnostics({
+        chrRegions: [region1, region2, reservation1],
+      });
+
+      // 1. Region-Region Overlap between Player and Shared FX ($10-$15)
+      const regOverlap = facts.find(
+        (f) =>
+          f.kind === 'region-overlap' &&
+          (f as { overlapType: string }).overlapType === 'region-region',
+      );
+      expect(regOverlap).toBeDefined();
+      expect(regOverlap?.severity).toBe('warning');
+      expect(regOverlap?.id).toBe('chr-region-overlap:reg-player:reg-shared');
+
+      // 2. Region-Reservation Overlap between Shared FX and Runtime ($20-$25)
+      const resRegOverlap = facts.find(
+        (f) =>
+          f.kind === 'region-overlap' &&
+          (f as { overlapType: string }).overlapType === 'region-reservation',
+      );
+      expect(resRegOverlap).toBeDefined();
+      expect(resRegOverlap?.severity).toBe('info');
+      expect(resRegOverlap?.id).toBe(
+        'chr-region-reservation-overlap:reg-shared:res-runtime',
+      );
+    });
+
+    it('performs comprehensive CRUD and round-trip persistence preserving stable IDs and resiliently dropping corrupted items', () => {
+      const initialProject = createDefaultProject(
+        'Milestone 5 Test',
+        'tileset',
+      );
+      expect(initialProject.chrRegions).toEqual([]);
+
+      const regionHero: ChrRegion = {
+        id: 'reg-hero-uuid-1',
+        name: 'Hero Sprites',
+        patternTable: 0,
+        startTile: 0x00,
+        endTile: 0x1f,
+        kind: 'region',
+        notes: 'Main protagonist animation slots',
+        color: '#38bdf8',
+      };
+
+      const reservationFx: ChrRegion = {
+        id: 'res-fx-uuid-2',
+        name: 'Dynamic Spells',
+        patternTable: 1,
+        startTile: 0x80,
+        endTile: 0x9f,
+        kind: 'reservation',
+        notes: 'Combat effect particles loaded at runtime',
+        color: '#a855f7',
+      };
+
+      // 1. Save project with regions
+      const projectWithRegions: StudioProject = {
+        ...initialProject,
+        chrRegions: [regionHero, reservationFx],
+      };
+
+      const serialized = serializeProject(projectWithRegions);
+      const deserialized = deserializeProject(serialized);
+      expect(deserialized.success).toBe(true);
+      if (!deserialized.success) throw new Error('Deserialization failed');
+
+      expect(deserialized.project.chrRegions?.length).toBe(2);
+      expect(deserialized.project.chrRegions?.[0]).toEqual(regionHero);
+      expect(deserialized.project.chrRegions?.[1]).toEqual(reservationFx);
+
+      // 2. Edit an existing region (Hero endTile changed to $2F, ID preserved)
+      const editedHero: ChrRegion = {
+        ...regionHero,
+        endTile: 0x2f,
+        notes: 'Expanded to 48 tiles',
+      };
+
+      const projectEdited: StudioProject = {
+        ...deserialized.project,
+        chrRegions: [editedHero, reservationFx],
+      };
+
+      const serializedEdited = serializeProject(projectEdited);
+      const deserializedEdited = deserializeProject(serializedEdited);
+      expect(deserializedEdited.success).toBe(true);
+      if (!deserializedEdited.success)
+        throw new Error('Deserialization failed');
+
+      expect(deserializedEdited.project.chrRegions?.[0]?.id).toBe(
+        'reg-hero-uuid-1',
+      ); // STABLE ID!
+      expect(deserializedEdited.project.chrRegions?.[0]?.endTile).toBe(0x2f);
+      expect(deserializedEdited.project.chrRegions?.[0]?.notes).toBe(
+        'Expanded to 48 tiles',
+      );
+
+      // 3. Delete a region (remove reservationFx)
+      const projectDeleted: StudioProject = {
+        ...deserializedEdited.project,
+        chrRegions: [editedHero],
+      };
+
+      const serializedDeleted = serializeProject(projectDeleted);
+      const deserializedDeleted = deserializeProject(serializedDeleted);
+      expect(deserializedDeleted.success).toBe(true);
+      if (!deserializedDeleted.success)
+        throw new Error('Deserialization failed');
+
+      expect(deserializedDeleted.project.chrRegions?.length).toBe(1);
+      expect(deserializedDeleted.project.chrRegions?.[0]?.name).toBe(
+        'Hero Sprites',
+      );
     });
   });
 });

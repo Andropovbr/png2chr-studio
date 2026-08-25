@@ -49,12 +49,32 @@ After opening or saving a project so the dirty marker is clear:
 5. Trigger a recoverable load/processing error. Showing or clearing the error
    alone must not mark an otherwise clean project dirty.
 
+## CHR Regions & Reservations smoke test (Milestone 5)
+
+Validate the end-to-end lifecycle of organizational Regions and allocation-blocking Reservations:
+
+| Step | Action                                                                                                              | Expected result                                                                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Create a new project or open a legacy `.p2c` project without regions.                                               | CHR Memory workspace opens cleanly; Region Manager displays empty state guidance; project is unmodified.                                                 |
+| 2    | In **CHR Memory**, click `[+ New Region]` and configure `Player` (PT0, `$00..$1F`, kind `region`, color `#38bdf8`). | Region appears in Region Manager table; slots `$00..$1F` in PT0 display subtle region color markers; project marks dirty.                                |
+| 3    | Click `[+ New Region]` and configure `Runtime FX` (PT0, `$20..$2F`, kind `reservation`, color `#a855f7`).           | Reservation appears in table; empty slots `$20..$2F` in PT0 display distinctive dashed/hatched reservation styling; capacity counters update accurately. |
+| 4    | Select any slot within `$00..$1F` and `$20..$2F` using keyboard or mouse.                                           | Tile Inspector displays accurate addressing, physical index, and contextual Region/Reservation membership badges.                                        |
+| 5    | Check diagnostics in **CHR Memory** and **Deliver & Export**.                                                       | No spurious errors; clean diagnostic facts; project readiness reflects valid configuration.                                                              |
+| 6    | Load a Base CHR or create project tiles that occupy slots within `$20..$2F`.                                        | Occupied tiles are preserved as `base` or `project`; Tile Inspector and diagnostics display a non-blocking `reservation-contains-occupied` warning.      |
+| 7    | Add new assets/frames in Animation, Tileset, or Playfield mode.                                                     | Automatic allocator skips the entire reserved range `$20..$2F` and allocates subsequent unreserved slots (`$30+`).                                       |
+| 8    | Save the project as `.p2c`.                                                                                         | Serialized JSON retains full `chrRegions` array with stable IDs, names, ranges, kinds, notes, and colors.                                                |
+| 9    | Reopen the saved `.p2c` project file.                                                                               | All regions and reservations are restored with 100% fidelity, exact ranges, colors, and stable IDs.                                                      |
+| 10   | Click `[Edit]` on `Runtime FX`, change end tile to `$3F`, and click `[Save]`.                                       | Reservation expands to `$20..$3F`; newly reserved slots reflect reservation state without moving or altering existing tiles.                             |
+| 11   | Click `[Edit]` on `Player`, press `Escape` or click `[Cancel]`.                                                     | Form closes immediately; focus returns cleanly to `[+ New Region]`; no fields are modified.                                                              |
+| 12   | Click `[Delete]` on `Runtime FX` and confirm the deletion prompt.                                                   | Reservation is removed from metadata; previously reserved empty slots return to unallocated state; existing tile bytes remain completely untouched.      |
+| 13   | Save and reopen the project after deletion.                                                                         | Project loads without the deleted reservation; zero leftover artifacts.                                                                                  |
+
 ## Automated counterpart
 
 Run these checks before or alongside the manual flow:
 
 ```bash
-npm test -- src/core/png-load.test.ts src/core/animation-mapping.test.ts src/core/animation-model.test.ts src/core/chr-pattern-table.test.ts src/core/project.test.ts src/core/animation-exporters.test.ts src/core/tile-deduplication.test.ts
+npm test -- src/core/chr-project-integration.test.ts src/ui/chr-region-manager.test.ts src/core/chr-pattern-table.test.ts src/ui/chr-workspace.test.ts src/core/project.test.ts
 npm test
 npm run build
 npm run lint
@@ -63,6 +83,7 @@ npm run format:check
 
 The focused suite covers PNG failure/recovery, effective mapping and flip
 orientation, raw CHR occupancy, PT0/PT1 local/physical indexing, sparse-slot
-allocation, 8 KiB output, project persistence/removal, and metadata exports.
+allocation, 8 KiB output, project persistence/removal, CHR regions/reservations CRUD,
+capacity calculation, diagnostics, and metadata exports.
 Browser-level file chooser and download interactions remain manual because the
 repository deliberately has no browser/E2E harness.
