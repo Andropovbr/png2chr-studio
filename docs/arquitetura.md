@@ -545,3 +545,27 @@ Os exportadores de código e metadados funcionam estritamente como **serializado
   - Em JSON, são serializadas diretamente como números JSON.
 - **Equivalência Semântica entre Todos os Formatos:**
   - cc65 C, ca65 ASM e JSON v5 refletem exatamente a mesma contagem de animações, sequenciamento de frames, durações por frame, contagem de sprites visíveis (com células transparentes omitidas) e buffer de CHR (`exportAnimationChr`).
+
+---
+
+## 11. Pipeline de Background (Milestone 8)
+
+A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Nametable e Attribute Table) do NES, seguindo os mesmos invariantes de desacoplamento, determinismo e pureza arquitetural das milestones anteriores.
+
+### 11.1 Modelo de Domínio e Invariantes (`src/core/background-model.ts`, `src/core/background-error.ts`)
+
+- **Invariante Fundamental $Logical \neq Physical$:**
+  - O modelo de um background (`BackgroundMapDefinition`) armazena referências lógicas a tiles (`BackgroundMapCell` com `LogicalTileKey` e coordenadas na grade de origem), e **não** posições físicas derivadas na CHR-ROM.
+  - Células vazias são modeladas explicitamente como `null` na grade `cells` (comprimento 960 para uma tela 32×30), evitando magic numbers (`-1`, `255` ou `""`).
+- **Dimensões Base em Tiles 8×8:**
+  - Grade canônica padrão de uma tela NES: 32 colunas × 30 linhas = 960 células.
+- **Hardware Invariant: Deduplicação Estritamente Exata:**
+  - A PPU do NES não possui suporte a hardware flip em entradas de Nametable (que são bytes puros `0..255`).
+  - Portanto, backgrounds utilizam estritamente deduplicação exata (`ExactMatch`), sem flags de espelhamento.
+- **Granularidade da Attribute Table:**
+  - Subpaletas são definidas na granularidade de blocos de 16×16 pixels (2×2 tiles de 8×8), correspondendo à grade lógica de 16 colunas × 15 linhas (240 entradas com valores `0..3`).
+  - A função pura `encodeBackgroundAttributeTable` empacota a grade 16×15 em exatamente 64 bytes físicos da Attribute Table do NES com a fórmula canônica:
+    $$\text{attribute\_byte} = (\text{pal}_{BR} \ll 6) \mid (\text{pal}_{BL} \ll 4) \mid (\text{pal}_{TR} \ll 2) \mid \text{pal}_{TL}$$
+  - A linha 15 (fora do viewport vertical de 240 px) recebe preenchimento determinístico com `0`.
+- **Contrato Puro de Resolução da Nametable:**
+  - `resolveLogicalNametable` permite compilar a Nametable física de 960 bytes a partir de um mapeador/resolvedor de `LogicalTileKey` fornecido externamente, validando limites de bytes (`0..255`) e tratamento de células vazias.
