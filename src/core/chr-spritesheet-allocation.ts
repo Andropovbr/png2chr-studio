@@ -24,10 +24,12 @@ export const NES_SPRITE_FLIP_HORIZONTAL = 0x40;
 export const NES_SPRITE_FLIP_VERTICAL = 0x80;
 
 export type TileReuse = 'destination' | 'imported' | 'new';
+export type FlipTransform = 'none' | 'h' | 'v' | 'hv';
 
 export interface TileMatch {
   readonly physicalTileIndex: number;
   readonly attributes: number;
+  readonly transform: FlipTransform;
 }
 
 /**
@@ -39,7 +41,44 @@ export interface MetaspritePhysicalAssignment {
   readonly patternTable: SpritePatternTable;
   readonly localTileIndex: number;
   readonly flipAttributes: number;
+  readonly transform: FlipTransform;
   readonly reuse: TileReuse;
+}
+
+/**
+ * Encodes OAM sprite attribute byte according to NES hardware specifications.
+ * Bit 7: Vertical Flip (0x80)
+ * Bit 6: Horizontal Flip (0x40)
+ * Bit 5: Priority (0 = in front of background, 1 = behind background)
+ * Bits 1-0: Sprite Subpalette (0-3)
+ */
+export function encodeOamAttributes(
+  flipAttributes: number,
+  paletteIndex: number,
+  priorityBehindBackground = false,
+): number {
+  const flip =
+    flipAttributes & (NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL);
+  const priority = priorityBehindBackground ? 0x20 : 0;
+  const palette = paletteIndex & 0x03;
+  return flip | priority | palette;
+}
+
+/**
+ * Decodes an OAM sprite attribute byte into individual flags.
+ */
+export function decodeOamAttributes(attributes: number): {
+  readonly horizontalFlip: boolean;
+  readonly verticalFlip: boolean;
+  readonly priorityBehindBackground: boolean;
+  readonly paletteIndex: number;
+} {
+  return {
+    horizontalFlip: (attributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0,
+    verticalFlip: (attributes & NES_SPRITE_FLIP_VERTICAL) !== 0,
+    priorityBehindBackground: (attributes & 0x20) !== 0,
+    paletteIndex: attributes & 0x03,
+  };
 }
 
 /**
@@ -76,6 +115,13 @@ export interface AllocateSpritesheetChrResult {
 
 /**
  * Searches existing pattern table slots for an exact or flip-transformed pixel match.
+ * Precedence:
+ * 1. Exact match (attributes = 0, transform = 'none')
+ * 2. Horizontal flip (attributes = 0x40, transform = 'h')
+ * 3. Vertical flip (attributes = 0x80, transform = 'v')
+ * 4. Horizontal + Vertical flip (attributes = 0xC0, transform = 'hv')
+ *
+ * Determinism: When multiple slots match in the same tier, the lowest physicalTileIndex wins.
  */
 export function findTileMatch(
   candidate: Tile,
@@ -86,7 +132,7 @@ export function findTileMatch(
   const candidateKey = tilePixelKey(candidate);
   const [start, end] = patternTablePhysicalRange(patternTable);
 
-  // 1. Exact match pass
+  // 1. Exact match pass (highest precedence)
   for (
     let physicalTileIndex = start;
     physicalTileIndex <= end;
@@ -98,29 +144,62 @@ export function findTileMatch(
       existing !== undefined &&
       tilePixelKey(existing) === candidateKey
     ) {
-      return { physicalTileIndex, attributes: 0 };
+      return { physicalTileIndex, attributes: 0, transform: 'none' };
     }
   }
 
   if (!flipDeduplication) return null;
 
-  // 2. Flip match pass (H, V, H+V)
-  const flips = [
-    [true, false, NES_SPRITE_FLIP_HORIZONTAL],
-    [false, true, NES_SPRITE_FLIP_VERTICAL],
-    [true, true, NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL],
-  ] as const;
-
+  // 2. Horizontal Flip pass (2nd precedence)
   for (
     let physicalTileIndex = start;
     physicalTileIndex <= end;
     physicalTileIndex += 1
   ) {
     const existing = slots[physicalTileIndex]?.tile;
-    if (existing === undefined || existing === null) continue;
-    for (const [horizontal, vertical, attributes] of flips) {
-      if (transformedTileKey(existing, horizontal, vertical) === candidateKey) {
-        return { physicalTileIndex, attributes };
+    if (existing !== null && existing !== undefined) {
+      if (transformedTileKey(existing, true, false) === candidateKey) {
+        return {
+          physicalTileIndex,
+          attributes: NES_SPRITE_FLIP_HORIZONTAL,
+          transform: 'h',
+        };
+      }
+    }
+  }
+
+  // 3. Vertical Flip pass (3rd precedence)
+  for (
+    let physicalTileIndex = start;
+    physicalTileIndex <= end;
+    physicalTileIndex += 1
+  ) {
+    const existing = slots[physicalTileIndex]?.tile;
+    if (existing !== null && existing !== undefined) {
+      if (transformedTileKey(existing, false, true) === candidateKey) {
+        return {
+          physicalTileIndex,
+          attributes: NES_SPRITE_FLIP_VERTICAL,
+          transform: 'v',
+        };
+      }
+    }
+  }
+
+  // 4. Horizontal + Vertical Flip pass (4th precedence)
+  for (
+    let physicalTileIndex = start;
+    physicalTileIndex <= end;
+    physicalTileIndex += 1
+  ) {
+    const existing = slots[physicalTileIndex]?.tile;
+    if (existing !== null && existing !== undefined) {
+      if (transformedTileKey(existing, true, true) === candidateKey) {
+        return {
+          physicalTileIndex,
+          attributes: NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL,
+          transform: 'hv',
+        };
       }
     }
   }
@@ -174,11 +253,13 @@ export function allocateSpritesheetChr(
 
       let physicalTileIndex: number;
       let flipAttributes = 0;
+      let transform: FlipTransform = 'none';
       let reuse: TileReuse;
 
       if (match !== null) {
         physicalTileIndex = match.physicalTileIndex;
         flipAttributes = match.attributes;
+        transform = match.transform;
         reuse = workingSlots[physicalTileIndex]?.source ?? 'imported';
         if (reuse === 'destination') {
           reusedDestinationTiles += 1;
@@ -206,6 +287,7 @@ export function allocateSpritesheetChr(
         };
         newTileCount += 1;
         reuse = 'new';
+        transform = 'none';
       }
 
       const localTileIndex = localPatternTableTileIndex(physicalTileIndex);
@@ -221,6 +303,7 @@ export function allocateSpritesheetChr(
         patternTable,
         localTileIndex,
         flipAttributes,
+        transform,
         reuse,
       });
     }

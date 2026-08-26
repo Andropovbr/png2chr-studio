@@ -480,3 +480,25 @@ A etapa de atribuição e alocação física opera de maneira centralizada, tran
 - **Respeito a CHR Reservations:** Slots pertencentes a regiões do tipo `reservation` (Milestone 5) são ignorados durante a busca de slots disponíveis por `findNextAvailableChrSlot`, mesmo que estejam vazios.
 - **Garantia de Atomicidade Transacional:** O alocador opera em cópia isolada de trabalho. Caso a capacidade da Pattern Table seja excedida, lança o erro estruturado `pattern-table-capacity-overflow` sem deixar mutações parciais ou corrupção no estado dos slots.
 - **Forte Determinismo:** A mesma sequência de frames lógicos e configurações produz exatamente os mesmos assignments físicos e buffer de CHR em execuções repetidas.
+
+### 10.3 Deduplicação Flip-Aware e Encoding de Atributos OAM do Hardware NES
+
+A reutilização de tiles físicos através de espelhamento horizontal e vertical é formalizada como parte explícita do domínio NES:
+
+- **Precedência Estrita de Matching (`findTileMatch`):**
+  1. **Exact Match (`transform: 'none'`, `attributes: 0x00`):** Prioridade máxima absoluta; sempre vence qualquer match por flip, mesmo que o flip resida em um índice físico menor.
+  2. **Horizontal Flip (`transform: 'h'`, `attributes: 0x40`):** Segunda precedência.
+  3. **Vertical Flip (`transform: 'v'`, `attributes: 0x80`):** Terceira precedência.
+  4. **Horizontal + Vertical Flip (`transform: 'hv'`, `attributes: 0xC0`):** Quarta precedência.
+  - _Desempate Determinístico:_ Em caso de múltiplos slots equivalentes dentro do mesmo nível de precedência, o slot de menor índice físico (`physicalTileIndex`) é escolhido.
+- **Encoding de Hardware OAM (`encodeOamAttributes`, `decodeOamAttributes`):**
+  - **Bit 7 (`0x80`):** Vertical Flip.
+  - **Bit 6 (`0x40`):** Horizontal Flip.
+  - **Bit 5 (`0x20`):** Priority behind background.
+  - **Bits 1–0 (`0x03`):** Subpaleta de sprite (0 a 3).
+  - A composição é computada de forma pura via `encodeOamAttributes(flipAttributes, effectivePalette, priorityBehindBackground)`, garantindo isolamento entre flags de transformação e índices de paleta.
+- **Desacoplamento entre Espelhamento de Animação e Flip de Alocação:**
+  - O espelhamento semântico de uma animação (e.g. `Walk_left` gerado a partir de `Walk_right` via `exportMirroredDirection`) compõe visualmente invertendo o bit de flip horizontal ($\text{flip original} \oplus \text{espelhamento de animação} = \text{flip final no OAM}$).
+- **Integração com `ChrAssetMappingIndex` (Milestone 6):**
+  - **Invariante Origin ≠ Usage:** A primeira alocação de um slot físico registra seu `PhysicalTileOrigin` (`primaryAssetId`, `logicalKey`). Usos subsequentes (sejam exatos ou via flip) registram `PhysicalTileUsage`s adicionais marcando o slot como `isShared: true` sem nunca sobrescrever ou corromper a origem primária.
+  - Cada uso preserva sua respectiva `LogicalTileKey` canônica original.

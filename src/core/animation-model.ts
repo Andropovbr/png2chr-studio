@@ -63,9 +63,12 @@ import {
 } from './animation-error';
 import {
   allocateSpritesheetChr,
+  decodeOamAttributes,
+  encodeOamAttributes,
   findTileMatch,
   type AllocateSpritesheetChrOptions,
   type AllocateSpritesheetChrResult,
+  type FlipTransform,
   type MetaspritePhysicalAssignment,
   type TileMatch,
   type TileReuse,
@@ -75,9 +78,12 @@ export {
   AnimationModelError,
   type AnimationModelErrorCode,
   allocateSpritesheetChr,
+  decodeOamAttributes,
+  encodeOamAttributes,
   findTileMatch,
   type AllocateSpritesheetChrOptions,
   type AllocateSpritesheetChrResult,
+  type FlipTransform,
   type MetaspritePhysicalAssignment,
   type TileMatch,
   type TileReuse,
@@ -555,9 +561,12 @@ export function buildAnimationProjectModel(
             const reuse = assignment?.reuse ?? 'new';
 
             const finalFlipAttributes = flipAttributes;
-            const finalAttributes =
-              (finalFlipAttributes & ~0x03) |
-              (logicalFrame.effectivePalette & 0x03);
+            const finalAttributes = encodeOamAttributes(
+              finalFlipAttributes,
+              logicalFrame.effectivePalette,
+            );
+            const { horizontalFlip, verticalFlip } =
+              decodeOamAttributes(finalAttributes);
 
             return {
               x: logicalSprite.x,
@@ -566,10 +575,8 @@ export function buildAnimationProjectModel(
               physicalTileIndex,
               attributes: finalAttributes,
               palette: logicalFrame.effectivePalette,
-              horizontalFlip:
-                (finalFlipAttributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0,
-              verticalFlip:
-                (finalFlipAttributes & NES_SPRITE_FLIP_VERTICAL) !== 0,
+              horizontalFlip,
+              verticalFlip,
               reuse,
               sourceTileColumn: logicalSprite.sourceTileColumn,
               sourceTileRow: logicalSprite.sourceTileRow,
