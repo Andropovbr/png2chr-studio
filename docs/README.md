@@ -59,6 +59,7 @@ A documentação técnica detalhada está estruturada nos seguintes tópicos:
 | [**Investigação: Tile Ownership & Asset Mapping**](./investigations/tile-ownership-asset-mapping.md) | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 6 (Posse de Tiles, Identidade de Assets e Mapeamento Asset-to-CHR).                                   |
 | [**Investigação: Sprite Sheet → CHR Integration**](./investigations/spritesheet-chr-integration.md)  | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 7 (Integração de Sprite Sheets com CHR e Metasprites).                                                |
 | [**Investigação: Background Pipeline**](./investigations/background-pipeline.md)                     | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 8 (Pipeline de Background, Nametables e Attribute Tables).                                            |
+| [**Palette Manager**](./palette-manager.md)                                                          | Desenho técnico, modelo de domínio, compatibilidade de hardware PPU ($3F00..$3F1F) e plano de implementação para a Milestone 9 (Palette Manager).                                  |
 
 ---
 
