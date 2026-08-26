@@ -651,3 +651,21 @@ export {
   type BackgroundTileReuse,
   type BuildBackgroundProjectModelOptions,
 } from './chr-background-allocation';
+
+export {
+  exportBackgroundNametable,
+  exportBackgroundAttributeTable,
+  exportBackgroundFullMap,
+  exportBackgroundChr,
+  exportBackgroundPatternTableChr,
+  exportBackgroundPalette,
+  generateCBackgroundExport,
+  generateCa65BackgroundExport,
+  sanitizeBackgroundIdentifier,
+  validateBackgroundProjectModelForExport,
+  type CBackgroundExport,
+  type Ca65BackgroundExport,
+  type ExportBackgroundChrOptions,
+  type GenerateCBackgroundExportOptions,
+  type GenerateCa65BackgroundExportOptions,
+} from './background-exporters';
