@@ -2060,6 +2060,10 @@ export function createChrWorkspace(
         } else if (options.onNavigateToWorkspace) {
           options.onNavigateToWorkspace('playfield');
         }
+      } else if (ref.type === 'background') {
+        if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('playfield');
+        }
       } else {
         if (options.onNavigateToTileset) {
           options.onNavigateToTileset(ref.tileIndex);

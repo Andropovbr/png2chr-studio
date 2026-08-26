@@ -25,6 +25,7 @@ import {
   type ProjectAssetKind,
 } from './asset-identity';
 import type { AnimationProjectModel } from './animation-model';
+import type { BackgroundProjectModel } from './chr-background-allocation';
 import {
   classifyOrphanedPhysicalTiles,
   detectOrphanedPhysicalTiles,
@@ -87,6 +88,19 @@ export interface AnimationTileUsage {
   readonly sourceTileRow?: number;
 }
 
+/** Usage of a physical tile by a Background Map Nametable cell. */
+export interface BackgroundTileUsage {
+  readonly type: 'background';
+  readonly assetId: ProjectAssetId;
+  readonly mapId: string;
+  readonly column: number;
+  readonly row: number;
+  readonly nametableIndex: number;
+  readonly localTileIndex: number;
+  readonly physicalTileIndex: number;
+  readonly logicalKey?: LogicalTileKey;
+}
+
 /** Usage of a physical tile by a Playfield Nametable cell. */
 export interface PlayfieldTileUsage {
   readonly type: 'playfield';
@@ -115,7 +129,10 @@ export interface TilesetTileUsage {
 
 /** Discriminated union of all active physical tile usage types in the project. */
 export type PhysicalTileUsage =
-  AnimationTileUsage | PlayfieldTileUsage | TilesetTileUsage;
+  | AnimationTileUsage
+  | BackgroundTileUsage
+  | PlayfieldTileUsage
+  | TilesetTileUsage;
 
 /** Structured attribution record for a single physical CHR slot (0..511). */
 export interface PhysicalSlotAttribution {
@@ -183,6 +200,10 @@ export interface BuildChrAssetMappingIndexOptions {
   readonly baseChrName?: string;
   /** Destination pattern table for tileset / playfield / base CHR (0 or 1). */
   readonly destinationPatternTable?: SpritePatternTable;
+  /** Compiled background project model (authoritative physical allocation source). */
+  readonly backgroundModel?: BackgroundProjectModel | null;
+  /** Multiple compiled background project models. */
+  readonly backgroundModels?: readonly BackgroundProjectModel[];
   /** Extracted / raw tiles for tileset mode. */
   readonly tiles?: readonly Tile[];
   /** Nametable buffer for playfield mode (960 bytes). */
@@ -214,8 +235,9 @@ export function comparePhysicalTileUsages(
   if (a.type !== b.type) {
     const typeOrder: Record<PhysicalTileUsage['type'], number> = {
       animation: 0,
-      playfield: 1,
-      tileset: 2,
+      background: 1,
+      playfield: 2,
+      tileset: 3,
     };
     return typeOrder[a.type] - typeOrder[b.type];
   }
@@ -230,6 +252,12 @@ export function comparePhysicalTileUsages(
     if (a.spriteIndex !== b.spriteIndex) return a.spriteIndex - b.spriteIndex;
     if (a.y !== b.y) return a.y - b.y;
     return a.x - b.x;
+  }
+
+  if (a.type === 'background' && b.type === 'background') {
+    const mapCmp = a.mapId.localeCompare(b.mapId);
+    if (mapCmp !== 0) return mapCmp;
+    return a.nametableIndex - b.nametableIndex;
   }
 
   if (a.type === 'playfield' && b.type === 'playfield') {
@@ -626,6 +654,63 @@ export function buildChrAssetMappingIndex(
               tileY: row,
               pixelX: col * 8,
               pixelY: row * 8,
+            },
+            creationKind: 'extracted',
+          };
+        }
+      }
+    }
+  }
+
+  // 4c. Process Background Models
+  const backgroundModels: readonly BackgroundProjectModel[] =
+    options.backgroundModels ??
+    (options.backgroundModel ? [options.backgroundModel] : []);
+
+  for (const bgModel of backgroundModels) {
+    const map = bgModel.map;
+    const bgAssetId = normalizeProjectAssetId(map.assetId, 'background-image');
+    const bgAssetName = map.name || 'Background Map';
+
+    for (let i = 0; i < bgModel.resolvedCells.length; i += 1) {
+      const cell = bgModel.resolvedCells[i];
+      if (!cell) continue;
+
+      const physicalIndex =
+        cell.physicalTileIndex ??
+        bgModel.patternTable * 256 + cell.localTileIndex;
+
+      if (physicalIndex >= 0 && physicalIndex < NES_CHR_ROM_TILE_COUNT) {
+        const logicalKey =
+          cell.logicalKey ??
+          createLogicalTileKey(bgAssetId, cell.column, cell.row);
+
+        const usage: BackgroundTileUsage = {
+          type: 'background',
+          assetId: bgAssetId,
+          mapId: map.id,
+          column: cell.column,
+          row: cell.row,
+          nametableIndex: cell.cellIndex,
+          localTileIndex: cell.localTileIndex,
+          physicalTileIndex: physicalIndex,
+          logicalKey,
+        };
+
+        const semanticKey = `background:${map.id}:${String(i)}`;
+        addUsage(physicalIndex, usage, semanticKey);
+
+        const slot = slots[physicalIndex];
+        if (slot && slot.origin === undefined) {
+          slot.origin = {
+            primaryAssetId: bgAssetId,
+            primaryAssetName: bgAssetName,
+            logicalKey,
+            sourceCoordinates: {
+              tileX: cell.column,
+              tileY: cell.row,
+              pixelX: cell.column * 8,
+              pixelY: cell.row * 8,
             },
             creationKind: 'extracted',
           };
@@ -1071,7 +1156,7 @@ export interface DanglingAssetUsageDiagnosticFact {
   readonly kind: 'dangling-asset-usage';
   readonly severity: 'error';
   readonly physicalIndex: number;
-  readonly usageType: 'animation' | 'playfield' | 'tileset';
+  readonly usageType: 'animation' | 'background' | 'playfield' | 'tileset';
   readonly missingAssetId: ProjectAssetId;
   readonly logicalKey?: LogicalTileKey;
   readonly consumerContext?: string;
@@ -1295,6 +1380,8 @@ export function analyzeChrOwnershipDiagnostics(
         let consumerContext: string | undefined;
         if (usage.type === 'animation') {
           consumerContext = `Animation: ${usage.animationName ?? usage.animationId} (Frame #${String(usage.frameIndex)})`;
+        } else if (usage.type === 'background') {
+          consumerContext = `Background: map ${usage.mapId} cell (${String(usage.column)}, ${String(usage.row)})`;
         } else if (usage.type === 'playfield') {
           consumerContext = `Playfield: cell (${String(usage.column)}, ${String(usage.row)})`;
         } else {

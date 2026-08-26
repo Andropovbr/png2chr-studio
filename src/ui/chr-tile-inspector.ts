@@ -819,6 +819,8 @@ export function createChrTileInspector(
               desc.textContent = `${entityPrefix}${animLabel} · Frame #${String(u.frameIndex)} · sprite (${String(u.x)}, ${String(u.y)})${flipText}`;
             } else if (u.type === 'playfield') {
               desc.textContent = `(${String(u.column)}, ${String(u.row)}) · tile $${u.localTileIndex.toString(16).toUpperCase().padStart(2, '0')}`;
+            } else if (u.type === 'background') {
+              desc.textContent = `Map ${u.mapId} · (${String(u.column)}, ${String(u.row)}) · tile $${u.localTileIndex.toString(16).toUpperCase().padStart(2, '0')}`;
             } else {
               const coordStr = u.sourceCoordinates
                 ? ` (${String(u.sourceCoordinates.tileX)}, ${String(u.sourceCoordinates.tileY)})`
@@ -844,6 +846,8 @@ export function createChrTileInspector(
                 col: u.column,
                 row: u.row,
               });
+            } else if (u.type === 'background') {
+              jumpBtn.title = `Map ${u.mapId} (${String(u.column)}, ${String(u.row)})`;
             } else {
               jumpBtn.title = t('chrTileInspectorJumpTileset', {
                 index: u.tileIndex,
@@ -868,6 +872,8 @@ export function createChrTileInspector(
                 } else {
                   options.onNavigateToReference?.(u);
                 }
+              } else if (u.type === 'background') {
+                options.onNavigateToReference?.(u);
               } else {
                 if (options.onNavigateToTileset) {
                   options.onNavigateToTileset(u.tileIndex);

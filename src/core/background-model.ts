@@ -473,3 +473,15 @@ export function encodeFullBackgroundMap(
   fullBuffer.set(attributeTable, NAMETABLE_BYTE_COUNT);
   return fullBuffer;
 }
+
+export {
+  allocateBackgroundChr,
+  buildBackgroundProjectModel,
+  findExactTileMatch,
+  type AllocateBackgroundChrOptions,
+  type AllocateBackgroundChrResult,
+  type BackgroundPhysicalAssignment,
+  type BackgroundProjectModel,
+  type BackgroundTileReuse,
+  type BuildBackgroundProjectModelOptions,
+} from './chr-background-allocation';
