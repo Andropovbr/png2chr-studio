@@ -19,6 +19,7 @@ It is designed for retro game developers and pixel artists who need a transparen
   - Contextual subtool tabs: _Frames & Timing_, _Pixel Overrides_, and _Metasprite Mapping_.
   - Multiple animations per asset with independent spritesheets, frame sizes, signed origin anchors, playback modes (Loop / Once), and flip capability flags.
   - Assisted frame-grid detection for sprite sheets.
+  - Deterministic spritesheet reimportation and frame geometry changes with pure reconciliation of pixel overrides, frame sequences, parallel duration/palette arrays, and signed 8-bit origin anchors.
   - Metasprite generation with transparent 8×8 cell omission to minimize OAM usage and scanline limits.
   - Physical 8 KiB CHR-ROM modeling with independent sprite pattern table selection (PT0 / PT1), 8-bit local OAM tile indexes, sparse allocation, and base CHR preservation.
 - **Project Palette Workspace:** Dedicated workspace to manage reusable NES palette definitions and configure the 4 hardware sprite palette slots (0..3), while preserving contextual palette assignments, brush tools, and pixel overrides in each editor.
