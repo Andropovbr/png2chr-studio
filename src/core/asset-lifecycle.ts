@@ -260,6 +260,21 @@ export function createOriginFromUsage(
     };
   }
 
+  if (usage.type === 'background') {
+    return {
+      primaryAssetId: usage.assetId,
+      primaryAssetName: assetName ?? `Background Map (${usage.mapId})`,
+      logicalKey: usage.logicalKey,
+      sourceCoordinates: {
+        tileX: usage.column,
+        tileY: usage.row,
+        pixelX: usage.column * 8,
+        pixelY: usage.row * 8,
+      },
+      creationKind: 'extracted',
+    };
+  }
+
   // Playfield usage
   return {
     primaryAssetId: usage.assetId,

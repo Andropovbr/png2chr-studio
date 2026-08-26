@@ -20,10 +20,22 @@ import {
 } from './scene-preview';
 import { validateChrRegion, type ChrRegion } from './chr-pattern-table';
 import {
+  createLogicalTileKey,
   normalizeProjectAssetId,
   type ProjectAssetId,
   type ProjectAssetKind,
 } from './asset-identity';
+import type {
+  BackgroundMapCell,
+  BackgroundMapDefinition,
+  BackgroundPatternTable,
+} from './background-model';
+import {
+  BACKGROUND_HEIGHT_TILES,
+  BACKGROUND_PALETTE_ASSIGNMENT_COUNT,
+  BACKGROUND_TILE_COUNT,
+  BACKGROUND_WIDTH_TILES,
+} from './background-model';
 
 export type { ProjectScenePreviewConfig, ScenePreviewInstance, ChrRegion };
 export * from './asset-identity';
@@ -110,6 +122,11 @@ export interface ProjectPlayfieldConfig {
   readonly pixelOverrides?: readonly number[];
 }
 
+export interface ProjectBackgroundSettingsConfig {
+  readonly activeMapId?: string | null;
+  readonly maps: readonly BackgroundMapDefinition[];
+}
+
 export interface ProjectPaletteConfig {
   readonly paletteSet: NesPaletteSet;
   readonly activePaletteIndex?: number;
@@ -131,6 +148,7 @@ export interface StudioProject {
   readonly chrRegions?: readonly ChrRegion[];
   readonly tileset?: ProjectTilesetConfig;
   readonly playfield?: ProjectPlayfieldConfig;
+  readonly backgrounds?: ProjectBackgroundSettingsConfig;
   readonly animation?: ProjectAnimationSettingsConfig;
   readonly scenePreview?: ProjectScenePreviewConfig;
 }
@@ -305,6 +323,10 @@ export function createDefaultProject(
     playfield: {
       asset: null,
       randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+    },
+    backgrounds: {
+      activeMapId: null,
+      maps: [],
     },
     animation: {
       name: 'soldier',
@@ -656,6 +678,7 @@ export function deserializeProject(
 
   const scenePreview = parseScenePreview(raw.scenePreview);
   const chrRegions = parseChrRegions(raw.chrRegions);
+  const backgrounds = parseBackgroundSettings(raw.backgrounds);
 
   const project: StudioProject = {
     formatVersion: 1,
@@ -676,6 +699,7 @@ export function deserializeProject(
     ...(chrRegions !== undefined ? { chrRegions } : {}),
     tileset,
     playfield,
+    ...(backgrounds !== undefined ? { backgrounds } : {}),
     animation,
     scenePreview,
   };
@@ -904,6 +928,14 @@ export function findMissingAssets(
     check(project.playfield.asset);
   }
 
+  if (project.backgrounds?.maps) {
+    for (const map of project.backgrounds.maps) {
+      if (map.asset) {
+        check(map.asset);
+      }
+    }
+  }
+
   if (project.animation) {
     if (project.animation.destinationChr) {
       check(project.animation.destinationChr);
@@ -916,4 +948,148 @@ export function findMissingAssets(
   }
 
   return missing;
+}
+
+function parseBackgroundSettings(
+  value: unknown,
+): ProjectBackgroundSettingsConfig | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+
+  const activeMapId =
+    typeof raw.activeMapId === 'string' && raw.activeMapId.trim() !== ''
+      ? raw.activeMapId.trim()
+      : null;
+
+  const rawMaps: readonly unknown[] = Array.isArray(raw.maps) ? raw.maps : [];
+  const maps: BackgroundMapDefinition[] = [];
+
+  for (let i = 0; i < rawMaps.length; i += 1) {
+    const rawMap: unknown = rawMaps[i];
+    if (typeof rawMap !== 'object' || rawMap === null) continue;
+    const mapObj = rawMap as Record<string, unknown>;
+
+    const id =
+      typeof mapObj.id === 'string' && mapObj.id.trim() !== ''
+        ? mapObj.id.trim()
+        : `bg-map-${String(i + 1)}`;
+
+    const name =
+      typeof mapObj.name === 'string' && mapObj.name.trim() !== ''
+        ? mapObj.name.trim()
+        : `Background Map ${String(i + 1)}`;
+
+    const widthTiles =
+      typeof mapObj.widthTiles === 'number' && mapObj.widthTiles > 0
+        ? mapObj.widthTiles
+        : BACKGROUND_WIDTH_TILES;
+
+    const heightTiles =
+      typeof mapObj.heightTiles === 'number' && mapObj.heightTiles > 0
+        ? mapObj.heightTiles
+        : BACKGROUND_HEIGHT_TILES;
+
+    const patternTable: BackgroundPatternTable =
+      mapObj.patternTable === 1 ? 1 : 0;
+
+    const asset = parseAssetReference(mapObj.asset, 'background-image', id);
+    const rawAssetId =
+      typeof mapObj.assetId === 'string' && mapObj.assetId.trim() !== ''
+        ? mapObj.assetId.trim()
+        : undefined;
+    const assetId = rawAssetId
+      ? normalizeProjectAssetId(rawAssetId, 'background-image')
+      : (asset?.id ?? undefined);
+
+    const cells = parseBackgroundMapCells(
+      mapObj.cells,
+      widthTiles * heightTiles,
+      assetId,
+    );
+    const paletteAssignments = parseBackgroundPaletteAssignments(
+      mapObj.paletteAssignments,
+    );
+
+    maps.push({
+      id,
+      name,
+      widthTiles,
+      heightTiles,
+      patternTable,
+      ...(assetId ? { assetId } : {}),
+      ...(asset ? { asset } : {}),
+      cells,
+      paletteAssignments,
+    });
+  }
+
+  return {
+    activeMapId: activeMapId ?? maps[0]?.id ?? null,
+    maps,
+  };
+}
+
+function parseBackgroundMapCells(
+  value: unknown,
+  expectedLength = BACKGROUND_TILE_COUNT,
+  fallbackAssetId?: ProjectAssetId,
+): readonly (BackgroundMapCell | null)[] {
+  if (!Array.isArray(value)) {
+    return Array.from({ length: expectedLength }, () => null);
+  }
+
+  const rawCells: readonly unknown[] = value;
+  const cells: (BackgroundMapCell | null)[] = [];
+  for (let i = 0; i < expectedLength; i += 1) {
+    const rawCell: unknown = rawCells[i];
+    if (typeof rawCell !== 'object' || rawCell === null) {
+      cells.push(null);
+      continue;
+    }
+    const cellObj = rawCell as Record<string, unknown>;
+    const tileX =
+      typeof cellObj.tileX === 'number' && cellObj.tileX >= 0
+        ? Math.floor(cellObj.tileX)
+        : i % BACKGROUND_WIDTH_TILES;
+    const tileY =
+      typeof cellObj.tileY === 'number' && cellObj.tileY >= 0
+        ? Math.floor(cellObj.tileY)
+        : Math.floor(i / BACKGROUND_WIDTH_TILES);
+
+    const rawKey =
+      typeof cellObj.logicalKey === 'string' && cellObj.logicalKey.trim() !== ''
+        ? cellObj.logicalKey.trim()
+        : undefined;
+    const logicalKey =
+      rawKey ??
+      createLogicalTileKey(fallbackAssetId ?? 'asset-bg', tileX, tileY);
+
+    const sourceTileIndex =
+      typeof cellObj.sourceTileIndex === 'number' &&
+      cellObj.sourceTileIndex >= 0
+        ? Math.floor(cellObj.sourceTileIndex)
+        : undefined;
+
+    cells.push({
+      logicalKey,
+      tileX,
+      tileY,
+      ...(sourceTileIndex !== undefined ? { sourceTileIndex } : {}),
+    });
+  }
+
+  return Object.freeze(cells);
+}
+
+function parseBackgroundPaletteAssignments(value: unknown): readonly number[] {
+  if (
+    !Array.isArray(value) ||
+    value.length !== BACKGROUND_PALETTE_ASSIGNMENT_COUNT
+  ) {
+    return Array.from({ length: BACKGROUND_PALETTE_ASSIGNMENT_COUNT }, () => 0);
+  }
+  const assignments = value.map((v) =>
+    typeof v === 'number' ? Math.max(0, Math.min(3, Math.floor(v))) : 0,
+  );
+  return Object.freeze(assignments);
 }

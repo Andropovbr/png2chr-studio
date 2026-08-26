@@ -14,6 +14,7 @@ import {
   decodeBackgroundAttributeTable,
   encodeBackgroundAttributeTable,
   encodeFullBackgroundMap,
+  reconcileBackgroundMaps,
   resolveLogicalNametable,
   validateBackgroundDimensions,
   validateBackgroundMapDefinition,
@@ -431,6 +432,33 @@ describe('Milestone 8 (Issue #108): Background Domain Model & Attribute Table Pa
       expect(() => {
         encodeFullBackgroundMap(new Uint8Array(960), new Uint8Array(63));
       }).toThrow(BackgroundModelError);
+    });
+  });
+
+  describe('Background Maps Reconciliation (Issue #110)', () => {
+    it('returns valid true and no facts for valid background map list', () => {
+      const map = createEmptyBackgroundMap({
+        id: 'bg-valid-1',
+        name: 'Stage 1',
+        patternTable: 0,
+        assetId: 'asset-bg-1',
+      });
+      const result = reconcileBackgroundMaps([map], {
+        availableAssetIds: new Set(['asset-bg-1']),
+      });
+      expect(result.valid).toBe(true);
+      expect(result.facts.length).toBe(0);
+    });
+
+    it('detects multiple duplicate map IDs and invalid properties', () => {
+      const mapA = createEmptyBackgroundMap({ id: 'bg-dup', name: 'Map A' });
+      const mapB = createEmptyBackgroundMap({ id: 'bg-dup', name: 'Map B' });
+
+      const result = reconcileBackgroundMaps([mapA, mapB]);
+      expect(result.valid).toBe(false);
+      expect(result.facts.some((f) => f.kind === 'duplicate-map-id')).toBe(
+        true,
+      );
     });
   });
 });

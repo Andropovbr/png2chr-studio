@@ -593,3 +593,29 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
 - **Atomicidade Transacional e Determinismo:**
   - O processo de alocação opera sobre uma cópia de trabalho (`workingSlots`). Qualquer falha por overflow de capacidade ou inconsistência de dados aborta a operação sem deixar mutações parciais no estado do projeto.
   - A ordem de alocação sequencial (da célula 0 até 959) garante repetibilidade bit-a-bit idêntica entre execuções.
+
+### 11.3 Persistência de Backgrounds no Projeto e Lifecycle (`src/core/project.ts`, `src/core/asset-lifecycle.ts`, `src/core/asset-identity.ts`)
+
+- **Schema de Persistência Canônico (`ProjectBackgroundSettingsConfig`):**
+  - O modelo do projeto (`StudioProject`) inclui o container opcional `backgrounds?: ProjectBackgroundSettingsConfig`:
+    - `activeMapId?: string | null`: identificador do mapa de background selecionado para edição ou visualização ativa.
+    - `maps: readonly BackgroundMapDefinition[]`: coleção declarativa dos mapas de background do projeto.
+- **Invariante Fundamental: Estado Lógico é Persistido, Estado Físico é Derivado ($Logical \neq Physical$):**
+  - O arquivo de projeto (`.p2c.json`) serializa exclusivamente definições lógicas puras:
+    - Identidade estável do mapa (`id`, `name`);
+    - Dimensões lógicas canônicas (`widthTiles: 32`, `heightTiles: 30`);
+    - Pattern Table de destino (`patternTable: 0 | 1`);
+    - Identidade e referência do asset (`assetId`, `asset: ProjectAssetReference`);
+    - Grade lógica de células (`cells`: 960 elementos, com `null` para células vazias e `BackgroundMapCell` com `logicalKey`, `tileX`, `tileY`, `sourceTileIndex`);
+    - Grade lógica de subpaletas (`paletteAssignments`: 240 inteiros `0..3`).
+  - Buffers de hardware (`nametable`, `attributeTable`, `fullMapBuffer`, `finalChr`), índices locais ou globais (`localTileIndex`, `physicalTileIndex`), `resolvedCells` e `BackgroundProjectModel` **nunca** são gravados no JSON. São reconstruídos deterministicamente a quente via `buildBackgroundProjectModel`.
+- **Coexistência Pacífica com o Playfield Legado:**
+  - `ProjectPlayfieldConfig` (`project.playfield`) é mantido intacto no schema e funcional lado a lado.
+  - Não há migração destrutiva ou remoção do formato legado de playfield de imagem única nesta milestone, garantindo retrocompatibilidade total.
+- **Formato do Projeto e Backward Compatibility:**
+  - Mantido `formatVersion: 1`. Projetos mais antigos sem o campo `backgrounds` continuam desserializando perfeitamente sem falhas ou mutações inesperadas.
+- **Integração com Asset Lifecycle e Diagnósticos Puros (`reconcileBackgroundMaps`):**
+  - Assets de background são classificados como `kind: 'background-image'` em `extractProjectAssets`.
+  - `findMissingAssets` valida caminhos e existência em disco de referências a imagens de background.
+  - A rotina pura `reconcileBackgroundMaps` audita coleções de mapas e emite fatos estruturados (`BackgroundMapReconciliationFact`) com severidades de `error` ou `warning` para inconsistências como duplicatas de ID, dimensões incorretas, pattern table inválida, subpaletas fora de `0..3`, chaves lógicas malformadas, coordenadas fora dos limites do asset ou assets ausentes.
+  - Na remoção de assets, `createOriginFromUsage` trata consumidores de background (`usage.type === 'background'`), permitindo transferência determinística de proveniência de tiles compartilhados.
