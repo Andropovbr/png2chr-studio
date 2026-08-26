@@ -446,3 +446,19 @@ O subsistema de integridade de mapeamento audita o estado de alocação de CHR e
 - **Integridade de Referências (`dangling-asset-usage`, `missing-origin-asset`):** Identifica com precisão referências a identificadores de assets inexistentes ou removidos com severidade `error`.
 - **Validação de Índices e Chaves Lógicas (`invalid-physical-mapping`, `invalid-logical-key`):** Verifica conformidade com as restrições de limites de hardware (0..511) e coerência entre endereço físico e pattern table esperada.
 - **Não Duplicação com Outros Subsistemas:** Não sobrepõe diagnósticos de conflito de reservas já fornecidos pelo Gerenciador de Regiões CHR (`ChrRegionManager`), nem validações de cena em nível de sistema (como limites de sprites por scanline, pertencentes a milestones posteriores).
+
+---
+
+## 10. Integração Sprite Sheet → CHR (Milestone 7)
+
+A Milestone 7 integra o pipeline de spritesheets e metasprites de animação com a infraestrutura central de CHR alocada em 8 KiB (PT0 e PT1), respeitando ocupações de Base CHR, reservas bloqueantes de regions e o índice bidirecional de posse de tiles.
+
+Para a investigação técnica completa e desenho arquitetural detalhado, consulte [**Investigação: Sprite Sheet → CHR Integration**](./investigations/spritesheet-chr-integration.md).
+
+### Princípios do Pipeline de Spritesheets:
+
+1. **Decoupling Lógico vs. Físico:** Uma spritesheet extrai células lógicas 8×8 identificadas por coordenadas de grade de frame e `LogicalTileKey` canônica (`${assetId}:${tileX}:${tileY}`). O posicionamento físico na CHR-ROM é decidido pelo alocador central de slots de Pattern Table.
+2. **Omissão de Células Transparentes:** Células 100% transparentes são omitidas dos metasprites para economizar slots OAM (máximo de 64 sprites) e respeitar o limite do hardware de 8 sprites por scanline.
+3. **Respeito a Reservas e Base CHR:** O alocador de spritesheets consulta as CHR Reservations bloqueantes da Milestone 5 e preserva Base CHR pré-existente sem sobrescrita.
+4. **Deduplicação Flip-Aware e OAM:** Células espelhadas reaproveitam slots físicos existentes e codificam os bits 6 (Flip H) e 7 (Flip V) diretamente no byte de atributos OAM do metasprite.
+5. **Reconciliação em Reimportação:** Redimensionamentos de spritesheet reconciliam overrides de pixel de forma pura, descartando posições inválidas e preservando as válidas.
