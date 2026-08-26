@@ -14,6 +14,7 @@ It is designed for retro game developers and pixel artists who need a transparen
 - **Studio Project Persistence (`.p2c`):** Save and load complete project states, including self-contained embedded image data, custom palettes, active slots, pixel overrides, animations, collisions, and scene preview configurations.
 - **Tileset Workflow:** 8×8 tile extraction in reading order, per-tile palette assignment, integrated 8×8 pixel editor, and exact or flip-aware (horizontal, vertical, combined) deduplication.
 - **Playfield & Collision Workflow:** 256×240 playfield conversion with 960-byte Nametable (`.nam`), 64-byte Attribute Table (`.atr`), 480-byte 11-type typed collision map (`.col`), 16-byte palette (`.pal`), and procedural test playfield generation.
+- **Background Map Workspace:** Dedicated NES screen tilemap workspace for composing full 32×30 Nametables (256×240 px) with source image tile browser, brush tools (pencil, picker, eraser, palette), hardware-accurate 16×16 Attribute Table painting, Pattern Table selection (PT0 / PT1), 1×–4× zoom controls, grid/attribute overlays, cell inspector with direct physical CHR slot tracking and _Inspect in CHR Memory_ navigation, and live integrity diagnostics.
 - **Sprite Sheet & Animation Workflow:**
   - Decoupled workspace layout with a compact entity/animation list, single focused animation editor, responsive multi-column palette grids, and a collapsible, sticky live preview column.
   - Contextual subtool tabs: _Frames & Timing_, _Pixel Overrides_, and _Metasprite Mapping_.

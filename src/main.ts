@@ -105,7 +105,14 @@ import { createSidebar } from './ui/sidebar';
 import { createTilesetWorkspace } from './ui/tileset-workspace';
 import { createPlayfieldWorkspace } from './ui/playfield-workspace';
 import { createPaletteWorkspace } from './ui/palette-workspace';
+import { createBackgroundWorkspace } from './ui/background-workspace';
 import { createChrWorkspace } from './ui/chr-workspace';
+import {
+  buildBackgroundProjectModel,
+  createEmptyBackgroundMap,
+  reconcileBackgroundMaps,
+  type BackgroundProjectModel,
+} from './core/background-model';
 import {
   classifyChrSlots,
   composeChrWithAllocatedTiles,
@@ -113,6 +120,8 @@ import {
 import {
   extractProjectAssets,
   normalizeProjectAssetId,
+  type LogicalTileKey,
+  type ProjectAssetId,
 } from './core/asset-identity';
 import { reconcileAnimationGeometry } from './core/asset-lifecycle';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
@@ -2743,7 +2752,12 @@ function renderAnimationWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -2880,7 +2894,12 @@ function renderTilesetWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -3029,7 +3048,12 @@ function renderPlayfieldWorkspace(): void {
     },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -3074,7 +3098,12 @@ function renderPaletteWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -3285,7 +3314,12 @@ function renderChrWorkspace(): void {
     error: derivedStatus.error,
     onNavigateToWorkspace: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -3361,7 +3395,12 @@ function renderChrWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -3531,7 +3570,12 @@ function renderDeliveryWorkspace(): void {
     onDownloadText: downloadText,
     onNavigateWorkspace: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -3544,7 +3588,12 @@ function renderDeliveryWorkspace(): void {
     fileName: project.fileName,
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (view !== 'palette' && view !== 'chr' && view !== 'deliver') {
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
         changeMode(view);
       } else {
         render();
@@ -3561,6 +3610,211 @@ function renderDeliveryWorkspace(): void {
   app.replaceChildren(shell);
 }
 
+function renderBackgroundWorkspace(): void {
+  const backgrounds = project.backgrounds ?? { maps: [] };
+  const activeMapId =
+    workspace.background.selectedMapId ??
+    backgrounds.activeMapId ??
+    backgrounds.maps[0]?.id ??
+    null;
+  const activeMap = backgrounds.maps.find((m) => m.id === activeMapId) ?? null;
+
+  // Extract available project assets
+  const projectAssets = extractProjectAssets(project);
+  const assetTilesMap = new Map<ProjectAssetId, readonly Tile[]>();
+  if (projectAssets.length > 0 && project.tiles.length > 0) {
+    for (const asset of projectAssets) {
+      assetTilesMap.set(asset.id, project.tiles);
+    }
+  }
+
+  // Compile active map model
+  let compiledModel: BackgroundProjectModel | null = null;
+  if (activeMap) {
+    const baseChr =
+      project.animation.destinationChr.length > 0
+        ? project.animation.destinationChr
+        : null;
+    const chrRegions = project.chrRegions;
+
+    const tileMap = new Map<LogicalTileKey, Tile>();
+    if (activeMap.assetId && assetTilesMap.has(activeMap.assetId)) {
+      const tiles = assetTilesMap.get(activeMap.assetId);
+      if (tiles) {
+        for (const t of tiles) {
+          tileMap.set(
+            `${activeMap.assetId}:${String(t.column)}:${String(t.row)}`,
+            t,
+          );
+        }
+      }
+    }
+
+    try {
+      compiledModel = buildBackgroundProjectModel({
+        map: activeMap,
+        baseChr,
+        chrRegions,
+        tileMap,
+      });
+    } catch {
+      compiledModel = null;
+    }
+  }
+
+  const reconciliationResult = reconcileBackgroundMaps(backgrounds.maps, {
+    availableAssetIds: new Set(projectAssets.map((a) => a.id)),
+  });
+  const reconciliationFacts = reconciliationResult.facts;
+
+  const workspaceElement = createBackgroundWorkspace({
+    maps: backgrounds.maps,
+    activeMapId,
+    paletteSet: project.paletteSet,
+    availableAssets: projectAssets,
+    assetTilesMap,
+    compiledModel,
+    reconciliationFacts,
+    state: workspace.background,
+    onSelectMap: (mapId) => {
+      updateWorkspace({
+        ...workspace,
+        background: { ...workspace.background, selectedMapId: mapId },
+      });
+      render();
+    },
+    onAddMap: () => {
+      const newMap = createEmptyBackgroundMap({
+        name: `Map ${String(backgrounds.maps.length + 1)}`,
+      });
+      const newMaps = [...backgrounds.maps, newMap];
+      updateProject({
+        ...project,
+        backgrounds: {
+          ...backgrounds,
+          activeMapId: newMap.id,
+          maps: newMaps,
+        },
+      });
+      updateWorkspace({
+        ...workspace,
+        background: { ...workspace.background, selectedMapId: newMap.id },
+      });
+      render();
+    },
+    onDeleteMap: (mapId) => {
+      const newMaps = backgrounds.maps.filter((m) => m.id !== mapId);
+      const nextActiveId = newMaps[0]?.id ?? null;
+      updateProject({
+        ...project,
+        backgrounds: {
+          ...backgrounds,
+          activeMapId: nextActiveId,
+          maps: newMaps,
+        },
+      });
+      updateWorkspace({
+        ...workspace,
+        background: { ...workspace.background, selectedMapId: nextActiveId },
+      });
+      render();
+    },
+    onRenameMap: (mapId, name) => {
+      const newMaps = backgrounds.maps.map((m) =>
+        m.id === mapId ? { ...m, name } : m,
+      );
+      updateProject({
+        ...project,
+        backgrounds: { ...backgrounds, maps: newMaps },
+      });
+      render();
+    },
+    onPatternTableChange: (mapId, patternTable) => {
+      const newMaps = backgrounds.maps.map((m) =>
+        m.id === mapId ? { ...m, patternTable } : m,
+      );
+      updateProject({
+        ...project,
+        backgrounds: { ...backgrounds, maps: newMaps },
+      });
+      render();
+    },
+    onAssetChange: (mapId, assetId) => {
+      const newMaps = backgrounds.maps.map((m) =>
+        m.id === mapId ? { ...m, assetId: assetId ?? undefined } : m,
+      );
+      updateProject({
+        ...project,
+        backgrounds: { ...backgrounds, maps: newMaps },
+      });
+      render();
+    },
+    onCellsChange: (mapId, cells) => {
+      const newMaps = backgrounds.maps.map((m) =>
+        m.id === mapId ? { ...m, cells } : m,
+      );
+      updateProject({
+        ...project,
+        backgrounds: { ...backgrounds, maps: newMaps },
+      });
+      render();
+    },
+    onPaletteAssignmentsChange: (mapId, paletteAssignments) => {
+      const newMaps = backgrounds.maps.map((m) =>
+        m.id === mapId ? { ...m, paletteAssignments } : m,
+      );
+      updateProject({
+        ...project,
+        backgrounds: { ...backgrounds, maps: newMaps },
+      });
+      render();
+    },
+    onStateChange: (stateUpdate) => {
+      updateWorkspace({
+        ...workspace,
+        background: { ...workspace.background, ...stateUpdate },
+      });
+      render();
+    },
+    onNavigateToChrTile: (tileIndex: number) => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'chr',
+        chr: { ...workspace.chr, selectedTileIndex: tileIndex },
+      });
+      render();
+    },
+  });
+
+  const sidebar = createSidebar({
+    activeWorkspace: 'background',
+    fileName: project.fileName,
+    onWorkspaceChange: (view) => {
+      updateWorkspace({ ...workspace, activeWorkspace: view });
+      if (
+        view !== 'palette' &&
+        view !== 'chr' &&
+        view !== 'deliver' &&
+        view !== 'background'
+      ) {
+        changeMode(view);
+      } else {
+        render();
+      }
+    },
+  });
+
+  const inspector = createInspector();
+  const shell = createAppShell({
+    header: createProjectHeader(),
+    sidebar,
+    workspace: workspaceElement,
+    inspector,
+    diagnostics: workspaceElement.diagnosticsElement,
+  });
+  app.replaceChildren(shell);
+}
+
 function render(): void {
   document.documentElement.lang = getLocale();
   document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
@@ -3570,6 +3824,8 @@ function render(): void {
     renderChrWorkspace();
   } else if (workspace.activeWorkspace === 'deliver') {
     renderDeliveryWorkspace();
+  } else if (workspace.activeWorkspace === 'background') {
+    renderBackgroundWorkspace();
   } else if (project.mode === 'animation') {
     renderAnimationWorkspace();
   } else if (project.mode === 'playfield') {

@@ -38,6 +38,7 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
   const workspaces: readonly [WorkspaceView, TranslationKey][] = [
     ['tileset', 'tilesetMode'],
     ['playfield', 'playfieldMode'],
+    ['background', 'backgroundMode'],
     ['animation', 'animationMode'],
     ['palette', 'palettesMode'],
     ['chr', 'chrMode'],
@@ -102,24 +103,31 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
               ['#section-palette-definitions', t('paletteManagerListTitle')],
               ['#section-palette-export', t('paletteWorkspaceExportTitle')],
             ]
-          : options.activeWorkspace === 'animation'
+          : options.activeWorkspace === 'background'
             ? [
-                ['#section-asset', t('navigationAsset')],
-                ['#section-palettes', t('navigationPalettes')],
-                ['#section-animations', t('navigationAnimations')],
-                [
-                  '#section-animation-editor',
-                  t('animationSelectedEditorTitle'),
-                ],
-                ['#section-mapping', t('navigationMapping')],
-                ['#section-export', t('navigationExport')],
+                ['#section-bg-toolbar', t('backgroundWorkspaceTitle')],
+                ['#section-bg-canvas', t('backgroundCanvasTitle')],
+                ['#section-bg-tiles', t('backgroundTileBrowserTitle')],
+                ['#section-bg-inspector', t('backgroundInspectorTitle')],
               ]
-            : [
-                ['#section-image', t('navigationImage')],
-                ['#section-palettes', t('navigationPalettes')],
-                ['#section-tiles', t('navigationTiles')],
-                ['#section-export', t('navigationExport')],
-              ];
+            : options.activeWorkspace === 'animation'
+              ? [
+                  ['#section-asset', t('navigationAsset')],
+                  ['#section-palettes', t('navigationPalettes')],
+                  ['#section-animations', t('navigationAnimations')],
+                  [
+                    '#section-animation-editor',
+                    t('animationSelectedEditorTitle'),
+                  ],
+                  ['#section-mapping', t('navigationMapping')],
+                  ['#section-export', t('navigationExport')],
+                ]
+              : [
+                  ['#section-image', t('navigationImage')],
+                  ['#section-palettes', t('navigationPalettes')],
+                  ['#section-tiles', t('navigationTiles')],
+                  ['#section-export', t('navigationExport')],
+                ];
 
   links.forEach(([href, label]) => {
     const anchor = document.createElement('a');
