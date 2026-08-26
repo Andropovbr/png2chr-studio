@@ -69,12 +69,28 @@ Validate the end-to-end lifecycle of organizational Regions and allocation-block
 | 12   | Click `[Delete]` on `Runtime FX` and confirm the deletion prompt.                                                   | Reservation is removed from metadata; previously reserved empty slots return to unallocated state; existing tile bytes remain completely untouched.      |
 | 13   | Save and reopen the project after deletion.                                                                         | Project loads without the deleted reservation; zero leftover artifacts.                                                                                  |
 
+## Tile Ownership & Asset Mapping smoke test (Milestone 6)
+
+Validate the end-to-end lifecycle of Asset Identities, Tile Ownership, Deduplication, CHR Inspector attribution, Metrics, and Diagnostics:
+
+| Step | Action                                                                                                         | Expected result                                                                                                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Load a project with multiple animation assets or tileset/playfield artwork.                                    | Assets receive stable `ProjectAssetId`s; CHR memory and delivery workspaces populate automatically.                                                                                     |
+| 2    | In **CHR Memory**, expand the **Asset CHR Usage & Metrics** panel.                                             | Each active asset renders a card with detailed factual metric chips (`unique`, `primary`, `consumed`, `shared`, `cross-asset`, `exclusive`, `base-chr`, `manual`, and PT distribution). |
+| 3    | Click `[Highlight tiles]` on an asset card.                                                                    | CHR pattern table grids highlight all physical slots occupied by the selected asset; button changes to `[Clear highlight]`; project remains clean.                                      |
+| 4    | Select a physical slot occupied by an asset and view the **Tile Inspector**.                                   | Inspector displays origin asset, creation kind, logical coordinates, canonical `LogicalTileKey`, and list of all active consumer references (`Animation`, `Tileset`, or `Playfield`).   |
+| 5    | For a shared tile (consumed by multiple assets or frames), inspect the usage list and click `[Jump to Frame]`. | Workspace switches to the selected consumer context (e.g. Animation Editor) with the specific frame selected.                                                                           |
+| 6    | In **CHR Tile Editor**, edit a pixel on a shared slot.                                                         | System updates pixel overrides for the active consumer without silently altering the source graphics of other consuming assets.                                                         |
+| 7    | Check the **Ownership Diagnostics** section in CHR Memory and the readiness checklist in **Deliver & Export**. | Integrity checks validate mapping correctness; clean projects show zero diagnostic warnings or errors; orphaned tiles emit actionable `[Inspect slot]` warnings.                        |
+| 8    | In **Deliver & Export**, review the **Asset CHR Resource Accounting** section.                                 | Summary cards display concise per-asset CHR resource breakdown and pattern table distribution.                                                                                          |
+| 9    | Save project as `.p2c` and reopen.                                                                             | Asset IDs and pixel overrides remain stable; derived mapping index, metrics, and diagnostics reconstruct dynamically with 100% fidelity.                                                |
+
 ## Automated counterpart
 
 Run these checks before or alongside the manual flow:
 
 ```bash
-npm test -- src/core/chr-project-integration.test.ts src/ui/chr-region-manager.test.ts src/core/chr-pattern-table.test.ts src/ui/chr-workspace.test.ts src/core/project.test.ts
+npm test -- src/core/chr-asset-mapping-audit.test.ts src/core/chr-asset-mapping.test.ts src/core/asset-lifecycle.test.ts src/ui/chr-workspace.test.ts src/ui/delivery-workspace.test.ts
 npm test
 npm run build
 npm run lint
@@ -84,6 +100,7 @@ npm run format:check
 The focused suite covers PNG failure/recovery, effective mapping and flip
 orientation, raw CHR occupancy, PT0/PT1 local/physical indexing, sparse-slot
 allocation, 8 KiB output, project persistence/removal, CHR regions/reservations CRUD,
-capacity calculation, diagnostics, and metadata exports.
+asset identity persistence, bidirectional mapping, lifecycle reconciliation,
+CHR inspector attributions, per-asset metrics, ownership diagnostics, and metadata exports.
 Browser-level file chooser and download interactions remain manual because the
 repository deliberately has no browser/E2E harness.

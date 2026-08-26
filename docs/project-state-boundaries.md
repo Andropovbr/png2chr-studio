@@ -7,11 +7,20 @@ NES-domain behavior into component state.
 
 ## State ownership
 
-| Boundary                | Owns                                                                                                                                                                                                                                                                                                            | Dirty effect                                        |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `updateProject(...)`    | Project settings, selected mode and source, palettes and assignments, pixel overrides, collisions, animation definitions, scene instances, CHR destination, CHR regions and reservations (`chrRegions`), and other data represented by the saved project                                                        | A changed project identity marks the project dirty  |
-| `updateWorkspace(...)`  | Active workspace navigation, active preview tool, palette-number overlay, zoomed palette region, palette color target, collapsed panels, active animation selection (`selectedAnimationId`), active contextual tab (`activeTab`), and CHR memory workspace options (`zoom`, `previewPalette`, `heatmapEnabled`) | Never marks the project dirty and is not serialized |
-| `setDerivedStatus(...)` | Loading state and processing/validation errors                                                                                                                                                                                                                                                                  | Never marks the project dirty and is not serialized |
+| Boundary                | Owns                                                                                                                                                                                                                                                                                                                                  | Dirty effect                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `updateProject(...)`    | Project settings, stable asset identities (`ProjectAssetReference.id`), selected mode and source, palettes and assignments, pixel overrides, collisions, animation definitions, scene instances, CHR destination, CHR regions and reservations (`chrRegions`), and other data represented by the saved project                        | A changed project identity marks the project dirty  |
+| `updateWorkspace(...)`  | Active workspace navigation, active preview tool, palette-number overlay, zoomed palette region, palette color target, collapsed panels, active animation selection (`selectedAnimationId`), active contextual tab (`activeTab`), and CHR memory workspace options (`zoom`, `previewPalette`, `heatmapEnabled`, `highlightedAssetId`) | Never marks the project dirty and is not serialized |
+| `setDerivedStatus(...)` | Loading state and processing/validation errors                                                                                                                                                                                                                                                                                        | Never marks the project dirty and is not serialized |
+
+## Pure derived domain models (never persisted)
+
+The following Milestone 6 structures are computed dynamically in memory from the project state and are never serialized into `.p2c`:
+
+- `ChrAssetMappingIndex` (slot-by-slot bidirectional mapping, origin attributions, usage graphs, reverse lookups);
+- `PhysicalSlotAttribution` (per-slot origin and usage slices);
+- `AssetChrMetrics` and `ProjectChrOwnershipMetrics` (per-asset and global resource accounting);
+- `ChrOwnershipDiagnosticFact` (ownership integrity, orphan detection, dangling reference facts).
 
 `ProjectView` also carries reconstructed source images and conversion caches
 needed by the current browser workflow. New projects and successfully loaded
