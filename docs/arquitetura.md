@@ -619,3 +619,26 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
   - `findMissingAssets` valida caminhos e existência em disco de referências a imagens de background.
   - A rotina pura `reconcileBackgroundMaps` audita coleções de mapas e emite fatos estruturados (`BackgroundMapReconciliationFact`) com severidades de `error` ou `warning` para inconsistências como duplicatas de ID, dimensões incorretas, pattern table inválida, subpaletas fora de `0..3`, chaves lógicas malformadas, coordenadas fora dos limites do asset ou assets ausentes.
   - Na remoção de assets, `createOriginFromUsage` trata consumidores de background (`usage.type === 'background'`), permitindo transferência determinística de proveniência de tiles compartilhados.
+
+### 11.4 Exporters de Background: Contrato Puro e Serialização (`src/core/background-exporters.ts`)
+
+- **Contrato Arquitetural Central: Serializadores Puros:**
+  - O fluxo de exportação opera estritamente como uma transformação pura unidirecional:
+    $$\text{BackgroundProjectModel} \longrightarrow \text{exporter} \longrightarrow \text{bytes / text}$$
+  - O exporter **não** executa alocação de CHR, deduplicação, resolução de `LogicalTileKey`, consulta a Reservations, mutação de estado de projeto nem recálculo independente de Attribute Table.
+- **Formatos Binários Nativos:**
+  - **Nametable (`.nam`):** exatamente 960 bytes compilados (`0..255`), idênticos byte-a-byte a `model.nametable`.
+  - **Attribute Table (`.atr`):** exatamente 64 bytes compilados, idênticos a `model.attributeTable`.
+  - **Mapa Combinado (`.map`):** exatamente 1024 bytes (960 bytes de Nametable seguidos de 64 bytes de Attribute Table).
+  - **CHR (`.chr`):** buffer de 8192 bytes (8 KiB) por padrão (`exportBackgroundChr`), ou fatia de 4096 bytes (4 KiB) da Pattern Table utilizada (`exportBackgroundPatternTableChr`).
+  - **Palette (`.pal`):** 16 bytes da paleta de background do NES (`exportBackgroundPalette`), reutilizando a primitiva canônica `encodeNesBackgroundPalettes`.
+- **Exportação cc65 C (`generateCBackgroundExport`):**
+  - **Header (`.h`):** macro `#define ${ID}_BACKGROUND_PATTERN_TABLE 0|1`, constantes de dimensão (`NAMETABLE_SIZE 960`, `ATTRIBUTE_TABLE_SIZE 64`, `FULL_MAP_SIZE 1024`), e declarações `extern const unsigned char ...`.
+  - **Source (`.c`):** arrays formatados deterministicamente espelhando a grade do NES (30 linhas de 32 valores hexadecimais para a Nametable, e 8 linhas de 8 valores para a Attribute Table).
+- **Exportação ca65 Assembly (`generateCa65BackgroundExport`):**
+  - **Include (`.inc`):** constantes(`${ID}_BACKGROUND_PATTERN_TABLE = 0|1`, tamanhos) e diretivas `.import`.
+  - **Source (`.s`):** diretiva `.segment "RODATA"`, diretivas `.export` e blocos de dados organizados com `.byte` alinhados a cada uma das 30 linhas da tela física.
+- **Sanitização, Determinismo e Validação:**
+  - Reutiliza `normalizeCIdentifier` para sanitizar símbolos contra espaços, hífens, acentos, dígitos iniciais e palavras reservadas de C/ASM.
+  - Saídas são 100% determinísticas (sem timestamps, IDs aleatórios ou dependências de locale).
+  - Validações estritas de tamanho de buffer (`960B`, `64B`, `8192B`) e Pattern Table (`0 | 1`) garantem integridade sem mascarar erros.
