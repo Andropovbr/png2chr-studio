@@ -510,3 +510,35 @@ A reutilização de tiles físicos através de espelhamento horizontal e vertica
 - **Integração com `ChrAssetMappingIndex` (Milestone 6):**
   - **Invariante Origin ≠ Usage:** A primeira alocação de um slot físico registra seu `PhysicalTileOrigin` (`primaryAssetId`, `logicalKey`). Usos subsequentes (sejam exatos ou via flip) registram `PhysicalTileUsage`s adicionais marcando o slot como `isShared: true` sem nunca sobrescrever ou corromper a origem primária.
   - Cada uso preserva sua respectiva `LogicalTileKey` canônica original.
+
+### 10.4 Reconciliação de Reimportação e Ciclo de Vida de Assets (`src/core/asset-lifecycle.ts`)
+
+A substituição ou atualização de uma spritesheet no projeto preserva a identidade lógica estável dos assets enquanto reconcilia o estado físico e visual:
+
+- **Preservação de `ProjectAssetId` e `LogicalTileKey`:** Assets existentes mantêm seu identificador imutável. Reimportações com dimensões idênticas ou alteradas operam sobre a mesma identidade de asset.
+- **Reconciliação Pura de Geometria e Pixel Overrides:** Overrides de pixel dentro dos limites da nova geometria `(newWidth, newHeight)` são integralmente preservados; overrides em coordenadas excedentes são descartados deterministicamente.
+- **Alinhamento de Metadados de Frame:** Arrays dependentes de índice de frame (`frameIndices`, `frameDurations`, `framePalettes`, `framePaletteIds`) são truncados para o novo `frameCountMax` quando as dimensões diminuem, ou preservados quando aumentam.
+- **Reconstrução Transacional do CHR e Mapeamento:** A substituição de conteúdo gráfico desaloca tiles físicos obsoletos e reconstrói o CHR de forma atômica. Caso a nova imagem exceda a capacidade da Pattern Table, o alocador falha sem corromper o estado canônico anterior.
+
+### 10.5 Alinhamento Unificado de Exportação: cc65 C, ca65 ASM, JSON v5 e CHR Binary (`src/core/animation-exporters.ts`)
+
+Os exportadores de código e metadados funcionam estritamente como **serializadores puros** do modelo físico resolvido (`AnimationProjectModel`):
+
+- **Invariante de Domínio: Exportadores Não Alocam:**
+  - O pipeline canônico de compilação segue uma ordem estrita unidirecional:
+    $$\text{Spritesheet} \longrightarrow \text{Extração Lógica} \longrightarrow \text{Alocação Física / Deduplicação} \longrightarrow \text{AnimationProjectModel} \longrightarrow \text{Exportadores}$$
+  - Os exportadores **nunca** recalculam alocação de tiles, deduplicação, detecção de flip ou limites de CHR. Eles consomem exclusivamente os arrays e flags já resolvidos no domínio.
+- **Índice Local vs. Índice Físico de CHR:**
+  - O hardware do NES no modo sprite 8×8 endereça 256 tiles locais (`0..255`) em uma Pattern Table selecionada via registrador PPU (`$2000`).
+  - **Em C (`.h` / `.c`) e ASM (`.inc` / `.s`):** O campo `tile` gravado nas tabelas de metasprites OAM é estritamente o índice local de 8 bits `0..255` (`hex(sprite.tile)` / `asmHex(sprite.tile)`).
+  - **Constante de Pattern Table:** A constante `${PREFIX}_SPRITE_PATTERN_TABLE` (`0` para PT0, `1` para PT1) é exportada em C (`#define`) e ASM (`=`) para permitir que o engine de jogo configure corretamente o bit 3 de `PPUCTRL`.
+  - **Em JSON v5:** O modelo expõe simultaneamente `tile` (local `0..255`), `physical_tile_index` (global `0..511`), `pattern_table` (`0` ou `1`) e `destination_pattern_table`, satisfazendo a invariante `physical_tile_index = pattern_table * 256 + tile`.
+- **Encoding de Atributos OAM:**
+  - O byte de atributos OAM (`sprite.attributes`) contém a combinação exata de subpaleta (bits 1–0), flip horizontal (bit 6, `0x40`) e flip vertical (bit 7, `0x80`), formatado byte-a-byte em hexadecimal (`0x00..0xFF` em C, `$00..$FF` em ASM).
+- **Tratamento de Coordenadas com Sinal:**
+  - Coordenadas de metasprites relativas à âncora `(x, y)` abrangem o intervalo com sinal `[-128, 127]`.
+  - Em C, são serializadas como números decimais com sinal (`int8_t x, y;`).
+  - Em ASM, são serializadas como bytes hexadecimais via representação em complemento de dois (`asmHex(signedByte(x))`).
+  - Em JSON, são serializadas diretamente como números JSON.
+- **Equivalência Semântica entre Todos os Formatos:**
+  - cc65 C, ca65 ASM e JSON v5 refletem exatamente a mesma contagem de animações, sequenciamento de frames, durações por frame, contagem de sprites visíveis (com células transparentes omitidas) e buffer de CHR (`exportAnimationChr`).
