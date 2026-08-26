@@ -328,7 +328,7 @@ Recomendamos a decomposição da Milestone 7 nas seguintes **6 issues executáve
 
 ---
 
-### Issue 6: `quality: end-to-end spritesheet-to-CHR regression testing, documentation and smoke test`
+### Issue 6: `quality: end-to-end spritesheet-to-CHR regression testing, documentation and smoke test` (Concluída na Issue #99)
 
 - **Objetivo:** Realizar a auditoria final da Milestone 7, adicionar testes de regressão de ponta a ponta e sincronizar a documentação viva do repositório.
 - **Escopo:**
@@ -336,13 +336,27 @@ Recomendamos a decomposição da Milestone 7 nas seguintes **6 issues executáve
   - Atualização de `docs/arquitetura.md`, `docs/formatos-e-exportacao.md`, `README.md` e `docs/stabilization-smoke-test.md`;
   - Verificação de ausência de regressões em Tileset e Playfield;
   - Validação estrita dos quality gates (`test`, `tsc`, `lint`, `format`, `build`).
-- **Dependências:** Issues 1 a 5.
-- **Critérios de Aceite:**
-  - 100% dos testes automatizados passam sem falhas;
-  - Zero erros de TypeScript, ESLint e Prettier;
-  - Documentação viva descreve com precisão o pipeline de spritesheet consolidado.
+- **Dependências:** Issues 1 a 5 (#94, #95, #96, #97, #98).
+- **Critérios de Aceite Atendidos:**
+  - Suíte completa de testes E2E (`src/core/spritesheet-chr-integration-e2e.test.ts`) cobrindo 5 cenários holísticos com 100% de sucesso;
+  - Total de 774 testes passando em 52 arquivos de teste;
+  - 0 erros de TypeScript (`npx tsc -b`), 0 avisos/erros de linter (`npm run lint`), formatação limpa (`npx prettier --check`) e build de produção bem-sucedido (`npm run build`);
+  - Documentação viva sincronizada em `README.md`, `docs/arquitetura.md`, `docs/formatos-e-exportacao.md` e `docs/stabilization-smoke-test.md`;
+  - Zero regressões em modos Tileset e Playfield.
 
 ---
+
+## 7. Encerramento da Milestone 7
+
+Com a conclusão das Issues #94, #95, #96, #97, #98 e #99, a **Milestone 7: Sprite Sheet → CHR Integration** está formalmente auditada, testada e pronta para encerramento.
+
+### Invariantes Consolidados:
+
+1. **Desacoplamento Lógico vs. Físico:** Identidade lógica (`LogicalTileKey = ${assetId}:${tileX}:${tileY}`) é independente da alocação de slots físicos em CHR.
+2. **Estado Físico Derivado:** Toda a grade de CHR, índices locais/físicos e mapeamento são puramente derivados em runtime e nunca persistidos no arquivo de projeto `.p2c`.
+3. **Origem Primária vs. Usos Múltiplos:** O primeiro consumidor estabelece o `PhysicalTileOrigin`; deduplicações subsequentes registram `PhysicalTileUsage`s e marcam `isShared: true`.
+4. **Respeito Absoluto a Restrições de Hardware:** Base CHR e CHR Reservations nunca são sobrescritas; OAM grava estritamente bytes locais `0..255`; offsets de âncora respeitam o intervalo `[-128, 127]`.
+5. **Serialização Pura nos Exporters:** Os exportadores consomem o modelo físico unificado e nunca recalculam alocação, flips ou deduplicação.
 
 ## 15. Conclusão e Próximos Passos
 

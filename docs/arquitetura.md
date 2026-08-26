@@ -22,17 +22,19 @@ O PNG2CHR Studio é uma aplicação web cliente estática (_browser-only_), cons
 ```text
 src/
 ├── core/                       # Domínio, algoritmos puros e regras NES
-│   ├── animation-exporters.ts  # Geradores de C (cc65) e Assembly (ca65)
+│   ├── animation-exporters.ts  # Geradores de C (cc65), Assembly (ca65), JSON v5 e CHR
 │   ├── animation-mapping.ts    # Projeção de tiles OAM locais vs físicos CHR
 │   ├── animation-model.ts      # Modelo de metasprites, frames e animações
 │   ├── animation-palette.ts    # Resolução hierárquica de paletas de animação
 │   ├── asset-identity.ts       # Identidades lógicas de assets e chaves de tiles canônicas
+│   ├── asset-lifecycle.ts      # Reconciliação atômica de reimportação, geometria e overrides
 │   ├── c-identifier.ts         # Normalização e sanitização de identificadores C
 │   ├── chr-asset-mapping.ts    # Índice de posse, proveniência e usos bidirecionais de CHR
 │   ├── chr-decoder.ts          # Decodificação de binário 2bpp para pixels
 │   ├── chr-encoder.ts          # Codificação de pixels para formato planar 2bpp
 │   ├── chr-pattern-table.ts    # Gerenciamento de pattern tables de 4 KiB / 8 KiB
 │   ├── chr-rom.ts              # Manipulação de CHR-ROM e concatenação de base CHR
+│   ├── chr-spritesheet-allocation.ts # Pipeline unificado de alocação física de CHR
 │   ├── collision-encoder.ts    # Empacotamento de matriz de colisão 480 bytes
 │   ├── color-distance.ts       # Métricas de distância de cores (Euclidiana e OKLab)
 │   ├── color-mapping.ts        # Mapeamento para os 64 códigos PPU do NES
@@ -40,6 +42,7 @@ src/
 │   ├── image-analysis.ts       # Validação de dimensões e transparência de PNG
 │   ├── image-quantization.ts   # Redutores de cor (Nearest, Median Cut, K-Means)
 │   ├── ines-rom.ts             # Parser de cabeçalho iNES e extração de NROM
+│   ├── metasprite-extraction.ts# Extração lógica de metasprites e omissão de células transparentes
 │   ├── nes-palette.ts          # Paleta master de 64 cores e paletas padrão
 │   ├── palette-manager.ts      # Gerenciador de paletas nomeadas e slots ativos
 │   ├── pixel-overrides.ts      # Camada de edição de pixels 8x8 por tile
