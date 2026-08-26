@@ -60,6 +60,30 @@ No Inspetor de Tile do workspace **Memória CHR**, a seção **Origem e Uso do A
   - **Tileset:** Índice do tile e coordenadas fonte.
 - **Destacar Tiles do Asset:** Ação que aplica filtro de realce em todos os slots físicos pertencentes ao mesmo asset, com seletor correspondente na barra de ferramentas superior do visualizador CHR. O estado de realce é mantido em `WorkspaceState.chr.highlightedAssetId`.
 
+## Métricas de Recursos CHR por Asset
+
+O painel **Métricas e Recursos CHR por Asset** (`#section-chr-asset-metrics`) no workspace **Memória CHR** apresenta a contabilidade factual dos recursos de pattern table alocados para cada asset do projeto:
+
+- **Slots Físicos Únicos:** Total de slots distintos ocupados pelo asset na memória CHR física (0..511).
+- **Posse Primária vs. Consumo:** Distinção factual entre slots originados pelo asset (`primaryOwnedSlots`) e slots que o asset consome/referencia (`consumedSlots`).
+- **Compartilhamento e Exclusividade:** Identificação de slots com deduplicação interna (`sharedSlots`), compartilhamento entre múltiplos assets distintos (`crossAssetSharedSlots`) e slots 100% dedicados exclusivamente ao asset (`exclusiveSlots`).
+- **Proveniência de Origem:** Contagem de reutilização direta de Base CHR (`baseChrReusedSlots`) e de materializações manuais (`manualMaterializedSlots`).
+- **Decomposição PT0 / PT1:** Divisão dos slots ocupados entre a Pattern Table 0 ($0000..$0FFF) e a Pattern Table 1 ($1000..$1FFF).
+- **Ação Rápida:** Botão para destacar instantaneamente todos os tiles físicos do asset no grid CHR.
+
+## Diagnósticos de Integridade de Mapeamento e Posse
+
+O sistema avalia regras de integridade estrutural em tempo de execução sem modificar ou corromper os dados do projeto:
+
+- **Tiles Órfãos Canônicos (`orphaned-project-tile`):** Alerta informativo quando um tile extraído de um asset não possui mais nenhum uso ativo no projeto (por exemplo, após edição ou desvinculação de quadro). Inclui botão de ação **Inspecionar Slot**.
+- **Referências a Assets Inexistentes (`dangling-asset-usage`, `missing-origin-asset`):** Diagnóstico de erro caso algum registro de uso ou origem aponte para um ID de asset não registrado.
+- **Inconsistências Físicas ou de Chave Lógica (`invalid-physical-mapping`, `invalid-logical-key`):** Validação contra índices fora dos limites de 0..511 ou incompatibilidades entre endereço planar e pattern table esperada.
+- **Não Interferência:** Tiles compartilhados (`isShared === true`) e tiles de Base CHR/materializados manualmente não são incorretamente sinalizados como órfãos.
+
+## Contabilidade no Workspace Entrega
+
+No workspace **Entrega**, o painel **Resumo de Recursos CHR por Asset** (`#section-delivery-chr-assets`) resume os dados essenciais de ocupação e os diagnósticos de integridade de posse são integrados diretamente ao checklist de prontidão para entrega.
+
 ## Limitações conhecidas
 
 - O clipboard é interno ao PNG2CHR Studio e não lê nem escreve o System Clipboard.

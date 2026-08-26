@@ -6,7 +6,7 @@
  * Logical identities are strictly independent of physical CHR allocation.
  */
 
-import type { ProjectAssetReference, StudioProject } from './project';
+import type { ProjectAssetReference } from './project';
 
 /** Unique, stable identifier for a logical asset in the project. */
 export type ProjectAssetId = string;
@@ -271,11 +271,26 @@ export function createProjectAssetReference(options: {
   };
 }
 
+/** Minimal project structure needed to extract asset identities. */
+export interface ExtractableProjectAssetSource {
+  readonly tileset?: { readonly asset?: ProjectAssetReference | null } | null;
+  readonly playfield?: { readonly asset?: ProjectAssetReference | null } | null;
+  readonly animation?: {
+    readonly destinationChr?: ProjectAssetReference | Uint8Array | null;
+    readonly destinationChrName?: string | null;
+    readonly animations: readonly {
+      readonly id: string;
+      readonly name?: string;
+      readonly asset?: ProjectAssetReference | null;
+    }[];
+  } | null;
+}
+
 /**
- * Extracts all registered ProjectAsset objects from a StudioProject.
+ * Extracts all registered ProjectAsset objects from a StudioProject or ProjectView.
  */
 export function extractProjectAssets(
-  project: StudioProject,
+  project: ExtractableProjectAssetSource,
 ): readonly ProjectAsset[] {
   const assets: ProjectAsset[] = [];
 
@@ -303,24 +318,39 @@ export function extractProjectAssets(
 
   if (project.animation) {
     if (project.animation.destinationChr) {
-      const ref = project.animation.destinationChr;
-      const id = normalizeProjectAssetId(ref.id, 'base-chr');
-      assets.push({
-        id,
-        kind: 'base-chr',
-        name: ref.name ?? 'Base CHR',
-        reference: ref,
-      });
+      const dest = project.animation.destinationChr;
+      if (typeof dest === 'object' && 'path' in dest) {
+        const ref = dest;
+        const id = normalizeProjectAssetId(ref.id, 'base-chr');
+        assets.push({
+          id,
+          kind: 'base-chr',
+          name: ref.name ?? 'Base CHR',
+          reference: ref,
+        });
+      } else if (dest instanceof Uint8Array && dest.length > 0) {
+        const id = getLegacyDeterministicAssetId('base-chr');
+        assets.push({
+          id,
+          kind: 'base-chr',
+          name: project.animation.destinationChrName ?? 'Base CHR',
+          reference: { id, path: '' },
+        });
+      }
     }
 
     project.animation.animations.forEach((anim, idx) => {
       if (anim.asset) {
         const ref = anim.asset;
         const id = normalizeProjectAssetId(ref.id, 'spritesheet', anim.id);
+        const displayName =
+          anim.name && anim.name.length > 0
+            ? anim.name
+            : (ref.name ?? `Animation ${String(idx + 1)}`);
         assets.push({
           id,
           kind: 'spritesheet',
-          name: anim.name || (ref.name ?? `Animation ${String(idx + 1)}`),
+          name: displayName,
           reference: ref,
         });
       }

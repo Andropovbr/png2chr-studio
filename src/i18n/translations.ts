@@ -208,6 +208,40 @@ const en = {
     'Pattern Table {patternTable} has low capacity: only {available} slot remaining for new allocations.',
   chrPatternTableLowCapacityMultiple:
     'Pattern Table {patternTable} has low capacity: only {available} slots remaining for new allocations.',
+  // CHR Ownership Diagnostics & Resource Metrics (Milestone 6)
+  chrOwnershipOrphanWarning:
+    'Orphaned project tile at PT{patternTable}:${hex}. No active project usage remains.',
+  chrOwnershipDanglingUsageError:
+    'Dangling {usageType} usage at PT{patternTable}:${hex} references missing asset "{assetId}".',
+  chrOwnershipMissingOriginError:
+    'Tile at PT{patternTable}:${hex} originates from missing asset "{assetId}".',
+  chrOwnershipInvalidPhysicalMappingError:
+    'Invalid physical slot mapping at index {index}: {details}.',
+  chrOwnershipInvalidLogicalKeyError:
+    'Invalid logical tile key "{key}" at PT{patternTable}:${hex}: {reason}.',
+  chrOwnershipUnexpectedPatternTableWarning:
+    'Asset "{assetId}" tile placed in PT{actualTable} (${hex}) but expected in PT{expectedTable}.',
+  chrOwnershipDiagnosticsTitle: 'Ownership & Integrity Diagnostics',
+  chrOwnershipDiagnosticsEmpty:
+    'No ownership or mapping integrity issues detected.',
+  chrOwnershipDiagnosticsInspectSlot: 'Inspect slot',
+  chrOwnershipDiagnosticsHighlightAsset: 'Highlight asset',
+  chrAssetMetricsTitle: 'Asset CHR Usage & Metrics',
+  chrAssetMetricsSubtitle:
+    'Resource accounting and physical slot allocation per project asset.',
+  chrAssetMetricsUniqueSlots: '{count} unique slots',
+  chrAssetMetricsOwnedSlots: '{count} owned',
+  chrAssetMetricsConsumedSlots: '{count} consumed',
+  chrAssetMetricsSharedSlots: '{count} shared',
+  chrAssetMetricsCrossAssetSharedSlots: '{count} cross-asset',
+  chrAssetMetricsExclusiveSlots: '{count} exclusive',
+  chrAssetMetricsBaseChrReusedSlots: '{count} base CHR',
+  chrAssetMetricsManualMaterializedSlots: '{count} manual CHR',
+  chrAssetMetricsPt0Pt1Breakdown: 'PT0: {pt0} · PT1: {pt1}',
+  chrAssetMetricsEmpty: 'No active assets with CHR allocations.',
+  deliveryResourceSummaryTitle: 'CHR Resource Accounting by Asset',
+  deliveryResourceSummarySubtitle:
+    'Physical 8 KiB CHR-ROM slot allocation and sharing across project assets.',
   chrRegionFull:
     'Region "{name}" on PT{patternTable} is full ({occupied}/{total} tiles occupied).',
   chrRegionManagerSectionTitle: 'CHR Regions & Reservations',
@@ -1083,6 +1117,40 @@ const ptBr = {
     'A Pattern Table {patternTable} tem baixa capacidade: resta apenas {available} slot para novas alocações.',
   chrPatternTableLowCapacityMultiple:
     'A Pattern Table {patternTable} tem baixa capacidade: restam apenas {available} slots para novas alocações.',
+  // CHR Ownership Diagnostics & Resource Metrics (Milestone 6)
+  chrOwnershipOrphanWarning:
+    'Tile do projeto órfão em PT{patternTable}:${hex}. Nenhum uso ativo resta no projeto.',
+  chrOwnershipDanglingUsageError:
+    'Uso de {usageType} inválido em PT{patternTable}:${hex} faz referência ao asset inexistente "{assetId}".',
+  chrOwnershipMissingOriginError:
+    'Tile em PT{patternTable}:${hex} tem origem no asset inexistente "{assetId}".',
+  chrOwnershipInvalidPhysicalMappingError:
+    'Mapeamento de slot físico inválido no índice {index}: {details}.',
+  chrOwnershipInvalidLogicalKeyError:
+    'Chave de tile lógica inválida "{key}" em PT{patternTable}:${hex}: {reason}.',
+  chrOwnershipUnexpectedPatternTableWarning:
+    'Tile do asset "{assetId}" alocado em PT{actualTable} (${hex}), mas esperado em PT{expectedTable}.',
+  chrOwnershipDiagnosticsTitle: 'Diagnósticos de Propriedade e Integridade',
+  chrOwnershipDiagnosticsEmpty:
+    'Nenhum problema de propriedade ou integridade detectado.',
+  chrOwnershipDiagnosticsInspectSlot: 'Inspecionar slot',
+  chrOwnershipDiagnosticsHighlightAsset: 'Destacar asset',
+  chrAssetMetricsTitle: 'Uso de CHR por Asset & Métricas',
+  chrAssetMetricsSubtitle:
+    'Contabilidade de recursos e alocação física de slots por asset do projeto.',
+  chrAssetMetricsUniqueSlots: '{count} slots únicos',
+  chrAssetMetricsOwnedSlots: '{count} próprios',
+  chrAssetMetricsConsumedSlots: '{count} consumidos',
+  chrAssetMetricsSharedSlots: '{count} compartilhados',
+  chrAssetMetricsCrossAssetSharedSlots: '{count} entre assets',
+  chrAssetMetricsExclusiveSlots: '{count} exclusivos',
+  chrAssetMetricsBaseChrReusedSlots: '{count} base CHR',
+  chrAssetMetricsManualMaterializedSlots: '{count} manual CHR',
+  chrAssetMetricsPt0Pt1Breakdown: 'PT0: {pt0} · PT1: {pt1}',
+  chrAssetMetricsEmpty: 'Nenhum asset ativo com alocações CHR.',
+  deliveryResourceSummaryTitle: 'Contabilidade de Recursos CHR por Asset',
+  deliveryResourceSummarySubtitle:
+    'Alocação física de slots na CHR-ROM de 8 KiB e compartilhamento entre assets.',
   chrRegionFull:
     'A região "{name}" na PT{patternTable} está cheia ({occupied}/{total} tiles ocupados).',
   chrRegionManagerSectionTitle: 'Regiões e Reservas de CHR',

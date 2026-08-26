@@ -15,6 +15,13 @@ import {
   type ChrRegionDiagnosticFact,
   type ChrSlotClassification,
 } from '../core/chr-pattern-table';
+import {
+  analyzeChrOwnershipDiagnostics,
+  calculateProjectChrOwnershipMetrics,
+  formatChrOwnershipDiagnosticMessage,
+  type ChrAssetMappingIndex,
+} from '../core/chr-asset-mapping';
+import type { ProjectAsset } from '../core/asset-identity';
 import { padChrRom } from '../core/chr-rom';
 import {
   encodeNesBackgroundPalettes,
@@ -67,6 +74,8 @@ export interface DeliveryWorkspaceOptions {
   readonly error: DisplayError | null;
   readonly chrRegions?: readonly ChrRegion[];
   readonly chrSlotClassifications?: readonly ChrSlotClassification[];
+  readonly chrAssetMappingIndex?: ChrAssetMappingIndex;
+  readonly activeAssets?: readonly ProjectAsset[];
   readonly onDownloadBytes: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText: (text: string, fileName: string) => void;
   readonly onNavigateWorkspace?: (view: WorkspaceView) => void;
@@ -297,6 +306,24 @@ export function createDeliveryWorkspace(
     const regionDiagnostics =
       convertChrRegionDiagnosticFactsToDeliveryItems(facts);
     diagnostics.push(...regionDiagnostics);
+  }
+
+  // 1.5 CHR Ownership & Mapping Diagnostics
+  if (options.chrAssetMappingIndex) {
+    const ownershipFacts = analyzeChrOwnershipDiagnostics({
+      mappingIndex: options.chrAssetMappingIndex,
+      activeAssets: options.activeAssets,
+      chrRegions: options.chrRegions,
+      mode: options.mode,
+    });
+    for (const fact of ownershipFacts) {
+      diagnostics.push({
+        level: fact.severity,
+        message: formatChrOwnershipDiagnosticMessage(fact),
+        targetWorkspace: 'chr',
+        actionLabel: t('deliveryLinkChr'),
+      });
+    }
   }
 
   const errorCount = diagnostics.filter((d) => d.level === 'error').length;
@@ -646,6 +673,114 @@ export function createDeliveryWorkspace(
   }
 
   container.append(artifactsPanel);
+
+  // 4. CHR Resource Accounting by Asset
+  if (options.chrAssetMappingIndex) {
+    const ownershipMetrics = calculateProjectChrOwnershipMetrics({
+      mappingIndex: options.chrAssetMappingIndex,
+      activeAssets: options.activeAssets,
+    });
+
+    if (ownershipMetrics.byAsset.length > 0) {
+      const assetsPanel = document.createElement('section');
+      assetsPanel.className = 'panel delivery-chr-assets-panel';
+      assetsPanel.id = 'section-delivery-chr-assets';
+
+      const assetsHeader = document.createElement('div');
+      assetsHeader.className = 'delivery-chr-assets-header';
+
+      const assetsHeading = document.createElement('h3');
+      assetsHeading.textContent = t('deliveryResourceSummaryTitle');
+
+      const assetsSubtitle = document.createElement('p');
+      assetsSubtitle.className = 'delivery-chr-assets-subtitle muted';
+      assetsSubtitle.textContent = t('deliveryResourceSummarySubtitle');
+
+      assetsHeader.append(assetsHeading, assetsSubtitle);
+      assetsPanel.append(assetsHeader);
+
+      const assetsGrid = document.createElement('div');
+      assetsGrid.className = 'chr-asset-metrics-grid';
+
+      for (const assetMetric of ownershipMetrics.byAsset) {
+        const card = document.createElement('div');
+        card.className = 'chr-asset-metric-card';
+
+        const cardHeader = document.createElement('div');
+        cardHeader.className = 'chr-asset-metric-card-header';
+
+        const cardTitleGroup = document.createElement('div');
+        cardTitleGroup.className = 'chr-asset-metric-name-group';
+
+        const assetName = document.createElement('strong');
+        assetName.className = 'chr-asset-metric-name';
+        assetName.textContent = assetMetric.assetName ?? assetMetric.assetId;
+
+        const assetId = document.createElement('code');
+        assetId.className = 'chr-asset-metric-id muted';
+        assetId.textContent = assetMetric.assetId;
+
+        cardTitleGroup.append(assetName, assetId);
+        cardHeader.append(cardTitleGroup);
+        card.append(cardHeader);
+
+        const chipsList = document.createElement('ul');
+        chipsList.className = 'chr-asset-metric-chips';
+
+        const addChip = (text: string, className?: string) => {
+          const chip = document.createElement('li');
+          chip.className = `chr-metric-chip ${className ?? ''}`;
+          chip.textContent = text;
+          chipsList.append(chip);
+        };
+
+        addChip(
+          t('chrAssetMetricsUniqueSlots', {
+            count: assetMetric.uniquePhysicalSlots,
+          }),
+          'chip-unique',
+        );
+        addChip(
+          t('chrAssetMetricsOwnedSlots', {
+            count: assetMetric.primaryOwnedSlots,
+          }),
+          'chip-owned',
+        );
+
+        if (assetMetric.sharedSlots > 0) {
+          addChip(
+            t('chrAssetMetricsSharedSlots', {
+              count: assetMetric.sharedSlots,
+            }),
+            'chip-shared',
+          );
+        }
+
+        if (assetMetric.baseChrReusedSlots > 0) {
+          addChip(
+            t('chrAssetMetricsBaseChrReusedSlots', {
+              count: assetMetric.baseChrReusedSlots,
+            }),
+            'chip-base-chr',
+          );
+        }
+
+        addChip(
+          t('chrAssetMetricsPt0Pt1Breakdown', {
+            pt0: assetMetric.patternTableSlots[0],
+            pt1: assetMetric.patternTableSlots[1],
+          }),
+          'chip-pt-breakdown',
+        );
+
+        card.append(chipsList);
+        assetsGrid.append(card);
+      }
+
+      assetsPanel.append(assetsGrid);
+      container.append(assetsPanel);
+    }
+  }
 
   // 5. Editing Shortcuts & Links
   const linksPanel = document.createElement('section');

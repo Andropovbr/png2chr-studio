@@ -428,3 +428,21 @@ A reconciliação do ciclo de vida trata de mutações temporais nos assets do p
 - **Divergência de Edição no CHR Editor (`analyzeChrEditDivergence`):**
   - Quando um tile compartilhado por múltiplos assets é editado manualmente no CHR Editor, o sistema analisa a divergência antes de mutar, permitindo derivar e desacoplar o asset-alvo sem mutar silenciosamente os demais consumidores.
 - **Sem Desfragmentação Global Automática:** A coleta e reconciliação liberam slots no local sem compactação global ou reindexação em massa, preservando o layout físico estável da CHR-ROM.
+
+### 9.6 Métricas de Recursos CHR por Asset (`calculateAssetChrMetrics`, `calculateProjectChrOwnershipMetrics`)
+
+O subsistema de contabilidade de recursos opera de forma pura e determinística em cima do `ChrAssetMappingIndex`:
+
+- **Medições Fatuais:** Não inventa orçamentos artificiais de CHR; calcula medições rigorosas de slots físicos únicos (`uniquePhysicalSlots`), slots de posse primária (`primaryOwnedSlots`), slots consumidos (`consumedSlots`), deduplicação interna (`sharedSlots`), compartilhamento entre múltiplos assets (`crossAssetSharedSlots`), slots exclusivos (`exclusiveSlots`), reaproveitamento de Base CHR (`baseChrReusedSlots`), materializações manuais (`manualMaterializedSlots`) e decomposição em PT0 / PT1 (`patternTableSlots`).
+- **Sem Estado Persistido ou Poluição do Workspace:** Métricas são inteiramente derivadas em tempo de execução e não residem no arquivo `.p2c` nem poluem o `WorkspaceState`.
+- **Imutabilidade Absoluta:** O cálculo de métricas não muta o índice de mapeamento nem as estruturas de dados do projeto.
+
+### 9.7 Diagnósticos de Integridade de Posse e Mapeamento (`analyzeChrOwnershipDiagnostics`)
+
+O subsistema de integridade de mapeamento audita o estado de alocação de CHR e produz fatos diagnósticos estruturados (`ChrOwnershipDiagnosticFact`):
+
+- **Fatos Estruturados Primeiro, Interface Depois:** Os diagnósticos são emitidos como estruturas de dados formais contendo severidade (`error` ou `warning`), tipo de fato, índice físico e metadados contextuais antes da formatação e localização textual.
+- **Detecção de Órfãos Canônicos (`orphaned-project-tile`):** Reutiliza a semântica canônica de classificação de órfãos (`classifyOrphanedPhysicalTiles`), sinalizando tiles gerados sem uso ativo com severidade `warning`.
+- **Integridade de Referências (`dangling-asset-usage`, `missing-origin-asset`):** Identifica com precisão referências a identificadores de assets inexistentes ou removidos com severidade `error`.
+- **Validação de Índices e Chaves Lógicas (`invalid-physical-mapping`, `invalid-logical-key`):** Verifica conformidade com as restrições de limites de hardware (0..511) e coerência entre endereço físico e pattern table esperada.
+- **Não Duplicação com Outros Subsistemas:** Não sobrepõe diagnósticos de conflito de reservas já fornecidos pelo Gerenciador de Regiões CHR (`ChrRegionManager`), nem validações de cena em nível de sistema (como limites de sprites por scanline, pertencentes a milestones posteriores).
