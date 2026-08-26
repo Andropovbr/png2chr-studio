@@ -7,6 +7,7 @@
  */
 
 import type { ProjectAssetReference } from './project';
+import type { ProjectMode } from './project-mode';
 
 /** Unique, stable identifier for a logical asset in the project. */
 export type ProjectAssetId = string;
@@ -286,6 +287,9 @@ export function createProjectAssetReference(options: {
 
 /** Minimal project structure needed to extract asset identities. */
 export interface ExtractableProjectAssetSource {
+  readonly assetId?: string | null;
+  readonly fileName?: string | null;
+  readonly mode?: ProjectMode;
   readonly tileset?: { readonly asset?: ProjectAssetReference | null } | null;
   readonly playfield?: { readonly asset?: ProjectAssetReference | null } | null;
   readonly backgrounds?: {
@@ -299,10 +303,15 @@ export interface ExtractableProjectAssetSource {
   readonly animation?: {
     readonly destinationChr?: ProjectAssetReference | Uint8Array | null;
     readonly destinationChrName?: string | null;
+    readonly destinationChrAssetId?: string | null;
     readonly animations: readonly {
       readonly id: string;
       readonly name?: string;
       readonly asset?: ProjectAssetReference | null;
+      readonly source?: {
+        readonly assetId?: string;
+        readonly fileName?: string;
+      } | null;
     }[];
   } | null;
 }
@@ -314,29 +323,76 @@ export function extractProjectAssets(
   project: ExtractableProjectAssetSource,
 ): readonly ProjectAsset[] {
   const assets: ProjectAsset[] = [];
+  const seenIds = new Set<string>();
 
+  const register = (asset: ProjectAsset): void => {
+    if (!seenIds.has(asset.id)) {
+      seenIds.add(asset.id);
+      assets.push(asset);
+    }
+  };
+
+  // 1. Tileset Image
   if (project.tileset?.asset) {
     const ref = project.tileset.asset;
     const id = normalizeProjectAssetId(ref.id, 'tileset-image');
-    assets.push({
+    register({
       id,
       kind: 'tileset-image',
       name: ref.name ?? 'Tileset Image',
       reference: ref,
     });
+  } else if (
+    project.mode === 'tileset' &&
+    (project.fileName || project.assetId)
+  ) {
+    const id = normalizeProjectAssetId(
+      project.assetId ?? undefined,
+      'tileset-image',
+    );
+    register({
+      id,
+      kind: 'tileset-image',
+      name: project.fileName ?? 'Tileset Image',
+      reference: {
+        id,
+        path: project.fileName ?? '',
+        name: project.fileName ?? 'Tileset Image',
+      },
+    });
   }
 
+  // 2. Playfield Image
   if (project.playfield?.asset) {
     const ref = project.playfield.asset;
     const id = normalizeProjectAssetId(ref.id, 'playfield-image');
-    assets.push({
+    register({
       id,
       kind: 'playfield-image',
       name: ref.name ?? 'Playfield Image',
       reference: ref,
     });
+  } else if (
+    project.mode === 'playfield' &&
+    (project.fileName || project.assetId)
+  ) {
+    const id = normalizeProjectAssetId(
+      project.assetId ?? undefined,
+      'playfield-image',
+    );
+    register({
+      id,
+      kind: 'playfield-image',
+      name: project.fileName ?? 'Playfield Image',
+      reference: {
+        id,
+        path: project.fileName ?? '',
+        name: project.fileName ?? 'Playfield Image',
+      },
+    });
   }
 
+  // 3. Background Maps
   if (project.backgrounds?.maps) {
     project.backgrounds.maps.forEach((map, idx) => {
       if (map.asset) {
@@ -350,31 +406,54 @@ export function extractProjectAssets(
           map.name && map.name.length > 0
             ? map.name
             : (ref.name ?? `Background Map ${String(idx + 1)}`);
-        assets.push({
+        register({
           id,
           kind: 'background-image',
           name: displayName,
           reference: ref,
         });
+      } else if (map.assetId) {
+        const id = normalizeProjectAssetId(
+          map.assetId,
+          'background-image',
+          map.id,
+        );
+        const displayName =
+          map.name && map.name.length > 0
+            ? map.name
+            : `Background Map ${String(idx + 1)}`;
+        register({
+          id,
+          kind: 'background-image',
+          name: displayName,
+          reference: { id, path: '' },
+        });
       }
     });
   }
 
+  // 4. Base CHR & Animations
   if (project.animation) {
     if (project.animation.destinationChr) {
       const dest = project.animation.destinationChr;
       if (typeof dest === 'object' && 'path' in dest) {
         const ref = dest;
-        const id = normalizeProjectAssetId(ref.id, 'base-chr');
-        assets.push({
+        const id = normalizeProjectAssetId(
+          ref.id ?? project.animation.destinationChrAssetId,
+          'base-chr',
+        );
+        register({
           id,
           kind: 'base-chr',
-          name: ref.name ?? 'Base CHR',
+          name: ref.name ?? project.animation.destinationChrName ?? 'Base CHR',
           reference: ref,
         });
       } else if (dest instanceof Uint8Array && dest.length > 0) {
-        const id = getLegacyDeterministicAssetId('base-chr');
-        assets.push({
+        const id = normalizeProjectAssetId(
+          project.animation.destinationChrAssetId,
+          'base-chr',
+        );
+        register({
           id,
           kind: 'base-chr',
           name: project.animation.destinationChrName ?? 'Base CHR',
@@ -391,15 +470,48 @@ export function extractProjectAssets(
           anim.name && anim.name.length > 0
             ? anim.name
             : (ref.name ?? `Animation ${String(idx + 1)}`);
-        assets.push({
+        register({
           id,
           kind: 'spritesheet',
           name: displayName,
           reference: ref,
         });
+      } else if ('source' in anim && anim.source) {
+        const source = anim.source;
+        const id = normalizeProjectAssetId(
+          source.assetId,
+          'spritesheet',
+          anim.id,
+        );
+        const displayName =
+          anim.name && anim.name.length > 0
+            ? anim.name
+            : (source.fileName ?? `Animation ${String(idx + 1)}`);
+        register({
+          id,
+          kind: 'spritesheet',
+          name: displayName,
+          reference: {
+            id,
+            path: source.fileName ?? '',
+            name: source.fileName,
+          },
+        });
+      } else if (anim.id) {
+        const id = normalizeProjectAssetId(undefined, 'spritesheet', anim.id);
+        const displayName =
+          anim.name && anim.name.length > 0
+            ? anim.name
+            : `Animation ${String(idx + 1)}`;
+        register({
+          id,
+          kind: 'spritesheet',
+          name: displayName,
+          reference: { id, path: '' },
+        });
       }
     });
   }
 
-  return assets;
+  return Object.freeze(assets);
 }

@@ -295,6 +295,74 @@ describe('asset-identity domain model', () => {
         'asset-hero-sheet',
       ]);
     });
+
+    it('extracts active assets from ProjectView with anim.source and backgrounds', () => {
+      const mockProjectView = {
+        mode: 'animation' as const,
+        assetId: null,
+        fileName: null,
+        backgrounds: {
+          maps: [
+            {
+              id: 'bg-map-1',
+              name: 'Level 1',
+              assetId: 'asset-bg-forest',
+            },
+          ],
+        },
+        animation: {
+          destinationChrAssetId: 'asset-base-chr-custom',
+          destinationChrName: 'custom_base.chr',
+          destinationChr: new Uint8Array(8192),
+          animations: [
+            {
+              id: 'anim-warrior',
+              name: 'Warrior Run',
+              source: {
+                assetId: 'asset-warrior-sheet',
+                fileName: 'warrior.png',
+              },
+            },
+            {
+              id: 'mage',
+              name: 'Mage Cast',
+              source: null, // No loaded source image, uses deterministic ID from anim.id
+            },
+          ],
+        },
+      };
+
+      const extracted = extractProjectAssets(mockProjectView);
+      expect(extracted).toHaveLength(4);
+
+      const ids = extracted.map((a) => a.id);
+      expect(ids).toContain('asset-bg-forest');
+      expect(ids).toContain('asset-base-chr-custom');
+      expect(ids).toContain('asset-warrior-sheet');
+      expect(ids).toContain('asset-anim-mage');
+    });
+
+    it('extracts tileset and playfield from ProjectView when in respective modes', () => {
+      const tilesetView = {
+        mode: 'tileset' as const,
+        assetId: 'asset-custom-tileset',
+        fileName: 'dungeon_tiles.png',
+      };
+      const extractedTileset = extractProjectAssets(tilesetView);
+      expect(extractedTileset).toHaveLength(1);
+      expect(extractedTileset[0]?.id).toBe('asset-custom-tileset');
+      expect(extractedTileset[0]?.kind).toBe('tileset-image');
+
+      const playfieldView = {
+        mode: 'playfield' as const,
+        assetId: null,
+        fileName: 'overworld.png',
+      };
+      const extractedPlayfield = extractProjectAssets(playfieldView);
+      expect(extractedPlayfield).toHaveLength(1);
+      expect(extractedPlayfield[0]?.id).toBe('asset-playfield-default');
+      expect(extractedPlayfield[0]?.kind).toBe('playfield-image');
+    });
   });
 
   describe('Logical Tile Independence vs Physical CHR Allocation', () => {
