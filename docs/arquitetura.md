@@ -470,3 +470,13 @@ A extração de células e frames lógicos é isolada e formalizada de forma pur
 - **Motor Lógico Puro (`extractLogicalMetaspriteTiles`, `extractLogicalAnimationFrames`):** Converte a imagem com pixel overrides em arrays de `LogicalMetaspriteTile` e `LogicalAnimationFrame`, calculando coordenadas relativas `(x, y)` em torno da âncora `(originX, originY)` e atribuindo chaves canônicas `LogicalTileKey` (`${assetId}:${tileX}:${tileY}`).
 - **Omissão Transparente:** Células 8×8 com todos os pixels iguais a 0 são descartadas do array de sprites lógicos e contabilizadas em `omittedTileCount`, sem deslocar as coordenadas dos demais tiles.
 - **Fronteira Estrita:** O módulo de extração não possui nenhum conhecimento de CHR física, Pattern Tables ou alocação, servindo de entrada imutável para a etapa de matching/allocation.
+
+### 10.2 Alocador Físico Unificado de CHR para Spritesheets (`src/core/chr-spritesheet-allocation.ts`)
+
+A etapa de atribuição e alocação física opera de maneira centralizada, transacional e determinística:
+
+- **Motor Central de Alocação (`allocateSpritesheetChr`):** Recebe os frames lógicos extraídos, a Pattern Table alvo (PT0 ou PT1), o estado inicial dos 512 slots e o conjunto de índices bloqueados por reservas de CHR (`reservedIndices`).
+- **Preservação de Base CHR:** Slots pré-ocupados por Base CHR (`source === 'destination'`) são protegidos contra sobrescrita e são reutilizados estritamente quando há equivalência exata de pixels.
+- **Respeito a CHR Reservations:** Slots pertencentes a regiões do tipo `reservation` (Milestone 5) são ignorados durante a busca de slots disponíveis por `findNextAvailableChrSlot`, mesmo que estejam vazios.
+- **Garantia de Atomicidade Transacional:** O alocador opera em cópia isolada de trabalho. Caso a capacidade da Pattern Table seja excedida, lança o erro estruturado `pattern-table-capacity-overflow` sem deixar mutações parciais ou corrupção no estado dos slots.
+- **Forte Determinismo:** A mesma sequência de frames lógicos e configurações produz exatamente os mesmos assignments físicos e buffer de CHR em execuções repetidas.
