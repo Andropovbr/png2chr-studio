@@ -8,9 +8,7 @@ import {
   collectReservedPhysicalTileIndices,
   createPatternTableSlots,
   encodePatternTableSlots,
-  findNextAvailableChrSlot,
   isSpritePatternTable,
-  localPatternTableTileIndex,
   NES_CHR_ROM_TILE_COUNT,
   NES_CHR_ROM_SIZE,
   NES_PATTERN_TABLE_TILE_COUNT,
@@ -20,9 +18,8 @@ import {
   type PatternTableSlot,
   type SpritePatternTable,
 } from './chr-pattern-table';
-import { tilePixelKey, transformedTileKey } from './tile-deduplication';
 import type { QuantizationMode } from './quantization-settings';
-import type { IndexedImage, Tile } from './types';
+import type { IndexedImage } from './types';
 
 export const ANIMATION_METADATA_FORMAT = 'png2chr-studio-animation';
 export const ANIMATION_METADATA_VERSION = 5;
@@ -60,10 +57,35 @@ export {
   type LogicalMetaspriteTile,
 };
 
+import {
+  AnimationModelError,
+  type AnimationModelErrorCode,
+} from './animation-error';
+import {
+  allocateSpritesheetChr,
+  findTileMatch,
+  type AllocateSpritesheetChrOptions,
+  type AllocateSpritesheetChrResult,
+  type MetaspritePhysicalAssignment,
+  type TileMatch,
+  type TileReuse,
+} from './chr-spritesheet-allocation';
+
+export {
+  AnimationModelError,
+  type AnimationModelErrorCode,
+  allocateSpritesheetChr,
+  findTileMatch,
+  type AllocateSpritesheetChrOptions,
+  type AllocateSpritesheetChrResult,
+  type MetaspritePhysicalAssignment,
+  type TileMatch,
+  type TileReuse,
+};
+
 export type AnimationPlayback = 'loop' | 'once';
 export type AnimationCategory = 'idle' | 'movement';
 export type AnimationDirection = 'left' | 'right';
-export type TileReuse = 'destination' | 'imported' | 'new';
 
 export interface AnimationDefinitionInput {
   /** Stable identity of the editor animation that produced this definition. */
@@ -221,43 +243,6 @@ export interface AnimationProjectModel {
   readonly finalChr: Uint8Array;
 }
 
-export type AnimationModelErrorCode =
-  | 'invalid-name'
-  | 'invalid-symbol-prefix'
-  | 'invalid-frame-dimensions'
-  | 'invalid-frame-grid'
-  | 'invalid-frame-selection'
-  | 'duplicate-frame-selection'
-  | 'no-selected-frames'
-  | 'invalid-frame-duration'
-  | 'invalid-animation-direction'
-  | 'duplicate-animation-name'
-  | 'duplicate-animation-identifier'
-  | 'invalid-playback'
-  | 'invalid-origin'
-  | 'invalid-sprite-palette'
-  | 'invalid-pattern-table'
-  | 'invalid-destination-chr'
-  | 'destination-capacity-overflow'
-  | 'pattern-table-capacity-overflow'
-  | 'chr-capacity-overflow'
-  | 'tile-index-overflow';
-
-export class AnimationModelError extends Error {
-  public constructor(
-    public readonly code: AnimationModelErrorCode,
-    public readonly details: Readonly<Record<string, number | string>> = {},
-  ) {
-    super(code);
-    this.name = 'AnimationModelError';
-  }
-}
-
-interface TileMatch {
-  readonly physicalTileIndex: number;
-  readonly attributes: number;
-}
-
 function oppositeDirection(direction: AnimationDirection): AnimationDirection {
   return direction === 'left' ? 'right' : 'left';
 }
@@ -301,51 +286,6 @@ function defaultSymbolPrefix(sourceImageName: string): string {
   const fileName = sourceImageName.split(/[\\/]/).pop() ?? sourceImageName;
   const withoutExtension = fileName.replace(/\.[^.]*$/, '');
   return normalizeCIdentifier(withoutExtension) || 'asset';
-}
-
-function findTileMatch(
-  candidate: Tile,
-  slots: readonly PatternTableSlot[],
-  patternTable: SpritePatternTable,
-  flipDeduplication: boolean,
-): TileMatch | null {
-  const candidateKey = tilePixelKey(candidate);
-  const [start, end] = patternTablePhysicalRange(patternTable);
-  for (
-    let physicalTileIndex = start;
-    physicalTileIndex <= end;
-    physicalTileIndex += 1
-  ) {
-    const existing = slots[physicalTileIndex]?.tile;
-    if (
-      existing !== null &&
-      existing !== undefined &&
-      tilePixelKey(existing) === candidateKey
-    ) {
-      return { physicalTileIndex, attributes: 0 };
-    }
-  }
-  if (!flipDeduplication) return null;
-
-  const flips = [
-    [true, false, NES_SPRITE_FLIP_HORIZONTAL],
-    [false, true, NES_SPRITE_FLIP_VERTICAL],
-    [true, true, NES_SPRITE_FLIP_HORIZONTAL | NES_SPRITE_FLIP_VERTICAL],
-  ] as const;
-  for (
-    let physicalTileIndex = start;
-    physicalTileIndex <= end;
-    physicalTileIndex += 1
-  ) {
-    const existing = slots[physicalTileIndex]?.tile;
-    if (existing === undefined || existing === null) continue;
-    for (const [horizontal, vertical, attributes] of flips) {
-      if (transformedTileKey(existing, horizontal, vertical) === candidateKey) {
-        return { physicalTileIndex, attributes };
-      }
-    }
-  }
-  return null;
 }
 
 export function buildAnimationProjectModel(
@@ -407,7 +347,7 @@ export function buildAnimationProjectModel(
   ) {
     throw new AnimationModelError('invalid-destination-chr');
   }
-  const slots = createPatternTableSlots(baseChr, destinationPatternTable);
+  let slots = createPatternTableSlots(baseChr, destinationPatternTable);
   const baseOccupancy = analyzeBaseChrOccupancy(
     baseChr,
     destinationPatternTable,
@@ -590,96 +530,67 @@ export function buildAnimationProjectModel(
       assetId: animation.id ?? animation.name,
     });
 
-    const frames = logicalFrames.map((logicalFrame): AnimationFrameModel => {
-      const sprites: MetaspriteTile[] = [];
+    const allocationResult = allocateSpritesheetChr({
+      logicalFrames,
+      initialSlots: slots,
+      patternTable,
+      reservedIndices,
+      flipDeduplication: options.flipDeduplication ?? true,
+    });
 
-      for (const logicalSprite of logicalFrame.sprites) {
-        const candidate: Tile = {
-          id: 0,
-          column: logicalSprite.tileColumn,
-          row: logicalSprite.tileRow,
-          pixels: logicalSprite.pixels,
-        };
+    slots = allocationResult.slots as PatternTableSlot[];
+    reusedDestinationTiles += allocationResult.reusedDestinationTiles;
+    reusedImportedTiles += allocationResult.reusedImportedTiles;
+    newTileCount += allocationResult.newTileCount;
 
-        const match = findTileMatch(
-          candidate,
-          slots,
-          patternTable,
-          options.flipDeduplication ?? true,
+    const frames = logicalFrames.map(
+      (logicalFrame, frameIndex): AnimationFrameModel => {
+        const assignments = allocationResult.frameAssignments[frameIndex] ?? [];
+        const sprites: MetaspriteTile[] = logicalFrame.sprites.map(
+          (logicalSprite, spriteIndex) => {
+            const assignment = assignments[spriteIndex];
+            const flipAttributes = assignment?.flipAttributes ?? 0;
+            const physicalTileIndex = assignment?.physicalTileIndex ?? 0;
+            const tileIndex = assignment?.localTileIndex ?? 0;
+            const reuse = assignment?.reuse ?? 'new';
+
+            const finalFlipAttributes = flipAttributes;
+            const finalAttributes =
+              (finalFlipAttributes & ~0x03) |
+              (logicalFrame.effectivePalette & 0x03);
+
+            return {
+              x: logicalSprite.x,
+              y: logicalSprite.y,
+              tile: tileIndex,
+              physicalTileIndex,
+              attributes: finalAttributes,
+              palette: logicalFrame.effectivePalette,
+              horizontalFlip:
+                (finalFlipAttributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0,
+              verticalFlip:
+                (finalFlipAttributes & NES_SPRITE_FLIP_VERTICAL) !== 0,
+              reuse,
+              sourceTileColumn: logicalSprite.sourceTileColumn,
+              sourceTileRow: logicalSprite.sourceTileRow,
+            };
+          },
         );
 
-        let physicalTileIndex: number;
-        let flipAttributes = 0;
-        let reuse: TileReuse;
-
-        if (match !== null) {
-          physicalTileIndex = match.physicalTileIndex;
-          flipAttributes = match.attributes;
-          reuse = slots[physicalTileIndex]?.source ?? 'imported';
-          if (reuse === 'destination') reusedDestinationTiles += 1;
-          else reusedImportedTiles += 1;
-        } else {
-          const availableSlot = findNextAvailableChrSlot(slots, {
-            patternTable,
-            reservedIndices,
-          });
-          if (availableSlot === undefined) {
-            throw new AnimationModelError('pattern-table-capacity-overflow', {
-              patternTable,
-              capacityTiles: NES_PATTERN_TABLE_TILE_COUNT,
-            });
-          }
-          physicalTileIndex = availableSlot.physicalTileIndex;
-          slots[physicalTileIndex] = {
-            physicalTileIndex,
-            tile: { ...candidate, id: physicalTileIndex },
-            source: 'imported',
-          };
-          newTileCount += 1;
-          reuse = 'new';
-        }
-
-        const tileIndex = localPatternTableTileIndex(physicalTileIndex);
-        if (tileIndex > 0xff) {
-          throw new AnimationModelError('tile-index-overflow', {
-            tileIndex,
-          });
-        }
-
-        const finalFlipAttributes = flipAttributes;
-        const finalAttributes =
-          (finalFlipAttributes & ~0x03) |
-          (logicalFrame.effectivePalette & 0x03);
-
-        sprites.push({
-          x: logicalSprite.x,
-          y: logicalSprite.y,
-          tile: tileIndex,
-          physicalTileIndex,
-          attributes: finalAttributes,
-          palette: logicalFrame.effectivePalette,
-          horizontalFlip:
-            (finalFlipAttributes & NES_SPRITE_FLIP_HORIZONTAL) !== 0,
-          verticalFlip: (finalFlipAttributes & NES_SPRITE_FLIP_VERTICAL) !== 0,
-          reuse,
-          sourceTileColumn: logicalSprite.sourceTileColumn,
-          sourceTileRow: logicalSprite.sourceTileRow,
-        });
-      }
-
-      return {
-        sourceIndex: logicalFrame.sourceIndex,
-        sourceX: logicalFrame.sourceX,
-        sourceY: logicalFrame.sourceY,
-        duration: logicalFrame.duration,
-        paletteIndex: logicalFrame.paletteIndex,
-        effectivePalette: logicalFrame.effectivePalette,
-        width: logicalFrame.width,
-        height: logicalFrame.height,
-        omittedTileCount: logicalFrame.omittedTileCount,
-        sprites,
-      };
-    });
+        return {
+          sourceIndex: logicalFrame.sourceIndex,
+          sourceX: logicalFrame.sourceX,
+          sourceY: logicalFrame.sourceY,
+          duration: logicalFrame.duration,
+          paletteIndex: logicalFrame.paletteIndex,
+          effectivePalette: logicalFrame.effectivePalette,
+          width: logicalFrame.width,
+          height: logicalFrame.height,
+          omittedTileCount: logicalFrame.omittedTileCount,
+          sprites,
+        };
+      },
+    );
     return {
       id: animation.id,
       name: animation.name,
