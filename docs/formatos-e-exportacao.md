@@ -318,33 +318,34 @@ Gera código-fonte em C e cabeçalho prontos para compilação com o compilador 
 
 ```c
 typedef struct {
-    signed char x;
-    signed char y;
-    unsigned char tile;
-    unsigned char attr;
-} Png2chrSprite;
+    int8_t x;
+    int8_t y;
+    uint8_t tile;
+    uint8_t attributes;
+} Png2ChrAnimationMetaspriteTile;
 
 typedef struct {
-    unsigned short sprite_offset;
-    unsigned char sprite_count;
-    unsigned char duration;
-} Png2chrFrame;
+    uint16_t sprite_offset;
+    uint8_t sprite_count;
+    uint8_t duration;
+} Png2ChrAnimationFrame;
 
 typedef struct {
-    unsigned short frame_offset;
-    unsigned char frame_count;
-    unsigned char width_tiles;
-    unsigned char height_tiles;
-    unsigned char playback;
-    unsigned char flags;
-} Png2chrAnimation;
+    uint16_t frame_offset;
+    uint8_t frame_count;
+    uint8_t width_tiles;
+    uint8_t height_tiles;
+    uint8_t playback;
+    uint8_t flags;
+} Png2ChrAnimation;
 ```
 
-### Otimização de Memória
+### Constantes e Otimização de Memória
 
-- `Png2chrSprite`: **4 bytes** por sprite do metasprite.
-- `Png2chrFrame`: **4 bytes** por frame.
-- `Png2chrAnimation`: **7 bytes** por animação.
+- `Png2ChrAnimationMetaspriteTile`: **4 bytes** por sprite do metasprite (coordenadas com sinal `int8_t`, índice de tile local `0..255`, e byte de atributo OAM).
+- `Png2ChrAnimationFrame`: **4 bytes** por frame.
+- `Png2ChrAnimation`: **7 bytes** por animação.
+- Constante `#define ${PREFIX}_SPRITE_PATTERN_TABLE <0|1>` gerada no cabeçalho para configuração do bit 3 do registrador `PPUCTRL` no código do jogo.
 - Dados são declarados em tabelas `const` para residirem integralmente na ROM (PRG-ROM).
 - Enum gerado `${PascalCase}AnimationId` com identificadores para indexação type-safe no jogo.
 
@@ -355,4 +356,4 @@ typedef struct {
 Gera arquivos de inclusão (`.inc`) e tabelas de dados em assembly 6502 (`.s`) para o montador **ca65**.
 
 - Emite diretivas `.byte` e `.word` mapeando exatamente a mesma estrutura compacta da exportação C.
-- Constantes simbólicas para IDs de animação, flags de flip (`ANIMATION_ALLOW_H_FLIP = $40`, `ANIMATION_ALLOW_V_FLIP = $80`) e modos de reprodução (`ANIMATION_PLAYBACK_LOOP = 0`, `ANIMATION_PLAYBACK_ONCE = 1`).
+- Constantes simbólicas para IDs de animação, constante `${PREFIX}_SPRITE_PATTERN_TABLE = <0|1>`, flags de flip (`ANIMATION_ALLOW_H_FLIP = $40`, `ANIMATION_ALLOW_V_FLIP = $80`) e modos de reprodução (`ANIMATION_PLAYBACK_LOOP = 0`, `ANIMATION_PLAYBACK_ONCE = 1`).

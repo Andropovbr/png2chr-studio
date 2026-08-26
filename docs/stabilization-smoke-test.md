@@ -85,12 +85,40 @@ Validate the end-to-end lifecycle of Asset Identities, Tile Ownership, Deduplica
 | 8    | In **Deliver & Export**, review the **Asset CHR Resource Accounting** section.                                 | Summary cards display concise per-asset CHR resource breakdown and pattern table distribution.                                                                                          |
 | 9    | Save project as `.p2c` and reopen.                                                                             | Asset IDs and pixel overrides remain stable; derived mapping index, metrics, and diagnostics reconstruct dynamically with 100% fidelity.                                                |
 
+## Sprite Sheet → CHR Integration smoke test (Milestone 7)
+
+Validate the end-to-end integration of spritesheets, transparent cell omission, unified CHR allocation, flip-aware deduplication, reimport reconciliation, and aligned multi-target exporters (C, ca65 ASM, JSON v5, binary CHR):
+
+| Step | Action                                                                                                                                        | Expected result                                                                                                                                                                          |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | In **Sprite Sheet & Animation**, load a multi-frame spritesheet PNG containing transparent regions and flipped sub-graphics.                  | Frames are auto-detected (or configured via 16×16/32×32 inputs); fully transparent 8×8 cells are omitted with positive `omitted_tile_count`.                                             |
+| 2    | Configure frame sequencing, custom frame durations (e.g. `[6, 12, 8]`), and per-frame palette overrides.                                      | Animation timeline reflects custom timings and subpalettes; sticky preview plays sequence smoothly at target framerate.                                                                  |
+| 3    | Open the **Pixel Overrides** tab and edit individual pixels on an extracted frame tile.                                                       | Override applies cleanly; modified pattern is immediately reflected in animation preview and CHR allocation without altering source image bytes.                                         |
+| 4    | Navigate to **CHR Memory** and inspect pattern table distribution.                                                                            | Sprites occupy the selected pattern table (PT0 or PT1); local indices range `$00..$FF` while physical indices reflect `0..255` (PT0) or `256..511` (PT1).                                |
+| 5    | Configure a CHR Reservation on the active pattern table (e.g. slots `$10..$1F`).                                                              | Dynamic allocation skips reserved slots and allocates subsequent free slots; Base CHR tiles remain protected.                                                                            |
+| 6    | Inspect deduplication metrics in **Asset CHR Usage & Metrics**.                                                                               | Tiles matching via exact, H-flip, V-flip, or HV-flip share physical CHR slots; Tile Inspector attributes display hardware OAM flags (`$00`, `$40`, `$80`, `$C0`) and local tile byte.    |
+| 7    | In **Sprite Sheet & Animation**, click `[Reimport Spritesheet]` with an updated PNG (different frame dimensions or extra frames).             | Geometry and overrides reconcile deterministically; out-of-bounds keys are pruned; valid overrides and surviving frame steps are preserved; ProjectAssetId remains stable.               |
+| 8    | In **Deliver & Export**, review and download **cc65 C (`.h`/`.c`)**, **ca65 ASM (`.inc`/`.s`)**, **JSON v5 (`.json`)**, and **CHR (`.chr`)**. | C/ASM headers declare `${PREFIX}_SPRITE_PATTERN_TABLE`; OAM tables contain local 8-bit tile bytes `$00..$FF`; signed coordinates reflect âncora; CHR export contains exact 8 KiB buffer. |
+| 9    | Save project as `.p2c`, reload the application, and open the saved file.                                                                      | Project state reloads completely; exports re-generated from reloaded model are 100% bit-for-bit identical to initial exports.                                                            |
+
+## Tileset & Playfield non-regression smoke test
+
+Validate that Tileset and Playfield modes operate without regression alongside the new animation subsystem:
+
+| Step | Action                                                                                  | Expected result                                                                                                                               |
+| ---- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Switch to **Tileset** mode and import a tileset PNG (e.g. 128×128 pixels).              | Tileset extracts 8×8 tiles; deduplication and Base CHR assignment function cleanly; CHR Memory displays accurate project tile attributions.   |
+| 2    | Switch to **Playfield** mode and import a full-screen background PNG (256×240 pixels).  | Playfield quantizes to 4 background palettes; 32×30 nametable grid and 64-byte attribute table generate accurately.                           |
+| 3    | Paint collision cells (solid, ladder, hazard) and test procedural feature overlays.     | Collision map updates 480-byte `.col` buffer; random playfield generator operates without errors.                                             |
+| 4    | Export Tileset/Playfield production artifacts (`.chr`, `.nam`, `.atr`, `.pal`, `.col`). | Binary files match strict NES hardware sizing (Nametable = 960 bytes, Attribute Table = 64 bytes, Collision = 480 bytes, Palette = 16 bytes). |
+| 5    | Save project as `.p2c` and reopen.                                                      | Mode, collision cells, palette assignments, and tile overrides restore with 100% fidelity.                                                    |
+
 ## Automated counterpart
 
 Run these checks before or alongside the manual flow:
 
 ```bash
-npm test -- src/core/chr-asset-mapping-audit.test.ts src/core/chr-asset-mapping.test.ts src/core/asset-lifecycle.test.ts src/ui/chr-workspace.test.ts src/ui/delivery-workspace.test.ts
+npm test -- src/core/spritesheet-chr-integration-e2e.test.ts src/core/animation-exporters.test.ts src/core/asset-lifecycle.test.ts src/core/chr-asset-mapping.test.ts
 npm test
 npm run build
 npm run lint
@@ -101,6 +129,7 @@ The focused suite covers PNG failure/recovery, effective mapping and flip
 orientation, raw CHR occupancy, PT0/PT1 local/physical indexing, sparse-slot
 allocation, 8 KiB output, project persistence/removal, CHR regions/reservations CRUD,
 asset identity persistence, bidirectional mapping, lifecycle reconciliation,
-CHR inspector attributions, per-asset metrics, ownership diagnostics, and metadata exports.
+CHR inspector attributions, per-asset metrics, ownership diagnostics, transparent cell omission,
+flip-aware deduplication, reimport reconciliation, aligned multi-target exporters, and cross-mode non-regression.
 Browser-level file chooser and download interactions remain manual because the
 repository deliberately has no browser/E2E harness.
