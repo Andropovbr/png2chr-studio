@@ -1250,11 +1250,20 @@ export function analyzeChrOwnershipDiagnostics(
   const emittedFactKeys = new Set<string>();
 
   const emit = (fact: ChrOwnershipDiagnosticFact): void => {
-    const missingId = 'missingAssetId' in fact ? fact.missingAssetId : '';
-    const logKey = 'logicalKey' in fact ? (fact.logicalKey ?? '') : '';
-    const reason = 'reason' in fact ? fact.reason : '';
-    const details = 'details' in fact ? fact.details : '';
-    const dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${missingId}:${logKey}:${reason}:${details}`;
+    let dedupeKey: string;
+    if (fact.kind === 'dangling-asset-usage') {
+      dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${fact.missingAssetId}:${fact.usageType}`;
+    } else if (fact.kind === 'missing-origin-asset') {
+      dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${fact.missingAssetId}`;
+    } else if (fact.kind === 'invalid-logical-key') {
+      dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${fact.assetId ?? ''}:${fact.logicalKey}:${fact.reason}`;
+    } else if (fact.kind === 'unexpected-pattern-table') {
+      dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${fact.assetId}:${String(fact.actualPatternTable)}:${String(fact.expectedPatternTable)}`;
+    } else if (fact.kind === 'invalid-physical-mapping') {
+      dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${fact.details}`;
+    } else {
+      dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${String(fact.patternTable)}:${String(fact.localIndex)}`;
+    }
     if (!emittedFactKeys.has(dedupeKey)) {
       emittedFactKeys.add(dedupeKey);
       diagnostics.push(fact);

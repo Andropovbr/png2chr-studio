@@ -4,10 +4,12 @@ import {
   calculateAssetChrMetrics,
   calculateProjectChrOwnershipMetrics,
   analyzeChrOwnershipDiagnostics,
+  formatChrOwnershipDiagnosticMessage,
   getPhysicalSlotAttribution,
   type ChrAssetMappingIndex,
   type PhysicalSlotAttribution,
 } from './chr-asset-mapping';
+import { extractProjectAssets } from './asset-identity';
 import { analyzeChrEditDivergence, planAssetRemoval } from './asset-lifecycle';
 import {
   classifyChrSlots,
@@ -488,6 +490,439 @@ describe('Milestone 6 Final Quality Audit & End-to-End Invariants', () => {
       });
 
       expect(diags).toHaveLength(0);
+    });
+  });
+
+  describe('8. Ownership & Integrity Diagnostics False-Positive Regressions and Deduplication', () => {
+    it('Scenario 1: animation consuming own extracted tile produces 0 diagnostics', () => {
+      const image = createSampleIndexedImage(
+        16,
+        16,
+        (x, y) => ((x + y) % 3) + 1,
+      );
+      const animDef: AnimationDefinitionInput = {
+        id: 'anim-hero',
+        name: 'Hero Walk',
+        image,
+        frameIndices: [0],
+        frameDuration: 6,
+        frameWidth: 16,
+        frameHeight: 16,
+      };
+
+      const animModel = buildAnimationProjectModel({
+        name: 'hero',
+        animations: [animDef],
+      });
+
+      const mockProjectView = {
+        mode: 'animation' as const,
+        animation: {
+          destinationChrAssetId: null,
+          destinationChrName: null,
+          destinationChr: new Uint8Array(0),
+          animations: [
+            {
+              id: 'anim-hero',
+              name: 'Hero Walk',
+              source: {
+                assetId: 'asset-hero-sheet',
+                fileName: 'hero.png',
+              },
+            },
+          ],
+        },
+      };
+
+      const activeAssets = extractProjectAssets(mockProjectView);
+      expect(activeAssets).toHaveLength(1);
+      expect(activeAssets[0]?.id).toBe('asset-hero-sheet');
+
+      const mappingIndex = buildChrAssetMappingIndex({
+        mode: 'animation',
+        animationModel: animModel,
+        animations: mockProjectView.animation.animations,
+      });
+
+      const diags = analyzeChrOwnershipDiagnostics({
+        mappingIndex,
+        activeAssets,
+      });
+
+      expect(diags).toHaveLength(0);
+    });
+
+    it('Scenario 2: animation consuming Base CHR produces 0 diagnostics', () => {
+      // Base CHR with a non-empty tile at slot 0
+      const baseChr = new Uint8Array(8192);
+      baseChr[0] = 0xaa;
+      baseChr[8] = 0x55;
+
+      const image = createSampleIndexedImage(16, 16, () => 0); // Transparent/empty image
+      const animDef: AnimationDefinitionInput = {
+        id: 'anim-warrior',
+        name: 'Warrior Idle',
+        image,
+        frameIndices: [0],
+        frameDuration: 6,
+        frameWidth: 16,
+        frameHeight: 16,
+      };
+
+      const animModel = buildAnimationProjectModel({
+        name: 'warrior',
+        baseChr,
+        animations: [animDef],
+      });
+
+      const mockProjectView = {
+        mode: 'animation' as const,
+        animation: {
+          destinationChrAssetId: 'asset-base-chr-game',
+          destinationChrName: 'game.chr',
+          destinationChr: baseChr,
+          animations: [
+            {
+              id: 'anim-warrior',
+              name: 'Warrior Idle',
+              source: {
+                assetId: 'asset-warrior-sheet',
+                fileName: 'warrior.png',
+              },
+            },
+          ],
+        },
+      };
+
+      const activeAssets = extractProjectAssets(mockProjectView);
+      expect(activeAssets.map((a) => a.id)).toEqual([
+        'asset-base-chr-game',
+        'asset-warrior-sheet',
+      ]);
+
+      const mappingIndex = buildChrAssetMappingIndex({
+        mode: 'animation',
+        animationModel: animModel,
+        baseChr,
+        animations: mockProjectView.animation.animations,
+      });
+
+      const diags = analyzeChrOwnershipDiagnostics({
+        mappingIndex,
+        activeAssets,
+      });
+
+      expect(diags).toHaveLength(0);
+    });
+
+    it('Scenario 3: two animations sharing the same Base CHR tile produce 0 diagnostics', () => {
+      const baseChr = new Uint8Array(8192);
+      baseChr[0] = 0xff;
+
+      const mockIndex: ChrAssetMappingIndex = {
+        byPhysicalIndex: Array.from({ length: 512 }, (_, idx) => ({
+          physicalIndex: idx,
+          patternTable: idx < 256 ? 0 : 1,
+          localIndex: idx % 256,
+          origin:
+            idx === 0
+              ? {
+                  primaryAssetId: 'asset-base-chr-1',
+                  creationKind: 'base-chr',
+                }
+              : undefined,
+          usages:
+            idx === 0
+              ? [
+                  {
+                    type: 'animation' as const,
+                    assetId: 'asset-hero-sheet',
+                    animationId: 'anim-hero',
+                    animationName: 'Hero',
+                    frameIndex: 0,
+                    spriteIndex: 0,
+                    x: 0,
+                    y: 0,
+                    horizontalFlip: false,
+                    verticalFlip: false,
+                    physicalTileIndex: 0,
+                  },
+                  {
+                    type: 'animation' as const,
+                    assetId: 'asset-enemy-sheet',
+                    animationId: 'anim-enemy',
+                    animationName: 'Enemy',
+                    frameIndex: 0,
+                    spriteIndex: 0,
+                    x: 0,
+                    y: 0,
+                    horizontalFlip: false,
+                    verticalFlip: false,
+                    physicalTileIndex: 0,
+                  },
+                ]
+              : [],
+          usageCount: idx === 0 ? 2 : 0,
+          isShared: idx === 0,
+        })),
+        physicalIndicesByAsset: new Map([
+          ['asset-base-chr-1', new Set([0])],
+          ['asset-hero-sheet', new Set([0])],
+          ['asset-enemy-sheet', new Set([0])],
+        ]),
+        usagesByLogicalKey: new Map(),
+      };
+
+      const activeAssets = [
+        {
+          id: 'asset-base-chr-1',
+          kind: 'base-chr' as const,
+          name: 'Base CHR',
+          reference: { id: 'asset-base-chr-1', path: 'base.chr' },
+        },
+        {
+          id: 'asset-hero-sheet',
+          kind: 'spritesheet' as const,
+          name: 'Hero',
+          reference: { id: 'asset-hero-sheet', path: 'hero.png' },
+        },
+        {
+          id: 'asset-enemy-sheet',
+          kind: 'spritesheet' as const,
+          name: 'Enemy',
+          reference: { id: 'asset-enemy-sheet', path: 'enemy.png' },
+        },
+      ];
+
+      const diags = analyzeChrOwnershipDiagnostics({
+        mappingIndex: mockIndex,
+        activeAssets,
+      });
+
+      expect(diags).toHaveLength(0);
+    });
+
+    it('Scenario 4: truly non-existent asset produces diagnostic and deduplicates across usages on the same slot', () => {
+      // Slot 12 has 4 distinct usages all referencing the deleted/missing asset 'asset-ghost'
+      const mockIndex: ChrAssetMappingIndex = {
+        byPhysicalIndex: Array.from({ length: 512 }, (_, idx) => ({
+          physicalIndex: idx,
+          patternTable: idx < 256 ? 0 : 1,
+          localIndex: idx % 256,
+          origin:
+            idx === 12
+              ? {
+                  primaryAssetId: 'asset-valid',
+                  creationKind: 'extracted',
+                }
+              : undefined,
+          usages:
+            idx === 12
+              ? [
+                  {
+                    type: 'animation' as const,
+                    assetId: 'asset-ghost',
+                    animationId: 'anim-ghost',
+                    animationName: 'Ghost',
+                    frameIndex: 0,
+                    spriteIndex: 0,
+                    x: 0,
+                    y: 0,
+                    horizontalFlip: false,
+                    verticalFlip: false,
+                    physicalTileIndex: 12,
+                    logicalKey: 'asset-ghost:0:0',
+                  },
+                  {
+                    type: 'animation' as const,
+                    assetId: 'asset-ghost',
+                    animationId: 'anim-ghost',
+                    animationName: 'Ghost',
+                    frameIndex: 1,
+                    spriteIndex: 0,
+                    x: 0,
+                    y: 0,
+                    horizontalFlip: false,
+                    verticalFlip: false,
+                    physicalTileIndex: 12,
+                    logicalKey: 'asset-ghost:2:0',
+                  },
+                  {
+                    type: 'animation' as const,
+                    assetId: 'asset-ghost',
+                    animationId: 'anim-ghost',
+                    animationName: 'Ghost',
+                    frameIndex: 2,
+                    spriteIndex: 1,
+                    x: 8,
+                    y: 0,
+                    horizontalFlip: false,
+                    verticalFlip: false,
+                    physicalTileIndex: 12,
+                    logicalKey: 'asset-ghost:4:0',
+                  },
+                  {
+                    type: 'animation' as const,
+                    assetId: 'asset-ghost',
+                    animationId: 'anim-ghost',
+                    animationName: 'Ghost',
+                    frameIndex: 3,
+                    spriteIndex: 0,
+                    x: 0,
+                    y: 0,
+                    horizontalFlip: false,
+                    verticalFlip: false,
+                    physicalTileIndex: 12,
+                    logicalKey: 'asset-ghost:6:0',
+                  },
+                ]
+              : [],
+          usageCount: idx === 12 ? 4 : 0,
+          isShared: idx === 12,
+        })),
+        physicalIndicesByAsset: new Map([
+          ['asset-valid', new Set([12])],
+          ['asset-ghost', new Set([12])],
+        ]),
+        usagesByLogicalKey: new Map(),
+      };
+
+      const diags = analyzeChrOwnershipDiagnostics({
+        mappingIndex: mockIndex,
+        activeAssetIds: new Set(['asset-valid']),
+      });
+
+      // Must produce dangling usage, but EXACTLY 1 fact for slot 12 without repeating 4 times
+      const dangling = diags.filter((d) => d.kind === 'dangling-asset-usage');
+      expect(dangling).toHaveLength(1);
+      const firstDangling = dangling[0];
+      expect(firstDangling).toBeDefined();
+      if (firstDangling) {
+        expect(firstDangling.physicalIndex).toBe(12);
+        expect(firstDangling.missingAssetId).toBe('asset-ghost');
+        expect(firstDangling.usageType).toBe('animation');
+        expect(formatChrOwnershipDiagnosticMessage(firstDangling)).toContain(
+          'asset-ghost',
+        );
+      }
+    });
+
+    it('Scenario 5: background usage validation (valid produces 0 diagnostics, missing produces dangling error)', () => {
+      const mockIndex: ChrAssetMappingIndex = {
+        byPhysicalIndex: Array.from({ length: 512 }, (_, idx) => ({
+          physicalIndex: idx,
+          patternTable: idx < 256 ? 0 : 1,
+          localIndex: idx % 256,
+          origin:
+            idx === 20
+              ? {
+                  primaryAssetId: 'asset-bg-overworld',
+                  creationKind: 'extracted',
+                }
+              : undefined,
+          usages:
+            idx === 20
+              ? [
+                  {
+                    type: 'background' as const,
+                    assetId: 'asset-bg-overworld',
+                    mapId: 'map-1',
+                    column: 5,
+                    row: 3,
+                    nametableIndex: 3 * 32 + 5,
+                    localTileIndex: 20,
+                    physicalTileIndex: 20,
+                  },
+                ]
+              : idx === 21
+                ? [
+                    {
+                      type: 'background' as const,
+                      assetId: 'asset-bg-deleted',
+                      mapId: 'map-2',
+                      column: 0,
+                      row: 0,
+                      nametableIndex: 0,
+                      localTileIndex: 21,
+                      physicalTileIndex: 21,
+                    },
+                  ]
+                : [],
+          usageCount: idx === 20 || idx === 21 ? 1 : 0,
+          isShared: false,
+        })),
+        physicalIndicesByAsset: new Map([
+          ['asset-bg-overworld', new Set([20])],
+          ['asset-bg-deleted', new Set([21])],
+        ]),
+        usagesByLogicalKey: new Map(),
+      };
+
+      const diags = analyzeChrOwnershipDiagnostics({
+        mappingIndex: mockIndex,
+        activeAssetIds: new Set(['asset-bg-overworld']),
+      });
+
+      const dangling = diags.filter((d) => d.kind === 'dangling-asset-usage');
+      expect(dangling).toHaveLength(1);
+      expect(dangling[0]?.physicalIndex).toBe(21);
+      expect(dangling[0]?.missingAssetId).toBe('asset-bg-deleted');
+      expect(dangling[0]?.usageType).toBe('background');
+    });
+
+    it('Scenario 6: tileset usage validation (valid produces 0 diagnostics, missing produces dangling error)', () => {
+      const mockIndex: ChrAssetMappingIndex = {
+        byPhysicalIndex: Array.from({ length: 512 }, (_, idx) => ({
+          physicalIndex: idx,
+          patternTable: idx < 256 ? 0 : 1,
+          localIndex: idx % 256,
+          origin:
+            idx === 30
+              ? {
+                  primaryAssetId: 'asset-tileset-valid',
+                  creationKind: 'extracted',
+                }
+              : undefined,
+          usages:
+            idx === 30
+              ? [
+                  {
+                    type: 'tileset' as const,
+                    assetId: 'asset-tileset-valid',
+                    tileIndex: 0,
+                    physicalTileIndex: 30,
+                  },
+                ]
+              : idx === 31
+                ? [
+                    {
+                      type: 'tileset' as const,
+                      assetId: 'asset-tileset-missing',
+                      tileIndex: 1,
+                      physicalTileIndex: 31,
+                    },
+                  ]
+                : [],
+          usageCount: idx === 30 || idx === 31 ? 1 : 0,
+          isShared: false,
+        })),
+        physicalIndicesByAsset: new Map([
+          ['asset-tileset-valid', new Set([30])],
+          ['asset-tileset-missing', new Set([31])],
+        ]),
+        usagesByLogicalKey: new Map(),
+      };
+
+      const diags = analyzeChrOwnershipDiagnostics({
+        mappingIndex: mockIndex,
+        activeAssetIds: new Set(['asset-tileset-valid']),
+      });
+
+      const dangling = diags.filter((d) => d.kind === 'dangling-asset-usage');
+      expect(dangling).toHaveLength(1);
+      expect(dangling[0]?.physicalIndex).toBe(31);
+      expect(dangling[0]?.missingAssetId).toBe('asset-tileset-missing');
+      expect(dangling[0]?.usageType).toBe('tileset');
     });
   });
 });
