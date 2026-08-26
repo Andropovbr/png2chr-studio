@@ -288,6 +288,14 @@ export function createProjectAssetReference(options: {
 export interface ExtractableProjectAssetSource {
   readonly tileset?: { readonly asset?: ProjectAssetReference | null } | null;
   readonly playfield?: { readonly asset?: ProjectAssetReference | null } | null;
+  readonly backgrounds?: {
+    readonly maps?: readonly {
+      readonly id: string;
+      readonly name?: string;
+      readonly asset?: ProjectAssetReference | null;
+      readonly assetId?: ProjectAssetId;
+    }[];
+  } | null;
   readonly animation?: {
     readonly destinationChr?: ProjectAssetReference | Uint8Array | null;
     readonly destinationChrName?: string | null;
@@ -326,6 +334,29 @@ export function extractProjectAssets(
       kind: 'playfield-image',
       name: ref.name ?? 'Playfield Image',
       reference: ref,
+    });
+  }
+
+  if (project.backgrounds?.maps) {
+    project.backgrounds.maps.forEach((map, idx) => {
+      if (map.asset) {
+        const ref = map.asset;
+        const id = normalizeProjectAssetId(
+          ref.id ?? map.assetId,
+          'background-image',
+          map.id,
+        );
+        const displayName =
+          map.name && map.name.length > 0
+            ? map.name
+            : (ref.name ?? `Background Map ${String(idx + 1)}`);
+        assets.push({
+          id,
+          kind: 'background-image',
+          name: displayName,
+          reference: ref,
+        });
+      }
     });
   }
 

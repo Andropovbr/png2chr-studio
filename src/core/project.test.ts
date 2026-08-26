@@ -12,6 +12,12 @@ import {
   type StudioProject,
 } from './project';
 import { createDefaultNesPaletteSet } from './nes-palette';
+import { extractProjectAssets } from './asset-identity';
+import {
+  createEmptyBackgroundMap,
+  reconcileBackgroundMaps,
+  type BackgroundMapDefinition,
+} from './background-model';
 
 describe('StudioProject core infrastructure', () => {
   it('creates a clean default project with formatVersion 1', () => {
@@ -1320,6 +1326,331 @@ describe('StudioProject core infrastructure', () => {
           );
         }
       });
+    });
+  });
+
+  describe('Milestone 8: Background Maps Project Persistence & Lifecycle', () => {
+    it('initializes default project with empty backgrounds configuration', () => {
+      const project = createDefaultProject('BG Project');
+      expect(project.backgrounds).toBeDefined();
+      expect(project.backgrounds?.activeMapId).toBeNull();
+      expect(project.backgrounds?.maps).toEqual([]);
+    });
+
+    it('performs round-trip serialization and deserialization with background maps', () => {
+      const map1 = createEmptyBackgroundMap({
+        id: 'bg-overworld',
+        name: 'Overworld Stage 1',
+        patternTable: 0,
+        assetId: 'asset-bg-forest',
+      });
+
+      // Populate a few cells and palette assignments
+      const cells = [...map1.cells];
+      cells[0] = {
+        logicalKey: 'asset-bg-forest:0:0',
+        tileX: 0,
+        tileY: 0,
+        sourceTileIndex: 0,
+      };
+      cells[31] = {
+        logicalKey: 'asset-bg-forest:31:0',
+        tileX: 31,
+        tileY: 0,
+      };
+      cells[959] = {
+        logicalKey: 'asset-bg-forest:15:10',
+        tileX: 15,
+        tileY: 10,
+        sourceTileIndex: 42,
+      };
+
+      const palettes = [...map1.paletteAssignments];
+      palettes[0] = 1;
+      palettes[15] = 2;
+      palettes[239] = 3;
+
+      const populatedMap: BackgroundMapDefinition = {
+        ...map1,
+        asset: {
+          id: 'asset-bg-forest',
+          path: 'assets/forest_bg.png',
+          name: 'forest_bg.png',
+          sourceKind: 'png',
+        },
+        cells,
+        paletteAssignments: palettes,
+      };
+
+      const map2 = createEmptyBackgroundMap({
+        id: 'bg-dungeon',
+        name: 'Dungeon Room 1',
+        patternTable: 1,
+        assetId: 'asset-bg-dungeon',
+      });
+
+      const sourceProject: StudioProject = {
+        ...createDefaultProject('My Adventure'),
+        backgrounds: {
+          activeMapId: 'bg-overworld',
+          maps: [populatedMap, map2],
+        },
+      };
+
+      const json = serializeProject(sourceProject);
+      const result = deserializeProject(json);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+
+      const loaded = result.project;
+      expect(loaded.backgrounds).toBeDefined();
+      if (!loaded.backgrounds) return;
+
+      expect(loaded.backgrounds.activeMapId).toBe('bg-overworld');
+      expect(loaded.backgrounds.maps.length).toBe(2);
+
+      const loadedMap1 = loaded.backgrounds.maps[0];
+      expect(loadedMap1).toBeDefined();
+      if (!loadedMap1) return;
+
+      expect(loadedMap1.id).toBe('bg-overworld');
+      expect(loadedMap1.name).toBe('Overworld Stage 1');
+      expect(loadedMap1.patternTable).toBe(0);
+      expect(loadedMap1.widthTiles).toBe(32);
+      expect(loadedMap1.heightTiles).toBe(30);
+      expect(loadedMap1.assetId).toBe('asset-bg-forest');
+      expect(loadedMap1.asset?.path).toBe('assets/forest_bg.png');
+      expect(loadedMap1.cells.length).toBe(960);
+      expect(loadedMap1.cells[0]).toEqual({
+        logicalKey: 'asset-bg-forest:0:0',
+        tileX: 0,
+        tileY: 0,
+        sourceTileIndex: 0,
+      });
+      expect(loadedMap1.cells[1]).toBeNull();
+      expect(loadedMap1.cells[31]).toEqual({
+        logicalKey: 'asset-bg-forest:31:0',
+        tileX: 31,
+        tileY: 0,
+      });
+      expect(loadedMap1.cells[959]).toEqual({
+        logicalKey: 'asset-bg-forest:15:10',
+        tileX: 15,
+        tileY: 10,
+        sourceTileIndex: 42,
+      });
+
+      expect(loadedMap1.paletteAssignments.length).toBe(240);
+      expect(loadedMap1.paletteAssignments[0]).toBe(1);
+      expect(loadedMap1.paletteAssignments[15]).toBe(2);
+      expect(loadedMap1.paletteAssignments[239]).toBe(3);
+
+      const loadedMap2 = loaded.backgrounds.maps[1];
+      expect(loadedMap2).toBeDefined();
+      if (!loadedMap2) return;
+
+      expect(loadedMap2.id).toBe('bg-dungeon');
+      expect(loadedMap2.patternTable).toBe(1);
+      expect(loadedMap2.cells.length).toBe(960);
+      expect(loadedMap2.cells.every((c) => c === null)).toBe(true);
+    });
+
+    it('ensures serialization purity: no physical CHR properties exist in JSON', () => {
+      const map = createEmptyBackgroundMap({
+        id: 'bg-purity',
+        name: 'Purity Test',
+      });
+      const project: StudioProject = {
+        ...createDefaultProject('Purity Project'),
+        backgrounds: {
+          activeMapId: 'bg-purity',
+          maps: [map],
+        },
+      };
+
+      const json = serializeProject(project);
+      expect(json).not.toContain('physicalTileIndex');
+      expect(json).not.toContain('localTileIndex');
+      expect(json).not.toContain('resolvedCells');
+      expect(json).not.toContain('finalChr');
+      expect(json).not.toContain('workingSlots');
+      expect(json).not.toContain('allocationResult');
+    });
+
+    it('maintains backward compatibility when loading projects without backgrounds field', () => {
+      const legacyProject = createDefaultProject(
+        'Legacy v1 Project',
+        'playfield',
+      );
+      const json = serializeProject(legacyProject);
+
+      // Remove backgrounds key manually to simulate older file
+      const raw = JSON.parse(json) as Record<string, unknown>;
+      delete raw.backgrounds;
+      const strippedJson = JSON.stringify(raw);
+
+      const result = deserializeProject(strippedJson);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.project.name).toBe('Legacy v1 Project');
+        expect(result.project.mode).toBe('playfield');
+        expect(result.project.playfield).toBeDefined();
+        // Missing backgrounds field parses cleanly as undefined without error
+        expect(result.project.backgrounds).toBeUndefined();
+      }
+    });
+
+    it('findMissingAssets detects missing background assets', () => {
+      const project: StudioProject = {
+        ...createDefaultProject('Asset Check'),
+        backgrounds: {
+          maps: [
+            {
+              ...createEmptyBackgroundMap({ id: 'bg-1', name: 'Map 1' }),
+              asset: {
+                id: 'asset-bg-1',
+                path: 'missing_bg.png',
+                name: 'missing_bg.png',
+              },
+            },
+            {
+              ...createEmptyBackgroundMap({ id: 'bg-2', name: 'Map 2' }),
+              asset: {
+                id: 'asset-bg-2',
+                path: 'existing_bg.png',
+                name: 'existing_bg.png',
+              },
+            },
+          ],
+        },
+      };
+
+      const missing = findMissingAssets(
+        project,
+        (p) => p === 'existing_bg.png',
+      );
+      expect(missing.length).toBe(1);
+      expect(missing[0]?.expectedPath).toBe('missing_bg.png');
+    });
+
+    it('extractProjectAssets extracts background images with kind background-image', () => {
+      const project: StudioProject = {
+        ...createDefaultProject('Extractor Test'),
+        backgrounds: {
+          maps: [
+            {
+              ...createEmptyBackgroundMap({ id: 'bg-castle', name: 'Castle' }),
+              asset: {
+                id: 'asset-bg-castle',
+                path: 'castle.png',
+                name: 'castle.png',
+              },
+            },
+          ],
+        },
+      };
+
+      const extracted = extractProjectAssets(project);
+      const bgAsset = extracted.find((a) => a.kind === 'background-image');
+      expect(bgAsset).toBeDefined();
+      expect(bgAsset?.id).toBe('asset-bg-castle');
+      expect(bgAsset?.name).toBe('Castle');
+      expect(bgAsset?.reference.path).toBe('castle.png');
+    });
+
+    it('reconcileBackgroundMaps validates maps and reports diagnostics', () => {
+      const validMap = createEmptyBackgroundMap({
+        id: 'bg-valid',
+        name: 'Valid Map',
+        patternTable: 0,
+        assetId: 'asset-bg-1',
+      });
+
+      const duplicateMap = {
+        ...validMap,
+        name: 'Duplicate Map',
+      };
+
+      const invalidDimsMap: BackgroundMapDefinition = {
+        ...validMap,
+        id: 'bg-invalid-dims',
+        widthTiles: 16,
+        heightTiles: 15,
+      };
+
+      const invalidPatternTableMap: BackgroundMapDefinition = {
+        ...validMap,
+        id: 'bg-invalid-pt',
+        patternTable: 2 as unknown as 0,
+      };
+
+      const invalidPalettesMap: BackgroundMapDefinition = {
+        ...validMap,
+        id: 'bg-invalid-palettes',
+        paletteAssignments: [0, 1, 4, 2], // Only 4 items, value 4 > 3
+      };
+
+      const badCells = [...validMap.cells];
+      badCells[5] = {
+        logicalKey: 'corrupted-key-without-colons',
+        tileX: 0,
+        tileY: 0,
+      };
+      badCells[10] = {
+        logicalKey: 'asset-bg-1:50:50',
+        tileX: 50,
+        tileY: 50,
+      };
+
+      const malformedCellsMap: BackgroundMapDefinition = {
+        ...validMap,
+        id: 'bg-malformed-cells',
+        cells: badCells,
+      };
+
+      const availableAssetIds = new Set(['asset-bg-1']);
+      const assetDimensions = new Map([
+        ['asset-bg-1', { widthInTiles: 32, heightInTiles: 30 }],
+      ]);
+
+      const result = reconcileBackgroundMaps(
+        [
+          validMap,
+          duplicateMap,
+          invalidDimsMap,
+          invalidPatternTableMap,
+          invalidPalettesMap,
+          malformedCellsMap,
+        ],
+        { availableAssetIds, assetDimensions },
+      );
+
+      expect(result.valid).toBe(false);
+      const factKinds = result.facts.map((f) => f.kind);
+      expect(factKinds).toContain('duplicate-map-id');
+      expect(factKinds).toContain('invalid-dimensions');
+      expect(factKinds).toContain('invalid-pattern-table');
+      expect(factKinds).toContain('invalid-palette-assignments');
+      expect(factKinds).toContain('malformed-logical-key');
+      expect(factKinds).toContain('out-of-bounds-tile-coordinate');
+    });
+
+    it('reconcileBackgroundMaps warns when referenced asset is missing', () => {
+      const map = createEmptyBackgroundMap({
+        id: 'bg-missing-asset',
+        name: 'Missing Asset Map',
+        assetId: 'asset-unknown',
+      });
+
+      const result = reconcileBackgroundMaps([map], {
+        availableAssetIds: new Set(['asset-available-1']),
+      });
+
+      expect(result.valid).toBe(true); // Warnings do not make valid false
+      expect(result.facts.length).toBe(1);
+      expect(result.facts[0]?.kind).toBe('missing-asset');
+      expect(result.facts[0]?.severity).toBe('warning');
     });
   });
 });

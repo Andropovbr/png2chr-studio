@@ -12,7 +12,12 @@ import {
   BackgroundModelError,
   type BackgroundModelErrorCode,
 } from './background-error';
-import type { LogicalTileKey, ProjectAssetId } from './asset-identity';
+import {
+  parseLogicalTileKey,
+  type LogicalTileKey,
+  type ProjectAssetId,
+} from './asset-identity';
+import type { ProjectAssetReference } from './project';
 
 export { BackgroundModelError, type BackgroundModelErrorCode };
 
@@ -85,6 +90,8 @@ export interface BackgroundMapDefinition {
   readonly patternTable: BackgroundPatternTable;
   /** Optional associated source asset ID. */
   readonly assetId?: ProjectAssetId;
+  /** Optional associated source asset reference. */
+  readonly asset?: ProjectAssetReference | null;
   /**
    * 32x30 logical cell grid (exactly 960 items).
    * A `null` entry explicitly denotes an empty/unpopulated cell.
@@ -472,6 +479,165 @@ export function encodeFullBackgroundMap(
   fullBuffer.set(nametable, 0);
   fullBuffer.set(attributeTable, NAMETABLE_BYTE_COUNT);
   return fullBuffer;
+}
+
+/** Structured fact reporting issues during background maps reconciliation. */
+export interface BackgroundMapReconciliationFact {
+  readonly mapId: string;
+  readonly kind:
+    | 'missing-asset'
+    | 'malformed-logical-key'
+    | 'out-of-bounds-tile-coordinate'
+    | 'duplicate-map-id'
+    | 'invalid-pattern-table'
+    | 'invalid-dimensions'
+    | 'invalid-palette-assignments';
+  readonly severity: 'error' | 'warning';
+  readonly message: string;
+  readonly details?: Record<string, unknown>;
+}
+
+/** Options for reconciling background maps after project loading or asset changes. */
+export interface ReconcileBackgroundMapsOptions {
+  readonly availableAssetIds?: ReadonlySet<ProjectAssetId>;
+  readonly assetDimensions?: ReadonlyMap<
+    ProjectAssetId,
+    { readonly widthInTiles: number; readonly heightInTiles: number }
+  >;
+}
+
+/** Result of reconciling a collection of background maps against project state. */
+export interface ReconcileBackgroundMapsResult {
+  readonly valid: boolean;
+  readonly maps: readonly BackgroundMapDefinition[];
+  readonly facts: readonly BackgroundMapReconciliationFact[];
+}
+
+/**
+ * Pure, side-effect free reconciliation function for background map definitions.
+ */
+export function reconcileBackgroundMaps(
+  maps: readonly BackgroundMapDefinition[],
+  options: ReconcileBackgroundMapsOptions = {},
+): ReconcileBackgroundMapsResult {
+  const facts: BackgroundMapReconciliationFact[] = [];
+  const seenMapIds = new Set<string>();
+
+  for (const map of maps) {
+    // 1. Check duplicate map id
+    if (seenMapIds.has(map.id)) {
+      facts.push({
+        mapId: map.id,
+        kind: 'duplicate-map-id',
+        severity: 'error',
+        message: `Duplicate background map ID "${map.id}".`,
+      });
+    } else {
+      seenMapIds.add(map.id);
+    }
+
+    // 2. Check dimensions
+    if (
+      map.widthTiles !== BACKGROUND_WIDTH_TILES ||
+      map.heightTiles !== BACKGROUND_HEIGHT_TILES
+    ) {
+      facts.push({
+        mapId: map.id,
+        kind: 'invalid-dimensions',
+        severity: 'error',
+        message: `Background map "${map.name}" has invalid dimensions (${String(map.widthTiles)}x${String(map.heightTiles)}), expected 32x30.`,
+      });
+    }
+
+    // 3. Check pattern table
+    const pt = map.patternTable as unknown;
+    if (pt !== 0 && pt !== 1) {
+      facts.push({
+        mapId: map.id,
+        kind: 'invalid-pattern-table',
+        severity: 'error',
+        message: `Background map "${map.name}" has invalid Pattern Table ${String(map.patternTable)}, expected 0 or 1.`,
+      });
+    }
+
+    // 4. Check palette assignments
+    if (
+      !Array.isArray(map.paletteAssignments) ||
+      map.paletteAssignments.length !== BACKGROUND_PALETTE_ASSIGNMENT_COUNT ||
+      map.paletteAssignments.some(
+        (val) => typeof val !== 'number' || val < 0 || val > 3,
+      )
+    ) {
+      facts.push({
+        mapId: map.id,
+        kind: 'invalid-palette-assignments',
+        severity: 'error',
+        message: `Background map "${map.name}" has invalid palette assignments. Expected 240 entries (0..3).`,
+      });
+    }
+
+    // 5. Check missing asset
+    const effectiveAssetId = map.assetId ?? map.asset?.id;
+    if (
+      options.availableAssetIds &&
+      effectiveAssetId &&
+      !options.availableAssetIds.has(effectiveAssetId)
+    ) {
+      facts.push({
+        mapId: map.id,
+        kind: 'missing-asset',
+        severity: 'warning',
+        message: `Background map "${map.name}" references missing asset "${effectiveAssetId}".`,
+        details: { assetId: effectiveAssetId },
+      });
+    }
+
+    // 6. Check cells
+    for (let i = 0; i < map.cells.length; i += 1) {
+      const cell = map.cells[i];
+      if (!cell) continue;
+
+      const parsed = parseLogicalTileKey(cell.logicalKey);
+      if (!parsed) {
+        facts.push({
+          mapId: map.id,
+          kind: 'malformed-logical-key',
+          severity: 'error',
+          message: `Cell ${String(i)} has malformed logical key "${cell.logicalKey}".`,
+          details: { cellIndex: i, logicalKey: cell.logicalKey },
+        });
+      } else if (options.assetDimensions) {
+        const dims = options.assetDimensions.get(parsed.assetId);
+        if (dims) {
+          if (
+            cell.tileX >= dims.widthInTiles ||
+            cell.tileY >= dims.heightInTiles
+          ) {
+            facts.push({
+              mapId: map.id,
+              kind: 'out-of-bounds-tile-coordinate',
+              severity: 'error',
+              message: `Cell ${String(i)} references coordinate (${String(cell.tileX)}, ${String(cell.tileY)}) exceeding asset dimensions (${String(dims.widthInTiles)}x${String(dims.heightInTiles)}).`,
+              details: {
+                cellIndex: i,
+                tileX: cell.tileX,
+                tileY: cell.tileY,
+                assetWidth: dims.widthInTiles,
+                assetHeight: dims.heightInTiles,
+              },
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const hasErrors = facts.some((f) => f.severity === 'error');
+  return {
+    valid: !hasErrors,
+    maps,
+    facts: Object.freeze(facts),
+  };
 }
 
 export {
