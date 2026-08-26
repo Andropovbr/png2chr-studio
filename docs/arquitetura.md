@@ -462,3 +462,11 @@ Para a investigação técnica completa e desenho arquitetural detalhado, consul
 3. **Respeito a Reservas e Base CHR:** O alocador de spritesheets consulta as CHR Reservations bloqueantes da Milestone 5 e preserva Base CHR pré-existente sem sobrescrita.
 4. **Deduplicação Flip-Aware e OAM:** Células espelhadas reaproveitam slots físicos existentes e codificam os bits 6 (Flip H) e 7 (Flip V) diretamente no byte de atributos OAM do metasprite.
 5. **Reconciliação em Reimportação:** Redimensionamentos de spritesheet reconciliam overrides de pixel de forma pura, descartando posições inválidas e preservando as válidas.
+
+### 10.1 Extração Lógica Pura de Metasprites (`src/core/metasprite-extraction.ts`)
+
+A extração de células e frames lógicos é isolada e formalizada de forma pura e determinística:
+
+- **Motor Lógico Puro (`extractLogicalMetaspriteTiles`, `extractLogicalAnimationFrames`):** Converte a imagem com pixel overrides em arrays de `LogicalMetaspriteTile` e `LogicalAnimationFrame`, calculando coordenadas relativas `(x, y)` em torno da âncora `(originX, originY)` e atribuindo chaves canônicas `LogicalTileKey` (`${assetId}:${tileX}:${tileY}`).
+- **Omissão Transparente:** Células 8×8 com todos os pixels iguais a 0 são descartadas do array de sprites lógicos e contabilizadas em `omittedTileCount`, sem deslocar as coordenadas dos demais tiles.
+- **Fronteira Estrita:** O módulo de extração não possui nenhum conhecimento de CHR física, Pattern Tables ou alocação, servindo de entrada imutável para a etapa de matching/allocation.
