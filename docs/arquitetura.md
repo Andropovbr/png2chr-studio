@@ -569,3 +569,27 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
   - A linha 15 (fora do viewport vertical de 240 px) recebe preenchimento determinístico com `0`.
 - **Contrato Puro de Resolução da Nametable:**
   - `resolveLogicalNametable` permite compilar a Nametable física de 960 bytes a partir de um mapeador/resolvedor de `LogicalTileKey` fornecido externamente, validando limites de bytes (`0..255`) e tratamento de células vazias.
+
+### 11.2 Alocação Física de CHR e Integração com Pattern Tables (`src/core/chr-background-allocation.ts`, `src/core/chr-asset-mapping.ts`)
+
+- **Isolamento de Pattern Tables (PT0 / PT1):**
+  - A propriedade `BackgroundMapDefinition.patternTable` (`0 | 1`) restringe a alocação estritamente à Pattern Table alvo:
+    - PT0 $\rightarrow$ slots físicos 0..255 (endereço base `$0000`);
+    - PT1 $\rightarrow$ slots físicos 256..511 (endereço base `$1000`).
+  - O buffer físico da Nametable gerado (960 bytes) armazena estritamente o índice local na Pattern Table:
+    $$\text{localTileIndex} = \text{physicalTileIndex} - (\text{patternTable} \times 256) \in [0, 255]$$
+- **Deduplicação ExactMatch:**
+  - Backgrounds não possuem suporte a espelhamento em hardware (diferente de sprites OAM). A busca por deduplicação (`findExactTileMatch`) compara exclusivamente os 16 bytes de CHR idênticos (ExactMatch).
+  - Variações espelhadas (H-flip, V-flip, HV-flip) são obrigatoriamente alocadas em slots distintos.
+- **Reutilização e Preservação de Base CHR:**
+  - Quando um tile lógico do background coincide por ExactMatch com um tile pré-existente de Base CHR, o slot é reutilizado sem duplicação de dados e sua proveniência original (`source: 'destination'`) é preservada.
+- **Respeito Estrito a CHR Reservations:**
+  - Slots físicos demarcados como `Reservation` são rigorosamente ignorados pelo algoritmo de busca de novos slots (`findNextAvailableChrSlot`).
+  - Caso o espaço disponível dentro da Pattern Table seja insuficiente após considerar Base CHR, Reservations e deduplicação, o allocator lança um `BackgroundModelError('background-capacity-overflow')` estruturado com métricas detalhadas.
+- **Invariante Origin $\neq$ Usage e Mapeamento Bidirecional:**
+  - Backgrounds integram-se ao `ChrAssetMappingIndex` através do tipo discriminado `BackgroundTileUsage`:
+    - Permite rastrear `mapId`, `column`, `row`, `nametableIndex`, `localTileIndex`, `physicalTileIndex` e `logicalKey`.
+    - Compartilhamento físico de tiles entre múltiplas células ou entre diferentes assets não altera a proveniência original (`origin`) do slot.
+- **Atomicidade Transacional e Determinismo:**
+  - O processo de alocação opera sobre uma cópia de trabalho (`workingSlots`). Qualquer falha por overflow de capacidade ou inconsistência de dados aborta a operação sem deixar mutações parciais no estado do projeto.
+  - A ordem de alocação sequencial (da célula 0 até 959) garante repetibilidade bit-a-bit idêntica entre execuções.
