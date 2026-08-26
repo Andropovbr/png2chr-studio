@@ -13,7 +13,11 @@ export type ProjectAssetId = string;
 
 /** Kinds of logical assets supported in PNG2CHR Studio. */
 export type ProjectAssetKind =
-  'spritesheet' | 'tileset-image' | 'playfield-image' | 'base-chr';
+  | 'spritesheet'
+  | 'tileset-image'
+  | 'playfield-image'
+  | 'background-image'
+  | 'base-chr';
 
 /** Canonical string key for a logical tile in an asset: `${assetId}:${tileX}:${tileY}` */
 export type LogicalTileKey = string;
@@ -44,6 +48,7 @@ const ASSET_KIND_PREFIXES: Readonly<Record<ProjectAssetKind, string>> = {
   spritesheet: 'asset-anim',
   'tileset-image': 'asset-tileset',
   'playfield-image': 'asset-playfield',
+  'background-image': 'asset-bg',
   'base-chr': 'asset-base-chr',
 };
 
@@ -59,6 +64,14 @@ export function getLegacyDeterministicAssetId(
       return 'asset-tileset-default';
     case 'playfield-image':
       return 'asset-playfield-default';
+    case 'background-image':
+      if (secondaryKey !== undefined && String(secondaryKey).trim() !== '') {
+        const sanitized = String(secondaryKey)
+          .trim()
+          .replace(/[:/\\]/g, '-');
+        return `asset-bg-${sanitized}`;
+      }
+      return 'asset-bg-default';
     case 'base-chr':
       return 'asset-base-chr-default';
     case 'spritesheet':
