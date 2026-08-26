@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  analyzeChrOwnershipDiagnostics,
   buildChrAssetMappingIndex,
+  calculateAssetChrMetrics,
+  calculateProjectChrOwnershipMetrics,
+  formatChrOwnershipDiagnosticMessage,
   getPhysicalIndicesForAsset,
   getPhysicalSlotAttribution,
   getUsagesForLogicalKey,
   type AnimationTileUsage,
+  type ChrAssetMappingIndex,
+  type PhysicalSlotAttribution,
   type PlayfieldTileUsage,
   type TilesetTileUsage,
 } from './chr-asset-mapping';
@@ -785,5 +791,650 @@ describe('ChrAssetMappingIndex (Milestone 6)', () => {
     expect(usagesB).toHaveLength(1);
     expect((usagesB[0] as TilesetTileUsage | undefined)?.sourceIndex).toBe(1);
     expect(usagesMissing).toHaveLength(0);
+  });
+});
+
+describe('Per-Asset CHR Metrics & Project Ownership Metrics (Milestone 6)', () => {
+  it('1. Asset with one exclusive physical tile calculates metrics correctly', () => {
+    const tile = createPatternTile(0, [1, 2, 3, 0]);
+    const index = buildChrAssetMappingIndex({
+      mode: 'tileset',
+      tiles: [tile],
+      tilesetAssetId: 'asset-exclusive-hero',
+    });
+
+    const metrics = calculateAssetChrMetrics(
+      { id: 'asset-exclusive-hero', name: 'Hero Tiles' },
+      index,
+    );
+
+    expect(metrics.assetId).toBe('asset-exclusive-hero');
+    expect(metrics.assetName).toBe('Hero Tiles');
+    expect(metrics.uniquePhysicalSlots).toBe(1);
+    expect(metrics.primaryOwnedSlots).toBe(1);
+    expect(metrics.consumedSlots).toBe(1);
+    expect(metrics.sharedSlots).toBe(0);
+    expect(metrics.crossAssetSharedSlots).toBe(0);
+    expect(metrics.exclusiveSlots).toBe(1);
+    expect(metrics.baseChrReusedSlots).toBe(0);
+    expect(metrics.manualMaterializedSlots).toBe(0);
+    expect(metrics.patternTableSlots).toEqual([1, 0]);
+  });
+
+  it('2. Asset with multiple usages of one physical tile counts 1 unique slot (no inflation)', () => {
+    const tileA = createPatternTile(0, [1, 2, 3, 0], 0, 0);
+    const tileB = createPatternTile(1, [1, 2, 3, 0], 1, 0); // duplicate
+    const tileC = createPatternTile(2, [1, 2, 3, 0], 2, 0); // duplicate
+
+    const index = buildChrAssetMappingIndex({
+      mode: 'tileset',
+      tiles: [tileA, tileB, tileC],
+      tilesetAssetId: 'asset-multi-use',
+      deduplicationEnabled: true,
+    });
+
+    const metrics = calculateAssetChrMetrics({ id: 'asset-multi-use' }, index);
+
+    expect(metrics.uniquePhysicalSlots).toBe(1);
+    expect(metrics.primaryOwnedSlots).toBe(1);
+    expect(metrics.consumedSlots).toBe(1);
+    expect(metrics.sharedSlots).toBe(1); // 3 usages on 1 physical slot
+    expect(metrics.crossAssetSharedSlots).toBe(0); // single asset reuse
+    expect(metrics.exclusiveSlots).toBe(1); // still exclusive to this asset
+  });
+
+  it('3. Cross-asset sharing associates the same physical slot with both assets without inflating global occupancy', () => {
+    const tile = createPatternTile(0, [1, 2, 3, 0]);
+    const image = createIndexedImage(8, 8, () => 1);
+    const animDef: AnimationDefinitionInput = {
+      id: 'walk',
+      name: 'Walk',
+      image,
+      frameWidth: 8,
+      frameHeight: 8,
+      frameIndices: [0],
+      frameDuration: 6,
+      originX: 0,
+      originY: 0,
+    };
+
+    const animModel = buildAnimationProjectModel({
+      name: 'Hero',
+      animations: [animDef],
+      patternTable: 0,
+      destinationPatternTable: 0,
+    });
+
+    const index = buildChrAssetMappingIndex({
+      mode: 'animation',
+      animationModel: animModel,
+      animations: [
+        {
+          id: 'walk',
+          name: 'Walk',
+          frameWidth: 8,
+          frameHeight: 8,
+          originX: 0,
+          originY: 0,
+          playback: 'loop',
+          allowHorizontalFlip: false,
+          allowVerticalFlip: false,
+          defaultDuration: 6,
+          frameIndices: [0],
+          frameDurations: [6],
+          asset: { id: 'asset-anim-hero', name: 'Hero Anim', path: 'walk.png' },
+        },
+      ],
+      tiles: [tile],
+      tilesetAssetId: 'asset-tileset-env',
+      destinationPatternTable: 0,
+      deduplicationEnabled: true,
+    });
+
+    const heroMetrics = calculateAssetChrMetrics(
+      { id: 'asset-anim-hero' },
+      index,
+    );
+    const projectMetrics = calculateProjectChrOwnershipMetrics({
+      mappingIndex: index,
+      activeAssets: [
+        {
+          id: 'asset-anim-hero',
+          name: 'Hero Anim',
+          kind: 'spritesheet',
+          reference: { id: 'asset-anim-hero', path: '' },
+        },
+      ],
+    });
+
+    expect(heroMetrics.uniquePhysicalSlots).toBeGreaterThanOrEqual(1);
+    expect(projectMetrics.totalProjectOwnedSlots).toBe(1);
+  });
+
+  it('4. primaryOwnedSlots differs correctly from consumedSlots when referencing other tiles', () => {
+    // Construct mapping where asset A owns slot 0, and asset B consumes slot 0
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 0
+            ? {
+                primaryAssetId: 'asset-owner',
+                creationKind: 'extracted',
+              }
+            : undefined,
+        usages:
+          idx === 0
+            ? [
+                {
+                  type: 'tileset',
+                  assetId: 'asset-consumer',
+                  tileIndex: 0,
+                  physicalTileIndex: 0,
+                },
+              ]
+            : [],
+        usageCount: idx === 0 ? 1 : 0,
+        isShared: false,
+      }),
+    );
+
+    const physicalIndicesByAsset = new Map<string, Set<number>>();
+    physicalIndicesByAsset.set('asset-owner', new Set([0]));
+    physicalIndicesByAsset.set('asset-consumer', new Set([0]));
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset,
+      usagesByLogicalKey: new Map(),
+    };
+
+    const ownerMetrics = calculateAssetChrMetrics(
+      { id: 'asset-owner' },
+      mockIndex,
+    );
+    const consumerMetrics = calculateAssetChrMetrics(
+      { id: 'asset-consumer' },
+      mockIndex,
+    );
+
+    expect(ownerMetrics.primaryOwnedSlots).toBe(1);
+    expect(ownerMetrics.consumedSlots).toBe(0);
+    expect(ownerMetrics.exclusiveSlots).toBe(0); // consumer is also on the slot
+
+    expect(consumerMetrics.primaryOwnedSlots).toBe(0);
+    expect(consumerMetrics.consumedSlots).toBe(1);
+    expect(consumerMetrics.exclusiveSlots).toBe(0);
+  });
+
+  it('5. Base CHR reuse and Manual Materialized content are counted separately', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 10
+            ? {
+                primaryAssetId: 'asset-base-chr',
+                creationKind: 'base-chr',
+              }
+            : idx === 20
+              ? {
+                  primaryAssetId: 'asset-hero',
+                  creationKind: 'manual-materialized',
+                }
+              : undefined,
+        usages:
+          idx === 10
+            ? [
+                {
+                  type: 'animation',
+                  assetId: 'asset-hero',
+                  animationId: 'anim1',
+                  frameIndex: 0,
+                  spriteIndex: 0,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                  physicalTileIndex: 10,
+                },
+              ]
+            : [],
+        usageCount: idx === 10 ? 1 : 0,
+        isShared: false,
+      }),
+    );
+
+    const physicalIndicesByAsset = new Map<string, Set<number>>();
+    physicalIndicesByAsset.set('asset-hero', new Set([10, 20]));
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset,
+      usagesByLogicalKey: new Map(),
+    };
+
+    const heroMetrics = calculateAssetChrMetrics(
+      { id: 'asset-hero' },
+      mockIndex,
+    );
+
+    expect(heroMetrics.uniquePhysicalSlots).toBe(2);
+    expect(heroMetrics.baseChrReusedSlots).toBe(1);
+    expect(heroMetrics.manualMaterializedSlots).toBe(1);
+    expect(heroMetrics.primaryOwnedSlots).toBe(1);
+  });
+
+  it('6. PT0/PT1 breakdown and boundary indexes (0, 255, 256, 511) are mapped accurately', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin: [0, 255, 256, 511].includes(idx)
+          ? {
+              primaryAssetId: 'asset-boundary',
+              creationKind: 'extracted',
+            }
+          : undefined,
+        usages: [],
+        usageCount: 0,
+        isShared: false,
+      }),
+    );
+
+    const physicalIndicesByAsset = new Map<string, Set<number>>();
+    physicalIndicesByAsset.set('asset-boundary', new Set([0, 255, 256, 511]));
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset,
+      usagesByLogicalKey: new Map(),
+    };
+
+    const metrics = calculateAssetChrMetrics(
+      { id: 'asset-boundary' },
+      mockIndex,
+    );
+
+    expect(metrics.uniquePhysicalSlots).toBe(4);
+    expect(metrics.patternTableSlots).toEqual([2, 2]); // slots 0, 255 in PT0; 256, 511 in PT1
+  });
+
+  it('7. Assets with zero CHR usage are handled deterministically', () => {
+    const index = buildChrAssetMappingIndex({
+      mode: 'tileset',
+      tiles: [],
+    });
+
+    const metrics = calculateAssetChrMetrics(
+      { id: 'asset-unused', name: 'Unused Asset' },
+      index,
+    );
+
+    expect(metrics.uniquePhysicalSlots).toBe(0);
+    expect(metrics.primaryOwnedSlots).toBe(0);
+    expect(metrics.consumedSlots).toBe(0);
+    expect(metrics.sharedSlots).toBe(0);
+    expect(metrics.exclusiveSlots).toBe(0);
+    expect(metrics.patternTableSlots).toEqual([0, 0]);
+  });
+
+  it('8. Project ownership metrics calculate global totals and do not mutate mapping input', () => {
+    const tile = createPatternTile(0, [1, 2, 3, 0]);
+    const index = buildChrAssetMappingIndex({
+      mode: 'tileset',
+      tiles: [tile],
+      tilesetAssetId: 'asset-test',
+    });
+
+    const snapshot = JSON.stringify(index);
+    const projMetrics = calculateProjectChrOwnershipMetrics({
+      mappingIndex: index,
+    });
+
+    expect(projMetrics.totalProjectOwnedSlots).toBe(1);
+    expect(projMetrics.totalActiveAssetsWithChr).toBe(1);
+    expect(JSON.stringify(index)).toBe(snapshot);
+  });
+});
+
+describe('analyzeChrOwnershipDiagnostics (Milestone 6)', () => {
+  it('1. Valid mapping produces no ownership integrity diagnostics', () => {
+    const tile = createPatternTile(0, [1, 2, 3, 0]);
+    const index = buildChrAssetMappingIndex({
+      mode: 'tileset',
+      tiles: [tile],
+      tilesetAssetId: 'asset-valid',
+    });
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: index,
+      activeAssetIds: new Set(['asset-valid']),
+    });
+
+    expect(diags).toHaveLength(0);
+  });
+
+  it('2. Canonical orphan generates warning diagnostic', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 5
+            ? {
+                primaryAssetId: 'asset-orphan',
+                creationKind: 'extracted',
+              }
+            : undefined,
+        usages: [], // 0 usages on extracted tile -> canonical orphan
+        usageCount: 0,
+        isShared: false,
+      }),
+    );
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map([['asset-orphan', new Set([5])]]),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: mockIndex,
+      activeAssetIds: new Set(['asset-orphan']),
+    });
+
+    expect(diags).toHaveLength(1);
+    const firstDiag = diags[0];
+    expect(firstDiag).toBeDefined();
+    if (firstDiag) {
+      expect(firstDiag.kind).toBe('orphaned-project-tile');
+      expect(firstDiag.severity).toBe('warning');
+      expect(firstDiag.physicalIndex).toBe(5);
+      expect(formatChrOwnershipDiagnosticMessage(firstDiag)).toContain(
+        'PT0:$05',
+      );
+    }
+  });
+
+  it('3. Manual-materialized and unused Base CHR tiles do not generate orphan warnings', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 5
+            ? {
+                primaryAssetId: 'asset-manual',
+                creationKind: 'manual-materialized',
+              }
+            : idx === 10
+              ? {
+                  primaryAssetId: 'asset-base',
+                  creationKind: 'base-chr',
+                }
+              : undefined,
+        usages: [],
+        usageCount: 0,
+        isShared: false,
+      }),
+    );
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map(),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: mockIndex,
+      activeAssetIds: new Set(['asset-manual', 'asset-base']),
+    });
+
+    const orphanDiags = diags.filter((d) => d.kind === 'orphaned-project-tile');
+    expect(orphanDiags).toHaveLength(0);
+  });
+
+  it('4. Usage referencing missing asset generates dangling-asset-usage error', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin: undefined,
+        usages:
+          idx === 8
+            ? [
+                {
+                  type: 'animation',
+                  assetId: 'asset-deleted-anim',
+                  animationId: 'walk',
+                  frameIndex: 2,
+                  spriteIndex: 0,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                  physicalTileIndex: 8,
+                },
+              ]
+            : [],
+        usageCount: idx === 8 ? 1 : 0,
+        isShared: false,
+      }),
+    );
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map([['asset-deleted-anim', new Set([8])]]),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: mockIndex,
+      activeAssetIds: new Set(['asset-existing-only']),
+    });
+
+    const dangling = diags.find((d) => d.kind === 'dangling-asset-usage');
+    expect(dangling).toBeDefined();
+    if (dangling) {
+      expect(dangling.severity).toBe('error');
+      expect(dangling.physicalIndex).toBe(8);
+      expect(formatChrOwnershipDiagnosticMessage(dangling)).toContain(
+        'asset-deleted-anim',
+      );
+    }
+  });
+
+  it('5. Origin referencing missing asset generates missing-origin-asset error', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 15
+            ? {
+                primaryAssetId: 'asset-gone',
+                creationKind: 'extracted',
+              }
+            : undefined,
+        usages: [
+          {
+            type: 'tileset',
+            assetId: 'asset-existing',
+            tileIndex: 0,
+            physicalTileIndex: 15,
+          },
+        ],
+        usageCount: idx === 15 ? 1 : 0,
+        isShared: false,
+      }),
+    );
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map([
+        ['asset-gone', new Set([15])],
+        ['asset-existing', new Set([15])],
+      ]),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: mockIndex,
+      activeAssetIds: new Set(['asset-existing']),
+    });
+
+    const missingOrigin = diags.find((d) => d.kind === 'missing-origin-asset');
+    expect(missingOrigin).toBeDefined();
+    expect(missingOrigin?.severity).toBe('error');
+    expect(missingOrigin?.physicalIndex).toBe(15);
+  });
+
+  it('6. Invalid physical mapping or PT mismatch generates invalid-physical-mapping error', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx === 50 ? 1 : idx < 256 ? 0 : 1, // slot 50 has invalid PT1
+        localIndex: idx % 256,
+        origin: undefined,
+        usages: [],
+        usageCount: 0,
+        isShared: false,
+      }),
+    );
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map(),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: mockIndex,
+    });
+
+    const invalidMapping = diags.find(
+      (d) => d.kind === 'invalid-physical-mapping',
+    );
+    expect(invalidMapping).toBeDefined();
+    expect(invalidMapping?.severity).toBe('error');
+    expect(invalidMapping?.physicalIndex).toBe(50);
+  });
+
+  it('7. Malformed or mismatched LogicalTileKey generates invalid-logical-key error', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 3
+            ? {
+                primaryAssetId: 'asset-hero',
+                logicalKey: 'asset-enemy:0:0', // mismatched asset
+                creationKind: 'extracted',
+              }
+            : undefined,
+        usages: [],
+        usageCount: 0,
+        isShared: false,
+      }),
+    );
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map(),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: mockIndex,
+    });
+
+    const keyMismatch = diags.find((d) => d.kind === 'invalid-logical-key');
+    expect(keyMismatch).toBeDefined();
+    expect(keyMismatch?.severity).toBe('error');
+    if (keyMismatch?.kind === 'invalid-logical-key') {
+      expect(keyMismatch.reason).toBe('asset-mismatch');
+    }
+  });
+
+  it('8. Shared tiles generate no warning merely for being shared', () => {
+    const tileA = createPatternTile(0, [1, 2, 3, 0], 0, 0);
+    const tileB = createPatternTile(1, [1, 2, 3, 0], 1, 0);
+
+    const index = buildChrAssetMappingIndex({
+      mode: 'tileset',
+      tiles: [tileA, tileB],
+      tilesetAssetId: 'asset-shared',
+      deduplicationEnabled: true,
+    });
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: index,
+      activeAssetIds: new Set(['asset-shared']),
+    });
+
+    expect(diags).toHaveLength(0);
+  });
+
+  it('9. Diagnostic ordering is deterministic and duplicates are not emitted twice', () => {
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 10
+            ? {
+                primaryAssetId: 'asset-missing',
+                creationKind: 'extracted',
+              }
+            : idx === 2
+              ? {
+                  primaryAssetId: 'asset-missing',
+                  creationKind: 'extracted',
+                }
+              : undefined,
+        usages: [],
+        usageCount: 0,
+        isShared: false,
+      }),
+    );
+
+    const mockIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map(),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const diags = analyzeChrOwnershipDiagnostics({
+      mappingIndex: mockIndex,
+      activeAssetIds: new Set(['asset-other']),
+    });
+
+    // Should be sorted by physicalIndex ascending (2 before 10)
+    expect(diags[0]?.physicalIndex).toBe(2);
+    expect(diags[1]?.physicalIndex).toBe(2); // orphan + missing origin
+    expect(diags[2]?.physicalIndex).toBe(10);
   });
 });

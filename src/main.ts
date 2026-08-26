@@ -110,6 +110,7 @@ import {
   classifyChrSlots,
   composeChrWithAllocatedTiles,
 } from './core/chr-pattern-table';
+import { extractProjectAssets } from './core/asset-identity';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
 import {
@@ -3143,6 +3144,7 @@ function renderChrWorkspace(): void {
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
     chrRegions: project.chrRegions,
     chrAssetMappingIndex,
+    activeAssets: extractProjectAssets(project),
     highlightedAssetId: workspace.chr.highlightedAssetId,
     onHighlightAssetIdChange: (highlightedAssetId) => {
       updateWorkspace({
@@ -3426,6 +3428,26 @@ function renderDeliveryWorkspace(): void {
     chrRegions: project.chrRegions,
   });
 
+  const manualChr =
+    project.animation.destinationChr.length > 0
+      ? project.animation.destinationChr
+      : null;
+
+  const chrAssetMappingIndex = buildChrAssetMappingIndex({
+    mode: project.mode,
+    animationModel: animModel,
+    animations: project.animation.animations,
+    playfieldNametable: nametable,
+    playfieldAssetId: 'asset-playfield',
+    tiles: project.tiles,
+    tilesetAssetId: 'asset-tileset',
+    baseChr: manualChr ?? undefined,
+    destinationPatternTable: project.animation.destinationPatternTable,
+    deduplicationEnabled: project.deduplicationEnabled,
+    flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    chrRegions: project.chrRegions,
+  });
+
   const workspaceElement = createDeliveryWorkspace({
     mode: project.mode,
     projectName,
@@ -3449,6 +3471,8 @@ function renderDeliveryWorkspace(): void {
     error: derivedStatus.error,
     chrRegions: project.chrRegions,
     chrSlotClassifications: classifications,
+    chrAssetMappingIndex,
+    activeAssets: extractProjectAssets(project),
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,
     onNavigateWorkspace: (view) => {

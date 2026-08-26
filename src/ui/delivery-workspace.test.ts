@@ -20,6 +20,10 @@ import {
   type DeliveryWorkspaceOptions,
 } from './delivery-workspace';
 import type { ChrSlotClassification } from '../core/chr-pattern-table';
+import type {
+  ChrAssetMappingIndex,
+  PhysicalSlotAttribution,
+} from '../core/chr-asset-mapping';
 
 class MockElement {
   public tagName: string;
@@ -525,6 +529,97 @@ describe('Delivery Workspace', () => {
     const actionBtn = overlapDiag?.querySelector('.delivery-diag-action');
     expect(actionBtn).not.toBeNull();
     actionBtn?.click();
+    expect(onNavigateWorkspace).toHaveBeenCalledWith('chr');
+  });
+
+  it('renders CHR Resource Accounting by Asset section and integrates ownership diagnostics', () => {
+    const onNavigateWorkspace = vi.fn();
+
+    const byPhysicalIndex: PhysicalSlotAttribution[] = Array.from(
+      { length: 512 },
+      (_, idx) => ({
+        physicalIndex: idx,
+        patternTable: idx < 256 ? 0 : 1,
+        localIndex: idx % 256,
+        origin:
+          idx === 0
+            ? {
+                primaryAssetId: 'asset-hero',
+                primaryAssetName: 'Hero Sheet',
+                creationKind: 'extracted',
+              }
+            : idx === 10
+              ? {
+                  primaryAssetId: 'asset-orphan',
+                  creationKind: 'extracted',
+                }
+              : undefined,
+        usages:
+          idx === 0
+            ? [
+                {
+                  type: 'animation',
+                  assetId: 'asset-hero',
+                  animationId: 'idle',
+                  frameIndex: 0,
+                  spriteIndex: 0,
+                  x: 0,
+                  y: 0,
+                  horizontalFlip: false,
+                  verticalFlip: false,
+                  physicalTileIndex: 0,
+                },
+              ]
+            : [],
+        usageCount: idx === 0 ? 1 : 0,
+        isShared: false,
+      }),
+    );
+
+    const mockMappingIndex: ChrAssetMappingIndex = {
+      byPhysicalIndex,
+      physicalIndicesByAsset: new Map([
+        ['asset-hero', new Set([0])],
+        ['asset-orphan', new Set([10])],
+      ]),
+      usagesByLogicalKey: new Map(),
+    };
+
+    const options = createOptions({
+      chrAssetMappingIndex: mockMappingIndex,
+      activeAssets: [
+        {
+          id: 'asset-hero',
+          name: 'Hero Sheet',
+          kind: 'spritesheet',
+          reference: { id: 'asset-hero', path: '' },
+        },
+      ],
+      onNavigateWorkspace,
+    });
+
+    const el = createDeliveryWorkspace(options);
+    const mockEl = el as unknown as MockElement;
+
+    // Resource accounting section should be present
+    const resourcePanel = mockEl.querySelector('#section-delivery-chr-assets');
+    expect(resourcePanel).not.toBeNull();
+
+    const cards =
+      resourcePanel?.querySelectorAll('.chr-asset-metric-card') ?? [];
+    expect(cards.length).toBeGreaterThanOrEqual(1);
+    expect(cards[0]?.textContent).toContain('Hero Sheet');
+
+    // Ownership diagnostic (orphan at index 10) should be included in diagnostics
+    const diagItems = mockEl.querySelectorAll('.delivery-diag-item');
+    const orphanDiag = diagItems.find((item) =>
+      item.textContent.includes('PT0:$0A'),
+    );
+    expect(orphanDiag).toBeDefined();
+
+    const fixBtn = orphanDiag?.querySelector('.delivery-diag-action');
+    expect(fixBtn).not.toBeNull();
+    fixBtn?.click();
     expect(onNavigateWorkspace).toHaveBeenCalledWith('chr');
   });
 });

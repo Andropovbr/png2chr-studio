@@ -3087,5 +3087,129 @@ describe('ChrWorkspace component', () => {
       jumpBtn?.click();
       expect(onNavigateToAnimation).toHaveBeenCalledWith('anim-attack', 1);
     });
+
+    it('renders Asset CHR Usage & Metrics panel with per-asset cards and chips', () => {
+      const onHighlightAssetIdChange = vi.fn();
+
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 0,
+          origin: {
+            primaryAssetId: 'asset-hero',
+            primaryAssetName: 'Hero Sheet',
+            creationKind: 'extracted',
+          },
+          usages: [
+            {
+              type: 'animation',
+              assetId: 'asset-hero',
+              animationId: 'idle',
+              frameIndex: 0,
+              spriteIndex: 0,
+              x: 0,
+              y: 0,
+              horizontalFlip: false,
+              verticalFlip: false,
+              physicalTileIndex: 0,
+            },
+          ],
+          usageCount: 1,
+          isShared: false,
+        },
+        {
+          physicalIndex: 260, // PT1
+          origin: {
+            primaryAssetId: 'asset-hero',
+            primaryAssetName: 'Hero Sheet',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 0,
+          isShared: false,
+        },
+      ]);
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrAssetMappingIndex: mockMappingIndex,
+        onHighlightAssetIdChange,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const metricsPanel = mockWs.querySelector('#section-chr-asset-metrics');
+      expect(metricsPanel).not.toBeNull();
+
+      const cards =
+        metricsPanel?.querySelectorAll('.chr-asset-metric-card') ?? [];
+      expect(cards.length).toBe(1);
+
+      const nameEl = cards[0]?.querySelector('.chr-asset-metric-name');
+      expect(nameEl?.textContent).toBe('Hero Sheet');
+
+      const chips = cards[0]?.querySelectorAll('.chr-metric-chip') ?? [];
+      const chipTexts = chips.map((c) => c.textContent);
+      expect(chipTexts).toContain('2 unique slots');
+      expect(chipTexts).toContain('2 owned');
+      expect(chipTexts).toContain('PT0: 1 · PT1: 1');
+
+      // Click highlight button on asset card
+      const highlightBtn = cards[0]?.querySelector('.chr-asset-highlight-btn');
+      expect(highlightBtn).not.toBeNull();
+      highlightBtn?.click();
+      expect(onHighlightAssetIdChange).toHaveBeenCalledWith('asset-hero');
+    });
+
+    it('renders ownership diagnostics with action buttons to inspect affected slot', () => {
+      const onSelectTile = vi.fn();
+
+      // Slot 12 is a canonical orphan (extracted, 0 usages)
+      const mockMappingIndex = buildTestMappingIndex([
+        {
+          physicalIndex: 12,
+          origin: {
+            primaryAssetId: 'asset-orphan',
+            primaryAssetName: 'Orphan Sheet',
+            creationKind: 'extracted',
+          },
+          usages: [],
+          usageCount: 0,
+          isShared: false,
+        },
+      ]);
+
+      const workspace = createChrWorkspace({
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+        chrAssetMappingIndex: mockMappingIndex,
+        onSelectTile,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      const diagItems = mockWs.querySelectorAll('.chr-ownership-diag-item');
+      expect(diagItems.length).toBeGreaterThanOrEqual(1);
+
+      const orphanItem = diagItems[0];
+      expect(orphanItem?.textContent).toContain('PT0:$0C');
+
+      const inspectBtn = orphanItem?.querySelector('.chr-diag-action-btn');
+      expect(inspectBtn).not.toBeNull();
+      inspectBtn?.click();
+      expect(onSelectTile).toHaveBeenCalledWith(12);
+    });
   });
 });

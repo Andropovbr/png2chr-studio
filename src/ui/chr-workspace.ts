@@ -8,6 +8,7 @@ import {
   composeChrWithAllocatedTiles,
   classifyChrSlots,
   collectChrHighlightTileIndices,
+  collectReservedPhysicalTileIndices,
   buildPhysicalTileReferenceIndex,
   calculateTileUsageDiagnostics,
   calculateChrUsageHeatmapSummary,
@@ -25,10 +26,14 @@ import {
   type SpritePatternTable,
 } from '../core/chr-pattern-table';
 import {
+  analyzeChrOwnershipDiagnostics,
   buildChrAssetMappingIndex,
+  calculateProjectChrOwnershipMetrics,
+  formatChrOwnershipDiagnosticMessage,
   getPhysicalIndicesForAsset,
   type ChrAssetMappingIndex,
 } from '../core/chr-asset-mapping';
+import type { ProjectAsset, ProjectAssetId } from '../core/asset-identity';
 import {
   createDefaultNesPaletteSet,
   NES_MASTER_PALETTE,
@@ -86,6 +91,8 @@ export interface ChrWorkspaceOptions {
   readonly highlightedAssetId?: string | null;
   readonly onHighlightAssetIdChange?: (assetId: string | null) => void;
   readonly chrAssetMappingIndex?: ChrAssetMappingIndex;
+  readonly activeAssets?: readonly ProjectAsset[];
+  readonly activeAssetIds?: ReadonlySet<ProjectAssetId>;
   readonly selectedAnimationId?: string | null;
   readonly onSelectAnimation?: (animationId: string) => void;
   readonly selectedFrameIndex?: number | null;
@@ -1530,6 +1537,277 @@ function createProgressBar(
   return container;
 }
 
+function createChrAssetMetricsPanel(
+  options: ChrWorkspaceOptions,
+  mappingIndex: ChrAssetMappingIndex,
+  finalChrBytes: Uint8Array,
+): HTMLElement {
+  const panel = document.createElement('section');
+  panel.className = 'panel chr-asset-metrics-panel';
+  panel.id = 'section-chr-asset-metrics';
+
+  const reservedPhysicalIndices = collectReservedPhysicalTileIndices(
+    options.chrRegions,
+  );
+
+  const ownershipMetrics = calculateProjectChrOwnershipMetrics({
+    mappingIndex,
+    activeAssets: options.activeAssets,
+    reservedPhysicalIndices,
+    finalChrBytes,
+  });
+
+  const ownershipDiagnostics = analyzeChrOwnershipDiagnostics({
+    mappingIndex,
+    activeAssets: options.activeAssets,
+    activeAssetIds: options.activeAssetIds,
+    reservedPhysicalIndices,
+    expectedPatternTable: options.destinationPatternTable,
+    chrRegions: options.chrRegions,
+    mode: options.mode,
+  });
+
+  const header = document.createElement('div');
+  header.className = 'chr-asset-metrics-header';
+
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'chr-asset-metrics-title-group';
+
+  const title = document.createElement('h3');
+  title.textContent = t('chrAssetMetricsTitle');
+
+  const subtitle = document.createElement('p');
+  subtitle.className = 'chr-asset-metrics-subtitle muted';
+  subtitle.textContent = t('chrAssetMetricsSubtitle');
+
+  titleGroup.append(title, subtitle);
+  header.append(titleGroup);
+  panel.append(header);
+
+  // 1. Per-Asset Metrics Grid
+  const assetsContainer = document.createElement('div');
+  assetsContainer.className = 'chr-asset-metrics-grid';
+
+  if (ownershipMetrics.byAsset.length === 0) {
+    const emptyMsg = document.createElement('p');
+    emptyMsg.className = 'muted chr-asset-metrics-empty';
+    emptyMsg.textContent = t('chrAssetMetricsEmpty');
+    assetsContainer.append(emptyMsg);
+  } else {
+    for (const assetMetric of ownershipMetrics.byAsset) {
+      const card = document.createElement('div');
+      card.className = 'chr-asset-metric-card';
+      if (options.highlightedAssetId === assetMetric.assetId) {
+        card.classList.add('is-highlighted');
+      }
+
+      const cardHeader = document.createElement('div');
+      cardHeader.className = 'chr-asset-metric-card-header';
+
+      const cardTitleGroup = document.createElement('div');
+      cardTitleGroup.className = 'chr-asset-metric-name-group';
+
+      const assetName = document.createElement('strong');
+      assetName.className = 'chr-asset-metric-name';
+      assetName.textContent = assetMetric.assetName ?? assetMetric.assetId;
+
+      const assetId = document.createElement('code');
+      assetId.className = 'chr-asset-metric-id muted';
+      assetId.textContent = assetMetric.assetId;
+
+      cardTitleGroup.append(assetName, assetId);
+      cardHeader.append(cardTitleGroup);
+
+      if (
+        options.onHighlightAssetIdChange &&
+        assetMetric.uniquePhysicalSlots > 0
+      ) {
+        const isHighlighted =
+          options.highlightedAssetId === assetMetric.assetId;
+        const highlightBtn = document.createElement('button');
+        highlightBtn.type = 'button';
+        highlightBtn.className = `button secondary-button chr-asset-highlight-btn${isHighlighted ? ' is-active' : ''}`;
+        highlightBtn.textContent = isHighlighted
+          ? t('chrTileInspectorClearHighlightAssetAction')
+          : t('chrTileInspectorHighlightAssetAction');
+        highlightBtn.setAttribute(
+          'aria-pressed',
+          isHighlighted ? 'true' : 'false',
+        );
+        highlightBtn.addEventListener('click', () => {
+          options.onHighlightAssetIdChange?.(
+            isHighlighted ? null : assetMetric.assetId,
+          );
+        });
+        cardHeader.append(highlightBtn);
+      }
+
+      card.append(cardHeader);
+
+      // Metric Chips List
+      const chipsList = document.createElement('ul');
+      chipsList.className = 'chr-asset-metric-chips';
+
+      const addChip = (text: string, className?: string) => {
+        const chip = document.createElement('li');
+        chip.className = `chr-metric-chip ${className ?? ''}`;
+        chip.textContent = text;
+        chipsList.append(chip);
+      };
+
+      addChip(
+        t('chrAssetMetricsUniqueSlots', {
+          count: assetMetric.uniquePhysicalSlots,
+        }),
+        'chip-unique',
+      );
+      addChip(
+        t('chrAssetMetricsOwnedSlots', {
+          count: assetMetric.primaryOwnedSlots,
+        }),
+        'chip-owned',
+      );
+      addChip(
+        t('chrAssetMetricsConsumedSlots', {
+          count: assetMetric.consumedSlots,
+        }),
+        'chip-consumed',
+      );
+
+      if (assetMetric.sharedSlots > 0) {
+        if (assetMetric.crossAssetSharedSlots > 0) {
+          addChip(
+            `${t('chrAssetMetricsSharedSlots', { count: assetMetric.sharedSlots })} (${t('chrAssetMetricsCrossAssetSharedSlots', { count: assetMetric.crossAssetSharedSlots })})`,
+            'chip-shared',
+          );
+        } else {
+          addChip(
+            t('chrAssetMetricsSharedSlots', {
+              count: assetMetric.sharedSlots,
+            }),
+            'chip-shared',
+          );
+        }
+      }
+
+      if (assetMetric.exclusiveSlots > 0) {
+        addChip(
+          t('chrAssetMetricsExclusiveSlots', {
+            count: assetMetric.exclusiveSlots,
+          }),
+          'chip-exclusive',
+        );
+      }
+
+      if (assetMetric.baseChrReusedSlots > 0) {
+        addChip(
+          t('chrAssetMetricsBaseChrReusedSlots', {
+            count: assetMetric.baseChrReusedSlots,
+          }),
+          'chip-base-chr',
+        );
+      }
+
+      if (assetMetric.manualMaterializedSlots > 0) {
+        addChip(
+          t('chrAssetMetricsManualMaterializedSlots', {
+            count: assetMetric.manualMaterializedSlots,
+          }),
+          'chip-manual',
+        );
+      }
+
+      addChip(
+        t('chrAssetMetricsPt0Pt1Breakdown', {
+          pt0: assetMetric.patternTableSlots[0],
+          pt1: assetMetric.patternTableSlots[1],
+        }),
+        'chip-pt-breakdown',
+      );
+
+      card.append(chipsList);
+      assetsContainer.append(card);
+    }
+  }
+
+  panel.append(assetsContainer);
+
+  // 2. Ownership & Mapping Integrity Diagnostics Section
+  if (ownershipDiagnostics.length > 0) {
+    const diagSection = document.createElement('div');
+    diagSection.className = 'chr-ownership-diagnostics-section';
+
+    const diagHeader = document.createElement('h4');
+    diagHeader.className = 'chr-ownership-diagnostics-title';
+    diagHeader.textContent = t('chrOwnershipDiagnosticsTitle');
+    diagSection.append(diagHeader);
+
+    const diagList = document.createElement('div');
+    diagList.className = 'chr-ownership-diagnostics-list';
+
+    for (const fact of ownershipDiagnostics) {
+      const item = document.createElement('div');
+      item.className = `chr-ownership-diag-item is-${fact.severity}`;
+
+      const icon = document.createElement('span');
+      icon.className = 'chr-diag-icon';
+      icon.textContent = fact.severity === 'error' ? '❌' : '⚠️';
+
+      const msg = document.createElement('span');
+      msg.className = 'chr-diag-message';
+      msg.textContent = formatChrOwnershipDiagnosticMessage(fact);
+
+      item.append(icon, msg);
+
+      const actions = document.createElement('div');
+      actions.className = 'chr-diag-actions';
+
+      if (
+        options.onSelectTile &&
+        fact.physicalIndex >= 0 &&
+        fact.physicalIndex < 512
+      ) {
+        const inspectBtn = document.createElement('button');
+        inspectBtn.type = 'button';
+        inspectBtn.className = 'button secondary-button chr-diag-action-btn';
+        inspectBtn.textContent = t('chrOwnershipDiagnosticsInspectSlot');
+        inspectBtn.addEventListener('click', () => {
+          options.onSelectTile?.(fact.physicalIndex);
+        });
+        actions.append(inspectBtn);
+      }
+
+      const targetAssetId =
+        'primaryAssetId' in fact
+          ? fact.primaryAssetId
+          : 'assetId' in fact
+            ? fact.assetId
+            : undefined;
+      if (options.onHighlightAssetIdChange && targetAssetId) {
+        const highlightBtn = document.createElement('button');
+        highlightBtn.type = 'button';
+        highlightBtn.className = 'button secondary-button chr-diag-action-btn';
+        highlightBtn.textContent = t('chrOwnershipDiagnosticsHighlightAsset');
+        highlightBtn.addEventListener('click', () => {
+          options.onHighlightAssetIdChange?.(targetAssetId);
+        });
+        actions.append(highlightBtn);
+      }
+
+      if (actions.children.length > 0) {
+        item.append(actions);
+      }
+
+      diagList.append(item);
+    }
+
+    diagSection.append(diagList);
+    panel.append(diagSection);
+  }
+
+  return panel;
+}
+
 export function createChrWorkspace(
   options: ChrWorkspaceOptions,
 ): ChrWorkspaceElement {
@@ -2042,11 +2320,18 @@ export function createChrWorkspace(
     onUpdateChrRegions: options.onUpdateChrRegions,
   });
 
+  const assetMetricsPanel = createChrAssetMetricsPanel(
+    options,
+    mappingIndex,
+    metrics.finalChrBytes,
+  );
+
   workspace.append(
     introPanel,
     viewerPanel,
     tileInspector,
     regionManagerPanel,
+    assetMetricsPanel,
     occupancyPanel,
     spriteContextPanel,
     reusePanel,

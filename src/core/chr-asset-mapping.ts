@@ -18,10 +18,17 @@ import {
   computeAnimationLogicalTileCoordinate,
   createLogicalTileKey,
   normalizeProjectAssetId,
+  parseLogicalTileKey,
   type LogicalTileKey,
+  type ProjectAsset,
   type ProjectAssetId,
+  type ProjectAssetKind,
 } from './asset-identity';
 import type { AnimationProjectModel } from './animation-model';
+import {
+  classifyOrphanedPhysicalTiles,
+  detectOrphanedPhysicalTiles,
+} from './asset-lifecycle';
 import {
   baseChrPhysicalStart,
   collectReservedPhysicalTileIndices,
@@ -41,6 +48,7 @@ import {
   deduplicateTilesConsideringFlips,
 } from './tile-deduplication';
 import type { Tile } from './types';
+import { t } from '../i18n';
 
 /** Mechanism by which a physical tile slot came into existence. */
 export type PhysicalTileCreationKind =
@@ -761,4 +769,680 @@ export function getUsagesForLogicalKey(
   index: ChrAssetMappingIndex,
 ): readonly PhysicalTileUsage[] {
   return index.usagesByLogicalKey.get(logicalKey) ?? [];
+}
+
+// ============================================================================
+// Per-Asset & Project-Level CHR Resource Metrics
+// ============================================================================
+
+/** Detailed CHR resource accounting for a single logical project asset. */
+export interface AssetChrMetrics {
+  readonly assetId: ProjectAssetId;
+  readonly assetName?: string;
+  readonly kind?: ProjectAssetKind;
+
+  /** Total unique physical CHR slots (0..511) associated with this asset. */
+  readonly uniquePhysicalSlots: number;
+
+  /** Physical slots where this asset is the primary origin (`origin.primaryAssetId === assetId`). */
+  readonly primaryOwnedSlots: number;
+
+  /** Unique physical slots containing at least one active usage from this asset. */
+  readonly consumedSlots: number;
+
+  /** Associated physical slots that have more than 1 usage (`isShared === true`). */
+  readonly sharedSlots: number;
+
+  /** Associated physical slots used by this asset AND at least one other distinct asset. */
+  readonly crossAssetSharedSlots: number;
+
+  /** Physical slots where this asset is the primary origin AND no other asset uses the slot. */
+  readonly exclusiveSlots: number;
+
+  /** Associated physical slots originating from Base CHR (`creationKind === 'base-chr'`). */
+  readonly baseChrReusedSlots: number;
+
+  /** Primary-owned physical slots originating from manual CHR edits (`creationKind === 'manual-materialized'`). */
+  readonly manualMaterializedSlots: number;
+
+  /** Breakdown of unique physical slots across Pattern Tables [PT0, PT1]. */
+  readonly patternTableSlots: readonly [number, number];
+}
+
+/** Comprehensive project-wide CHR ownership and resource allocation metrics. */
+export interface ProjectChrOwnershipMetrics {
+  /** Total unique physical slots primarily owned by any project asset (`creationKind === 'extracted'`). */
+  readonly totalProjectOwnedSlots: number;
+
+  /** Total physical slots originating from Base CHR. */
+  readonly totalBaseChrOccupiedSlots: number;
+
+  /** Total physical slots originating from manual CHR edits. */
+  readonly totalManualMaterializedSlots: number;
+
+  /** Total physical slots shared by multiple usages (`usageCount > 1`). */
+  readonly totalSharedSlots: number;
+
+  /** Total physical slots shared across 2 or more distinct asset IDs. */
+  readonly totalCrossAssetSharedSlots: number;
+
+  /** Total physical slots classified as canonical orphans. */
+  readonly totalOrphanedSlots: number;
+
+  /** Total occupied physical slots with unknown provenance. */
+  readonly totalUnknownProvenanceSlots: number;
+
+  /** Total active assets with at least 1 associated physical CHR slot. */
+  readonly totalActiveAssetsWithChr: number;
+
+  /** Deterministic list of per-asset metrics. */
+  readonly byAsset: readonly AssetChrMetrics[];
+}
+
+/** Options for computing project CHR ownership metrics. */
+export interface CalculateAssetChrMetricsOptions {
+  readonly mappingIndex: ChrAssetMappingIndex;
+  readonly activeAssets?: readonly ProjectAsset[];
+  readonly reservedPhysicalIndices?: ReadonlySet<number>;
+  readonly chrRegions?: readonly ChrRegion[];
+  readonly finalChrBytes?: Uint8Array;
+}
+
+/**
+ * Computes pure CHR resource metrics for a specific project asset.
+ */
+export function calculateAssetChrMetrics(
+  asset: {
+    readonly id: ProjectAssetId;
+    readonly name?: string;
+    readonly kind?: ProjectAssetKind;
+  },
+  mappingIndex: ChrAssetMappingIndex,
+): AssetChrMetrics {
+  const associatedSlots = getPhysicalIndicesForAsset(asset.id, mappingIndex);
+  let pt0 = 0;
+  let pt1 = 0;
+  let primaryOwned = 0;
+  let consumed = 0;
+  let shared = 0;
+  let crossAssetShared = 0;
+  let exclusive = 0;
+  let baseChrReused = 0;
+  let manualMaterialized = 0;
+
+  for (const slotIdx of associatedSlots) {
+    const slot = mappingIndex.byPhysicalIndex[slotIdx];
+    if (!slot) continue;
+
+    if (slotIdx < 256) {
+      pt0 += 1;
+    } else {
+      pt1 += 1;
+    }
+
+    if (slot.origin?.primaryAssetId === asset.id) {
+      primaryOwned += 1;
+      if (slot.origin.creationKind === 'manual-materialized') {
+        manualMaterialized += 1;
+      }
+      if (slot.usages.every((u) => u.assetId === asset.id)) {
+        exclusive += 1;
+      }
+    }
+
+    if (slot.usages.some((u) => u.assetId === asset.id)) {
+      consumed += 1;
+    }
+
+    if (slot.isShared || slot.usageCount > 1) {
+      shared += 1;
+    }
+
+    const distinctAssets = new Set<string>();
+    for (const u of slot.usages) {
+      distinctAssets.add(u.assetId);
+    }
+    if (distinctAssets.size > 1) {
+      crossAssetShared += 1;
+    }
+
+    if (slot.origin?.creationKind === 'base-chr') {
+      baseChrReused += 1;
+    }
+  }
+
+  return {
+    assetId: asset.id,
+    assetName: asset.name,
+    kind: asset.kind,
+    uniquePhysicalSlots: associatedSlots.size,
+    primaryOwnedSlots: primaryOwned,
+    consumedSlots: consumed,
+    sharedSlots: shared,
+    crossAssetSharedSlots: crossAssetShared,
+    exclusiveSlots: exclusive,
+    baseChrReusedSlots: baseChrReused,
+    manualMaterializedSlots: manualMaterialized,
+    patternTableSlots: [pt0, pt1],
+  };
+}
+
+/**
+ * Computes global and per-asset CHR ownership metrics across all physical slots.
+ */
+export function calculateProjectChrOwnershipMetrics(
+  options: CalculateAssetChrMetricsOptions,
+): ProjectChrOwnershipMetrics {
+  const { mappingIndex, activeAssets, reservedPhysicalIndices, finalChrBytes } =
+    options;
+
+  let totalProjectOwned = 0;
+  let totalBaseChrOccupied = 0;
+  let totalManualMaterialized = 0;
+  let totalShared = 0;
+  let totalCrossAssetShared = 0;
+  let totalUnknownProvenance = 0;
+
+  for (let i = 0; i < mappingIndex.byPhysicalIndex.length; i += 1) {
+    const slot = mappingIndex.byPhysicalIndex[i];
+    if (!slot) continue;
+
+    if (slot.origin?.creationKind === 'extracted') {
+      totalProjectOwned += 1;
+    } else if (slot.origin?.creationKind === 'base-chr') {
+      totalBaseChrOccupied += 1;
+    } else if (slot.origin?.creationKind === 'manual-materialized') {
+      totalManualMaterialized += 1;
+    }
+
+    if (slot.isShared || slot.usageCount > 1) {
+      totalShared += 1;
+    }
+
+    const distinctAssets = new Set<string>();
+    for (const u of slot.usages) {
+      if (u.assetId) {
+        distinctAssets.add(u.assetId);
+      }
+    }
+    if (slot.origin?.primaryAssetId) {
+      distinctAssets.add(slot.origin.primaryAssetId);
+    }
+    if (distinctAssets.size > 1) {
+      totalCrossAssetShared += 1;
+    }
+
+    // Check unknown provenance: tile is occupied in CHR bytes but has no origin
+    if (!slot.origin && finalChrBytes) {
+      const byteOffset = i * 16;
+      if (finalChrBytes.length >= byteOffset + 16) {
+        let isNonZero = false;
+        for (let b = 0; b < 16; b += 1) {
+          if (finalChrBytes[byteOffset + b] !== 0) {
+            isNonZero = true;
+            break;
+          }
+        }
+        if (isNonZero) {
+          totalUnknownProvenance += 1;
+        }
+      }
+    }
+  }
+
+  const orphanedSlots = detectOrphanedPhysicalTiles(
+    mappingIndex,
+    reservedPhysicalIndices,
+  );
+
+  // Asset list resolution
+  const assetsToProcess: {
+    readonly id: ProjectAssetId;
+    readonly name?: string;
+    readonly kind?: ProjectAssetKind;
+  }[] = [];
+  const processedAssetIds = new Set<string>();
+
+  if (activeAssets) {
+    for (const a of activeAssets) {
+      assetsToProcess.push(a);
+      processedAssetIds.add(a.id);
+    }
+  }
+
+  // Also include any other asset IDs discovered in mappingIndex
+  const sortedExtraAssetIds = Array.from(
+    mappingIndex.physicalIndicesByAsset.keys(),
+  ).sort();
+  for (const assetId of sortedExtraAssetIds) {
+    if (!processedAssetIds.has(assetId)) {
+      const attr = mappingIndex.byPhysicalIndex.find(
+        (s) => s.origin?.primaryAssetId === assetId,
+      );
+      assetsToProcess.push({
+        id: assetId,
+        name: attr?.origin?.primaryAssetName ?? assetId,
+      });
+      processedAssetIds.add(assetId);
+    }
+  }
+
+  const byAsset = assetsToProcess.map((asset) =>
+    calculateAssetChrMetrics(asset, mappingIndex),
+  );
+
+  const totalActiveAssetsWithChr = byAsset.filter(
+    (a) => a.uniquePhysicalSlots > 0,
+  ).length;
+
+  return {
+    totalProjectOwnedSlots: totalProjectOwned,
+    totalBaseChrOccupiedSlots: totalBaseChrOccupied,
+    totalManualMaterializedSlots: totalManualMaterialized,
+    totalSharedSlots: totalShared,
+    totalCrossAssetSharedSlots: totalCrossAssetShared,
+    totalOrphanedSlots: orphanedSlots.length,
+    totalUnknownProvenanceSlots: totalUnknownProvenance,
+    totalActiveAssetsWithChr,
+    byAsset: Object.freeze(byAsset),
+  };
+}
+
+// ============================================================================
+// CHR Ownership & Mapping Diagnostics
+// ============================================================================
+
+export type ChrOwnershipDiagnosticSeverity = 'error' | 'warning' | 'info';
+
+export interface OrphanedProjectTileDiagnosticFact {
+  readonly kind: 'orphaned-project-tile';
+  readonly severity: 'warning';
+  readonly physicalIndex: number;
+  readonly patternTable: SpritePatternTable;
+  readonly localIndex: number;
+  readonly primaryAssetId?: ProjectAssetId;
+  readonly primaryAssetName?: string;
+  readonly logicalKey?: LogicalTileKey;
+  readonly creationKind: 'extracted';
+  readonly regionName?: string;
+}
+
+export interface DanglingAssetUsageDiagnosticFact {
+  readonly kind: 'dangling-asset-usage';
+  readonly severity: 'error';
+  readonly physicalIndex: number;
+  readonly usageType: 'animation' | 'playfield' | 'tileset';
+  readonly missingAssetId: ProjectAssetId;
+  readonly logicalKey?: LogicalTileKey;
+  readonly consumerContext?: string;
+}
+
+export interface MissingOriginAssetDiagnosticFact {
+  readonly kind: 'missing-origin-asset';
+  readonly severity: 'error';
+  readonly physicalIndex: number;
+  readonly missingAssetId: ProjectAssetId;
+  readonly logicalKey?: LogicalTileKey;
+}
+
+export interface InvalidPhysicalMappingDiagnosticFact {
+  readonly kind: 'invalid-physical-mapping';
+  readonly severity: 'error';
+  readonly physicalIndex: number;
+  readonly details: string;
+}
+
+export interface InvalidLogicalKeyDiagnosticFact {
+  readonly kind: 'invalid-logical-key';
+  readonly severity: 'error';
+  readonly physicalIndex: number;
+  readonly logicalKey: string;
+  readonly assetId?: ProjectAssetId;
+  readonly reason: 'malformed-key' | 'asset-mismatch' | 'invalid-coordinates';
+}
+
+export interface UnexpectedPatternTableDiagnosticFact {
+  readonly kind: 'unexpected-pattern-table';
+  readonly severity: 'warning';
+  readonly physicalIndex: number;
+  readonly actualPatternTable: SpritePatternTable;
+  readonly expectedPatternTable: SpritePatternTable;
+  readonly assetId: ProjectAssetId;
+}
+
+export type ChrOwnershipDiagnosticFact =
+  | OrphanedProjectTileDiagnosticFact
+  | DanglingAssetUsageDiagnosticFact
+  | MissingOriginAssetDiagnosticFact
+  | InvalidPhysicalMappingDiagnosticFact
+  | InvalidLogicalKeyDiagnosticFact
+  | UnexpectedPatternTableDiagnosticFact;
+
+export interface AnalyzeChrOwnershipDiagnosticsOptions {
+  readonly mappingIndex: ChrAssetMappingIndex;
+  readonly activeAssets?: readonly ProjectAsset[];
+  readonly activeAssetIds?: ReadonlySet<ProjectAssetId>;
+  readonly reservedPhysicalIndices?: ReadonlySet<number>;
+  readonly expectedPatternTable?: SpritePatternTable;
+  readonly chrRegions?: readonly ChrRegion[];
+  readonly mode?: ProjectMode;
+}
+
+/**
+ * Pure domain diagnostic analyzer for CHR ownership and mapping integrity.
+ */
+export function analyzeChrOwnershipDiagnostics(
+  options: AnalyzeChrOwnershipDiagnosticsOptions,
+): readonly ChrOwnershipDiagnosticFact[] {
+  const {
+    mappingIndex,
+    activeAssets,
+    activeAssetIds,
+    reservedPhysicalIndices,
+    expectedPatternTable,
+  } = options;
+
+  const validAssetIds = new Set<string>();
+  if (activeAssetIds) {
+    for (const id of activeAssetIds) {
+      validAssetIds.add(id);
+    }
+  }
+  if (activeAssets) {
+    for (const a of activeAssets) {
+      validAssetIds.add(a.id);
+    }
+  }
+
+  const diagnostics: ChrOwnershipDiagnosticFact[] = [];
+  const emittedFactKeys = new Set<string>();
+
+  const emit = (fact: ChrOwnershipDiagnosticFact): void => {
+    const missingId = 'missingAssetId' in fact ? fact.missingAssetId : '';
+    const logKey = 'logicalKey' in fact ? (fact.logicalKey ?? '') : '';
+    const reason = 'reason' in fact ? fact.reason : '';
+    const details = 'details' in fact ? fact.details : '';
+    const dedupeKey = `${fact.kind}:${String(fact.physicalIndex)}:${fact.severity}:${missingId}:${logKey}:${reason}:${details}`;
+    if (!emittedFactKeys.has(dedupeKey)) {
+      emittedFactKeys.add(dedupeKey);
+      diagnostics.push(fact);
+    }
+  };
+
+  // 1. Validate physical mapping invariants & individual slot integrity (0..511)
+  for (let i = 0; i < mappingIndex.byPhysicalIndex.length; i += 1) {
+    const slot = mappingIndex.byPhysicalIndex[i];
+    if (!slot) {
+      emit({
+        kind: 'invalid-physical-mapping',
+        severity: 'error',
+        physicalIndex: i,
+        details: `Slot at index ${String(i)} is missing or undefined`,
+      });
+      continue;
+    }
+
+    if (slot.physicalIndex !== i) {
+      emit({
+        kind: 'invalid-physical-mapping',
+        severity: 'error',
+        physicalIndex: i,
+        details: `Slot physicalIndex ${String(slot.physicalIndex)} does not match array index ${String(i)}`,
+      });
+    }
+
+    const expectedPt = Math.floor(i / 256) as SpritePatternTable;
+    const expectedLocal = i % 256;
+
+    if (slot.patternTable !== expectedPt) {
+      emit({
+        kind: 'invalid-physical-mapping',
+        severity: 'error',
+        physicalIndex: i,
+        details: `Slot patternTable ${String(slot.patternTable)} does not match expected PT${String(expectedPt)}`,
+      });
+    }
+
+    if (slot.localIndex !== expectedLocal) {
+      emit({
+        kind: 'invalid-physical-mapping',
+        severity: 'error',
+        physicalIndex: i,
+        details: `Slot localIndex ${String(slot.localIndex)} does not match expected local index ${String(expectedLocal)}`,
+      });
+    }
+
+    // Origin asset checks
+    if (slot.origin) {
+      const { primaryAssetId, logicalKey, creationKind } = slot.origin;
+
+      if (creationKind === 'extracted') {
+        if (validAssetIds.size > 0 && !validAssetIds.has(primaryAssetId)) {
+          emit({
+            kind: 'missing-origin-asset',
+            severity: 'error',
+            physicalIndex: i,
+            missingAssetId: primaryAssetId,
+            logicalKey,
+          });
+        }
+      }
+
+      if (logicalKey) {
+        const parsed = parseLogicalTileKey(logicalKey);
+        if (!parsed) {
+          emit({
+            kind: 'invalid-logical-key',
+            severity: 'error',
+            physicalIndex: i,
+            logicalKey,
+            assetId: primaryAssetId,
+            reason: 'malformed-key',
+          });
+        } else if (parsed.assetId !== primaryAssetId) {
+          emit({
+            kind: 'invalid-logical-key',
+            severity: 'error',
+            physicalIndex: i,
+            logicalKey,
+            assetId: primaryAssetId,
+            reason: 'asset-mismatch',
+          });
+        } else if (parsed.tileX < 0 || parsed.tileY < 0) {
+          emit({
+            kind: 'invalid-logical-key',
+            severity: 'error',
+            physicalIndex: i,
+            logicalKey,
+            assetId: primaryAssetId,
+            reason: 'invalid-coordinates',
+          });
+        }
+      }
+
+      if (
+        expectedPatternTable !== undefined &&
+        creationKind === 'extracted' &&
+        slot.patternTable !== expectedPatternTable
+      ) {
+        emit({
+          kind: 'unexpected-pattern-table',
+          severity: 'warning',
+          physicalIndex: i,
+          actualPatternTable: slot.patternTable,
+          expectedPatternTable,
+          assetId: primaryAssetId,
+        });
+      }
+    }
+
+    // Usages checks
+    for (const usage of slot.usages) {
+      if (
+        usage.physicalTileIndex !== i ||
+        usage.physicalTileIndex < 0 ||
+        usage.physicalTileIndex >= 512
+      ) {
+        emit({
+          kind: 'invalid-physical-mapping',
+          severity: 'error',
+          physicalIndex: i,
+          details: `Usage physicalTileIndex ${String(usage.physicalTileIndex)} does not match slot ${String(i)}`,
+        });
+      }
+
+      if (validAssetIds.size > 0 && !validAssetIds.has(usage.assetId)) {
+        let consumerContext: string | undefined;
+        if (usage.type === 'animation') {
+          consumerContext = `Animation: ${usage.animationName ?? usage.animationId} (Frame #${String(usage.frameIndex)})`;
+        } else if (usage.type === 'playfield') {
+          consumerContext = `Playfield: cell (${String(usage.column)}, ${String(usage.row)})`;
+        } else {
+          consumerContext = `Tileset: tile #${String(usage.tileIndex)}`;
+        }
+        emit({
+          kind: 'dangling-asset-usage',
+          severity: 'error',
+          physicalIndex: i,
+          usageType: usage.type,
+          missingAssetId: usage.assetId,
+          logicalKey: usage.logicalKey,
+          consumerContext,
+        });
+      }
+
+      if (usage.logicalKey) {
+        const parsed = parseLogicalTileKey(usage.logicalKey);
+        if (!parsed) {
+          emit({
+            kind: 'invalid-logical-key',
+            severity: 'error',
+            physicalIndex: i,
+            logicalKey: usage.logicalKey,
+            assetId: usage.assetId,
+            reason: 'malformed-key',
+          });
+        } else if (parsed.assetId !== usage.assetId) {
+          emit({
+            kind: 'invalid-logical-key',
+            severity: 'error',
+            physicalIndex: i,
+            logicalKey: usage.logicalKey,
+            assetId: usage.assetId,
+            reason: 'asset-mismatch',
+          });
+        } else if (parsed.tileX < 0 || parsed.tileY < 0) {
+          emit({
+            kind: 'invalid-logical-key',
+            severity: 'error',
+            physicalIndex: i,
+            logicalKey: usage.logicalKey,
+            assetId: usage.assetId,
+            reason: 'invalid-coordinates',
+          });
+        }
+      }
+    }
+  }
+
+  // 2. Canonical Orphan detection
+  const orphanReports = classifyOrphanedPhysicalTiles(
+    mappingIndex,
+    reservedPhysicalIndices,
+  );
+
+  for (const rep of orphanReports) {
+    if (rep.isOrphan) {
+      const slot = mappingIndex.byPhysicalIndex[rep.physicalIndex];
+      emit({
+        kind: 'orphaned-project-tile',
+        severity: 'warning',
+        physicalIndex: rep.physicalIndex,
+        patternTable: rep.patternTable,
+        localIndex: rep.localIndex,
+        primaryAssetId: slot?.origin?.primaryAssetId,
+        primaryAssetName: slot?.origin?.primaryAssetName,
+        logicalKey: slot?.origin?.logicalKey,
+        creationKind: 'extracted',
+      });
+    }
+  }
+
+  // Deterministic sorting: physicalIndex ASC, then severity (error > warning > info), then kind ASC
+  return Object.freeze(
+    diagnostics.sort((a, b) => {
+      if (a.physicalIndex !== b.physicalIndex) {
+        return a.physicalIndex - b.physicalIndex;
+      }
+      const severityRank = (s: ChrOwnershipDiagnosticSeverity): number =>
+        s === 'error' ? 0 : s === 'warning' ? 1 : 2;
+      const rankA = severityRank(a.severity);
+      const rankB = severityRank(b.severity);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+      if (a.kind !== b.kind) {
+        return a.kind.localeCompare(b.kind);
+      }
+      return 0;
+    }),
+  );
+}
+
+/**
+ * Formats a typed ChrOwnershipDiagnosticFact into a localized human-readable string.
+ */
+export function formatChrOwnershipDiagnosticMessage(
+  fact: ChrOwnershipDiagnosticFact,
+): string {
+  const hex = (fact.physicalIndex % 256)
+    .toString(16)
+    .toUpperCase()
+    .padStart(2, '0');
+  const pt = Math.floor(fact.physicalIndex / 256);
+
+  switch (fact.kind) {
+    case 'orphaned-project-tile':
+      return t('chrOwnershipOrphanWarning', {
+        patternTable: fact.patternTable,
+        hex,
+      });
+
+    case 'dangling-asset-usage':
+      return t('chrOwnershipDanglingUsageError', {
+        usageType: fact.usageType,
+        patternTable: pt,
+        hex,
+        assetId: fact.missingAssetId,
+      });
+
+    case 'missing-origin-asset':
+      return t('chrOwnershipMissingOriginError', {
+        patternTable: pt,
+        hex,
+        assetId: fact.missingAssetId,
+      });
+
+    case 'invalid-physical-mapping':
+      return t('chrOwnershipInvalidPhysicalMappingError', {
+        index: fact.physicalIndex,
+        details: fact.details,
+      });
+
+    case 'invalid-logical-key':
+      return t('chrOwnershipInvalidLogicalKeyError', {
+        key: fact.logicalKey,
+        patternTable: pt,
+        hex,
+        reason: fact.reason,
+      });
+
+    case 'unexpected-pattern-table':
+      return t('chrOwnershipUnexpectedPatternTableWarning', {
+        assetId: fact.assetId,
+        actualTable: fact.actualPatternTable,
+        hex,
+        expectedTable: fact.expectedPatternTable,
+      });
+  }
 }
