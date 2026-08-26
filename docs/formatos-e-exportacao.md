@@ -357,3 +357,48 @@ Gera arquivos de inclusão (`.inc`) e tabelas de dados em assembly 6502 (`.s`) p
 
 - Emite diretivas `.byte` e `.word` mapeando exatamente a mesma estrutura compacta da exportação C.
 - Constantes simbólicas para IDs de animação, constante `${PREFIX}_SPRITE_PATTERN_TABLE = <0|1>`, flags de flip (`ANIMATION_ALLOW_H_FLIP = $40`, `ANIMATION_ALLOW_V_FLIP = $80`) e modos de reprodução (`ANIMATION_PLAYBACK_LOOP = 0`, `ANIMATION_PLAYBACK_ONCE = 1`).
+
+---
+
+## 12. Formatos e Exportação de Background Maps (Milestone 8)
+
+O **Background Pipeline** implementa exportadores determinísticos e serializadores puros a partir do modelo compilado `BackgroundProjectModel`:
+
+### 12.1 Formatos Binários
+
+| Extensão | Tamanho             | Descrição                                                                                                                               |
+| :------- | :------------------ | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| `.nam`   | **960 bytes**       | Nametable física do NES (32 colunas × 30 linhas). Cada byte contém o índice local de tile (`0..255`) na Pattern Table selecionada.      |
+| `.atr`   | **64 bytes**        | Attribute Table do NES (8 colunas × 8 linhas). Cada byte empacota 4 quadrantes de 16×16 px (2×2 tiles) com valores de subpaleta `0..3`. |
+| `.map`   | **1024 bytes**      | Arquivo combinado contendo os 960 bytes da Nametable seguidos imediatamente pelos 64 bytes da Attribute Table.                          |
+| `.chr`   | **8192 B / 4096 B** | CHR-ROM completa (8 KiB) ou fatia de 4 KiB correspondente à Pattern Table utilizada pelo mapa.                                          |
+| `.pal`   | **16 bytes**        | Paleta de 16 bytes de background do NES (4 subpaletas com Cor Universal de Fundo compartilhada).                                        |
+
+### 12.2 Código C para cc65 (`.h` / `.c`)
+
+Gera cabeçalho e fonte C compatíveis com o compilador **cc65**:
+
+- **Constantes geradas no header (`.h`):**
+  - `#define ${ID}_BACKGROUND_PATTERN_TABLE <0|1>` (para configuração do bit 4 de `PPUCTRL`);
+  - `#define ${ID}_NAMETABLE_WIDTH_TILES 32`;
+  - `#define ${ID}_NAMETABLE_HEIGHT_TILES 30`;
+  - `#define ${ID}_NAMETABLE_SIZE 960`;
+  - `#define ${ID}_ATTRIBUTE_TABLE_SIZE 64`;
+  - `#define ${ID}_FULL_MAP_SIZE 1024`.
+- **Declarações em ROM (`.c`):**
+  - `const unsigned char ${id}_nametable[${ID}_NAMETABLE_SIZE]`: 30 linhas de 32 bytes hexadecimais;
+  - `const unsigned char ${id}_attribute_table[${ID}_ATTRIBUTE_TABLE_SIZE]`: 8 linhas de 8 bytes hexadecimais;
+  - `const unsigned char ${id}_full_map[${ID}_FULL_MAP_SIZE]` (quando habilitado).
+
+### 12.3 Código Assembly para ca65 (`.inc` / `.s`)
+
+Gera arquivos de inclusão e dados em assembly 6502 compatíveis com o montador **ca65**:
+
+- **Constantes e Símbolos no include (`.inc`):**
+  - `${ID}_BACKGROUND_PATTERN_TABLE = <0|1>`;
+  - Constantes de dimensão e tamanho em bytes;
+  - Diretivas `.import` correspondentes.
+- **Tabelas de Dados no source (`.s`):**
+  - Diretiva `.segment "RODATA"`;
+  - Diretivas `.export`;
+  - Blocos de dados `.byte $XX, $YY, ...` alinhados visualmente por linha da tela do NES.

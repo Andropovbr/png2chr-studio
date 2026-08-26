@@ -113,12 +113,31 @@ Validate that Tileset and Playfield modes operate without regression alongside t
 | 4    | Export Tileset/Playfield production artifacts (`.chr`, `.nam`, `.atr`, `.pal`, `.col`). | Binary files match strict NES hardware sizing (Nametable = 960 bytes, Attribute Table = 64 bytes, Collision = 480 bytes, Palette = 16 bytes). |
 | 5    | Save project as `.p2c` and reopen.                                                      | Mode, collision cells, palette assignments, and tile overrides restore with 100% fidelity.                                                    |
 
+## Background Pipeline smoke test (Milestone 8)
+
+Validate the end-to-end Background Pipeline, 32×30 map composition, 16×16 Attribute Table painting, CHR allocation in PT0/PT1 with Base CHR and Reservations, project persistence, and full binary/C/ASM exports:
+
+| Step | Action                                                                                                 | Expected result                                                                                                                                                                                                                 |
+| :--- | :----------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | In the sidebar, click **Background** to open the Background Workspace.                                 | Background Workspace loads with Map Toolbar, Left Tools & Tile Browser, Center 256×240 Canvas, and Right Inspector/Diagnostics panel; no errors.                                                                                |
+| 2    | Click `[+ Novo Mapa]` and rename the map to `Overworld Level 1`.                                       | New map is added to the project, set as `activeMapId`; project marks dirty.                                                                                                                                                     |
+| 3    | Select the source asset and pick a tile in the **Tile Browser**.                                       | Selected tile is highlighted; active tool switches to Stamp (`pencil`).                                                                                                                                                         |
+| 4    | Click or drag on the center 32×30 canvas to place tiles.                                               | Tiles render on the canvas at 256×240 px resolution; inspector reflects screen coordinates (`column`, `row`), `logicalKey`, `localTileIndex`, and `physicalTileIndex`.                                                          |
+| 5    | Toggle Grid (`G`) and Attribute Overlay (`A`).                                                         | 8×8 tile grid and 16×16 attribute quadrant borders render crisp overlay indicators; subpalette numbers (`0..3`) appear in each 16×16 quadrant.                                                                                  |
+| 6    | Select the Palette tool (`P` or tool button), choose Subpalette 2, and click a quadrant on the canvas. | The entire 16×16 px area (2×2 tiles) updates to Subpalette 2; 240-element palette array and 64-byte Attribute Table compile accordingly.                                                                                        |
+| 7    | Switch Pattern Table between `PT0 ($0000)` and `PT1 ($1000)`.                                          | Allocation recompiles targeting the selected table; local indices remain `$00..$FF` while physical indices switch between `0..255` and `256..511`.                                                                              |
+| 8    | In the cell inspector, click `[Inspect in CHR Memory]`.                                                | Workspace switches to **CHR Memory** with the corresponding physical slot selected; Tile Inspector details the background usage with direct jump-back link.                                                                     |
+| 9    | In Tile Inspector, click the jump button next to the background usage reference.                       | Workspace returns cleanly to **Background Workspace** with the original map and cell selected.                                                                                                                                  |
+| 10   | Save project as `.p2c` and inspect JSON content.                                                       | Project JSON stores pure logical definitions (`cells`, `paletteAssignments`, `activeMapId`); no derived physical CHR buffers are persisted.                                                                                     |
+| 11   | Reopen the saved `.p2c` file.                                                                          | Map configuration, placed tiles, subpalette assignments, and active map selection restore with 100% fidelity.                                                                                                                   |
+| 12   | In **Deliver & Export**, export `.nam`, `.atr`, `.map`, `.chr`, `.pal`, cc65 C, and ca65 ASM.          | Production files compile with exact byte lengths (960B `.nam`, 64B `.atr`, 1024B `.map`, 8192B/4096B `.chr`, 16B `.pal`); C header defines `${ID}_BACKGROUND_PATTERN_TABLE`; ASM source emits cleanly structured `.byte` lines. |
+
 ## Automated counterpart
 
 Run these checks before or alongside the manual flow:
 
 ```bash
-npm test -- src/core/spritesheet-chr-integration-e2e.test.ts src/core/animation-exporters.test.ts src/core/asset-lifecycle.test.ts src/core/chr-asset-mapping.test.ts
+npm test -- src/core/background-pipeline-e2e.test.ts src/core/background-exporters.test.ts src/core/background-model.test.ts src/core/chr-background-allocation.test.ts
 npm test
 npm run build
 npm run lint
@@ -130,6 +149,9 @@ orientation, raw CHR occupancy, PT0/PT1 local/physical indexing, sparse-slot
 allocation, 8 KiB output, project persistence/removal, CHR regions/reservations CRUD,
 asset identity persistence, bidirectional mapping, lifecycle reconciliation,
 CHR inspector attributions, per-asset metrics, ownership diagnostics, transparent cell omission,
-flip-aware deduplication, reimport reconciliation, aligned multi-target exporters, and cross-mode non-regression.
+flip-aware deduplication, reimport reconciliation, aligned multi-target exporters,
+Background domain model, Attribute Table 16×16 packing/unpacking, Background CHR allocation with Base CHR and Reservations,
+Background project persistence purity, pure Background exporters (.nam, .atr, .map, .chr, .pal, cc65, ca65),
+and cross-mode non-regression.
 Browser-level file chooser and download interactions remain manual because the
 repository deliberately has no browser/E2E harness.

@@ -681,9 +681,16 @@ export function buildChrAssetMappingIndex(
         bgModel.patternTable * 256 + cell.localTileIndex;
 
       if (physicalIndex >= 0 && physicalIndex < NES_CHR_ROM_TILE_COUNT) {
+        const parsedKey = cell.logicalKey
+          ? parseLogicalTileKey(cell.logicalKey)
+          : null;
         const logicalKey =
           cell.logicalKey ??
           createLogicalTileKey(bgAssetId, cell.column, cell.row);
+
+        const sourceTileX = parsedKey ? parsedKey.tileX : cell.column;
+        const sourceTileY = parsedKey ? parsedKey.tileY : cell.row;
+        const primaryAssetId = parsedKey ? parsedKey.assetId : bgAssetId;
 
         const usage: BackgroundTileUsage = {
           type: 'background',
@@ -703,14 +710,14 @@ export function buildChrAssetMappingIndex(
         const slot = slots[physicalIndex];
         if (slot && slot.origin === undefined) {
           slot.origin = {
-            primaryAssetId: bgAssetId,
+            primaryAssetId,
             primaryAssetName: bgAssetName,
             logicalKey,
             sourceCoordinates: {
-              tileX: cell.column,
-              tileY: cell.row,
-              pixelX: cell.column * 8,
-              pixelY: cell.row * 8,
+              tileX: sourceTileX,
+              tileY: sourceTileY,
+              pixelX: sourceTileX * 8,
+              pixelY: sourceTileY * 8,
             },
             creationKind: 'extracted',
           };

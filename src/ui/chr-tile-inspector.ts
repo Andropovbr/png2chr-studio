@@ -74,6 +74,7 @@ export interface ChrTileInspectorOptions {
     frameIndex: number,
   ) => void;
   readonly onNavigateToPlayfield?: (column: number, row: number) => void;
+  readonly onNavigateToBackground?: (mapId: string, cellIndex?: number) => void;
   readonly onNavigateToTileset?: (tileIndex: number) => void;
   readonly onDeselect?: () => void;
   readonly onTilePixelsChange?: (
@@ -873,7 +874,11 @@ export function createChrTileInspector(
                   options.onNavigateToReference?.(u);
                 }
               } else if (u.type === 'background') {
-                options.onNavigateToReference?.(u);
+                if (options.onNavigateToBackground) {
+                  options.onNavigateToBackground(u.mapId, u.nametableIndex);
+                } else {
+                  options.onNavigateToReference?.(u);
+                }
               } else {
                 if (options.onNavigateToTileset) {
                   options.onNavigateToTileset(u.tileIndex);
