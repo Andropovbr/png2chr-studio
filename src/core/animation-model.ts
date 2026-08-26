@@ -96,6 +96,8 @@ export type AnimationDirection = 'left' | 'right';
 export interface AnimationDefinitionInput {
   /** Stable identity of the editor animation that produced this definition. */
   readonly id?: string;
+  /** Stable logical asset identifier. */
+  readonly assetId?: string;
   readonly name: string;
   readonly entity?: string;
   readonly sourceImageName?: string;
@@ -533,7 +535,7 @@ export function buildAnimationProjectModel(
       frameHeight: animFrameHeight,
       originX: animOriginX,
       originY: animOriginY,
-      assetId: animation.id ?? animation.name,
+      assetId: animation.assetId ?? animation.id ?? animation.name,
     });
 
     const allocationResult = allocateSpritesheetChr({

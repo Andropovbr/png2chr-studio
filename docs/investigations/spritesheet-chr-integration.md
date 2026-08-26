@@ -286,19 +286,23 @@ Recomendamos a decomposição da Milestone 7 nas seguintes **6 issues executáve
 
 ---
 
-### Issue 4: `core & ui: spritesheet reimport, frame geometry change, and pixel override reconciliation`
+### Issue 4: `core & ui: spritesheet reimport, frame geometry change, and pixel override reconciliation` (Concluída - #97)
 
-- **Objetivo:** Prover suporte robusto e determinístico para reimportação de PNGs de spritesheets e alteração de geometria de frames com reconciliação de overrides de pixel.
-- **Escopo:**
-  - Reconciliação de `pixelOverrides` via `reconcilePixelOverridesForGeometry` quando dimensões mudam;
-  - Atualização do modelo do projeto sem mutação de `ProjectAssetId` ou corrupção de referências;
-  - Liberação de slots físicos órfãos quando células deixam de existir;
-  - Notificação de divergência caso tiles compartilhados sejam editados no editor de pixels.
-- **Dependências:** Issues 1, 2 e 3.
-- **Critérios de Aceite:**
-  - Reimportar imagem menor descarta overrides órfãos sem travar a UI;
-  - Reimportar imagem idêntica não causa churn ou realocação de slots físicos;
-  - Nenhuma referência dangling é gerada no projeto.
+- **Objetivo:** Prover suporte robusto, funcional e determinístico para reimportação de PNGs de spritesheets e alteração de geometria de frames com reconciliação de overrides de pixel, sequências de frames e arrays paralelos.
+- **Escopo Implementado:**
+  - Preservação estrita de `ProjectAssetId` ao reimportar ou alterar assets existentes sem geração espúria de novas identidades;
+  - Reconciliação funcional e imutável de `pixelOverrides` via `reconcilePixelOverridesForGeometry` (preserva coordenadas válidas, poda out-of-bounds, ordenação determinística);
+  - Reconciliação de geometria via `reconcileAnimationGeometry`: sincronização 1-a-1 de `frameIndices`, `frameDurations`, `framePalettes` e `framePaletteIds`;
+  - Validação de âncora de origem de metasprites (`isAnimationOriginValid`) respeitando os limites NES de deslocamento relativo com sinal de 8 bits (`-128..127`);
+  - Transação atômica de reimportação (`reconcileSpritesheetReimport`) com rollback automático em caso de estouro de capacidade de pattern table ou falhas de validação;
+  - Reconstrução completa do buffer CHR liberando slots obsoletos e preservando slots compartilhados, Base CHR e CHR Reservations.
+- **Dependências:** Issues 1, 2 e 3 (#94, #95, #96).
+- **Critérios de Aceite Atendidos:**
+  - Reimportar imagem menor descarta overrides órfãos e frames inválidos mantendo alinhamento de durações e paletas;
+  - Reimportar imagem idêntica produz resultado bit-a-bit idêntico e determinístico;
+  - Reimportar imagem diferente substitui conteúdo gráfico liberando tiles físicos órfãos sem deixar resíduos;
+  - Falha por estouro de capacidade não corrompe o estado canônico do projeto anterior;
+  - Ciclo de serialização/deserialização preserva o estado pós-reimportação sem persistir índices físicos derivados.
 
 ---
 

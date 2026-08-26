@@ -110,7 +110,11 @@ import {
   classifyChrSlots,
   composeChrWithAllocatedTiles,
 } from './core/chr-pattern-table';
-import { extractProjectAssets } from './core/asset-identity';
+import {
+  extractProjectAssets,
+  normalizeProjectAssetId,
+} from './core/asset-identity';
+import { reconcileAnimationGeometry } from './core/asset-lifecycle';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
 import {
@@ -1519,38 +1523,50 @@ function updateAnimation(
           updated.frameWidth > 0 &&
           updated.frameHeight > 0
         ) {
-          const totalFrames =
-            Math.floor(updated.source.sourceImage.width / updated.frameWidth) *
-            Math.floor(updated.source.sourceImage.height / updated.frameHeight);
-          const validIndices = updated.frameIndices.filter(
-            (idx) => idx < totalFrames,
-          );
+          const reconciled = reconcileAnimationGeometry({
+            frameWidth: updated.frameWidth,
+            frameHeight: updated.frameHeight,
+            imageWidth: updated.source.sourceImage.width,
+            imageHeight: updated.source.sourceImage.height,
+            frameIndices: updated.frameIndices,
+            defaultDuration: updated.defaultDuration,
+            frameDurations: updated.frameDurations,
+            framePalettes: updated.framePalettes,
+            framePaletteIds: updated.framePaletteIds,
+            pixelOverrides: updated.pixelOverrides,
+            originX: updated.originX,
+            originY: updated.originY,
+          });
           const frameIndices =
-            validIndices.length > 0
-              ? validIndices
-              : Array.from({ length: Math.max(1, totalFrames) }, (_, i) => i);
-          const frameDurations = updated.frameDurations.slice(
-            0,
-            frameIndices.length,
-          );
-          const framePalettes = (updated.framePalettes ?? []).slice(
-            0,
-            frameIndices.length,
-          );
+            reconciled.frameIndices.length > 0
+              ? reconciled.frameIndices
+              : updated.frameIndices.length === 0 && reconciled.totalFrames > 0
+                ? Array.from({ length: reconciled.totalFrames }, (_, i) => i)
+                : [];
+          const frameDurations =
+            reconciled.frameIndices.length > 0
+              ? reconciled.frameDurations
+              : Array.from(
+                  { length: frameIndices.length },
+                  () => updated.defaultDuration,
+                );
+          const framePalettes =
+            reconciled.frameIndices.length > 0
+              ? reconciled.framePalettes
+              : Array.from({ length: frameIndices.length }, () => null);
+          const framePaletteIds =
+            reconciled.frameIndices.length > 0
+              ? reconciled.framePaletteIds
+              : Array.from({ length: frameIndices.length }, () => null);
           updated = {
             ...updated,
+            frameWidth: reconciled.frameWidth,
+            frameHeight: reconciled.frameHeight,
             frameIndices,
-            frameDurations:
-              frameDurations.length === frameIndices.length
-                ? frameDurations
-                : Array.from(
-                    { length: frameIndices.length },
-                    () => updated.defaultDuration,
-                  ),
-            framePalettes:
-              framePalettes.length === frameIndices.length
-                ? framePalettes
-                : Array.from({ length: frameIndices.length }, () => null),
+            frameDurations,
+            framePalettes,
+            framePaletteIds,
+            pixelOverrides: reconciled.pixelOverrides,
           };
         }
         if (
@@ -1941,6 +1957,9 @@ async function loadAnimationSourceFile(
     const targetAnim = project.animation.animations.find(
       (a) => a.id === animId,
     );
+    const existingAssetId =
+      targetAnim?.source?.assetId ??
+      normalizeProjectAssetId(undefined, 'spritesheet', animId);
     const quantMode = targetAnim?.quantizationMode ?? 'median-cut';
     const dithMode = targetAnim?.ditheringMode ?? 'none';
     const imageData = pngLoad.image;
@@ -1950,6 +1969,7 @@ async function loadAnimationSourceFile(
       colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     });
     const source: AnimationSourceData = {
+      assetId: existingAssetId,
       fileName: file.name,
       sourceImage: imageData,
       indexedImage,
@@ -1962,30 +1982,41 @@ async function loadAnimationSourceFile(
         anim.frameHeight,
         detection,
       );
-      const columns = Math.floor(imageData.width / width);
-      const rows = Math.floor(imageData.height / height);
-      const totalFrames = columns * rows;
-      const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
-      const validDurations = anim.frameDurations.slice(0, validIndices.length);
-      const validPalettes = (anim.framePalettes ?? []).slice(
-        0,
-        validIndices.length,
-      );
+      const reconciled = reconcileAnimationGeometry({
+        frameWidth: width,
+        frameHeight: height,
+        imageWidth: imageData.width,
+        imageHeight: imageData.height,
+        frameIndices: anim.frameIndices,
+        defaultDuration: anim.defaultDuration,
+        frameDurations: anim.frameDurations,
+        framePalettes: anim.framePalettes,
+        framePaletteIds: anim.framePaletteIds,
+        pixelOverrides: anim.pixelOverrides,
+        originX: anim.originX,
+        originY: anim.originY,
+      });
 
       const frameIndices =
-        validIndices.length > 0
-          ? validIndices
-          : Array.from({ length: totalFrames }, (_, i) => i);
+        reconciled.frameIndices.length > 0
+          ? reconciled.frameIndices
+          : anim.frameIndices.length === 0 && reconciled.totalFrames > 0
+            ? Array.from({ length: reconciled.totalFrames }, (_, i) => i)
+            : [];
       const frameDurations =
-        validDurations.length > 0
-          ? validDurations
+        reconciled.frameIndices.length > 0
+          ? reconciled.frameDurations
           : Array.from(
               { length: frameIndices.length },
               () => anim.defaultDuration,
             );
       const framePalettes =
-        validPalettes.length > 0
-          ? validPalettes
+        reconciled.frameIndices.length > 0
+          ? reconciled.framePalettes
+          : Array.from({ length: frameIndices.length }, () => null);
+      const framePaletteIds =
+        reconciled.frameIndices.length > 0
+          ? reconciled.framePaletteIds
           : Array.from({ length: frameIndices.length }, () => null);
 
       return {
@@ -1993,12 +2024,14 @@ async function loadAnimationSourceFile(
         source,
         quantizationMode: quantMode,
         ditheringMode: dithMode,
-        frameWidth: width,
-        frameHeight: height,
+        frameWidth: reconciled.frameWidth,
+        frameHeight: reconciled.frameHeight,
         frameDetection: detection,
         frameIndices,
         frameDurations,
         framePalettes,
+        framePaletteIds,
+        pixelOverrides: reconciled.pixelOverrides,
       };
     });
     updateProject({
@@ -2035,35 +2068,49 @@ function reDetectAnimationFrames(animId: string): void {
     anim.frameHeight,
     detection,
   );
-  const columns = Math.floor(anim.source.sourceImage.width / width);
-  const rows = Math.floor(anim.source.sourceImage.height / height);
-  const totalFrames = columns * rows;
-  const validIndices = anim.frameIndices.filter((idx) => idx < totalFrames);
-  const frameIndices =
-    validIndices.length > 0
-      ? validIndices
-      : Array.from({ length: Math.max(1, totalFrames) }, (_, i) => i);
-  const validDurations = anim.frameDurations.slice(0, frameIndices.length);
-  const validPalettes = (anim.framePalettes ?? []).slice(
-    0,
-    frameIndices.length,
-  );
-  updateAnimation(animId, {
-    frameDetection: detection,
+  const reconciled = reconcileAnimationGeometry({
     frameWidth: width,
     frameHeight: height,
+    imageWidth: anim.source.sourceImage.width,
+    imageHeight: anim.source.sourceImage.height,
+    frameIndices: anim.frameIndices,
+    defaultDuration: anim.defaultDuration,
+    frameDurations: anim.frameDurations,
+    framePalettes: anim.framePalettes,
+    framePaletteIds: anim.framePaletteIds,
+    pixelOverrides: anim.pixelOverrides,
+    originX: anim.originX,
+    originY: anim.originY,
+  });
+  const frameIndices =
+    reconciled.frameIndices.length > 0
+      ? reconciled.frameIndices
+      : Array.from(
+          { length: Math.max(1, reconciled.totalFrames) },
+          (_, i) => i,
+        );
+  const frameDurations =
+    reconciled.frameIndices.length > 0
+      ? reconciled.frameDurations
+      : Array.from({ length: frameIndices.length }, () => anim.defaultDuration);
+  const framePalettes =
+    reconciled.frameIndices.length > 0
+      ? reconciled.framePalettes
+      : Array.from({ length: frameIndices.length }, () => null);
+  const framePaletteIds =
+    reconciled.frameIndices.length > 0
+      ? reconciled.framePaletteIds
+      : Array.from({ length: frameIndices.length }, () => null);
+
+  updateAnimation(animId, {
+    frameDetection: detection,
+    frameWidth: reconciled.frameWidth,
+    frameHeight: reconciled.frameHeight,
     frameIndices,
-    frameDurations:
-      validDurations.length === frameIndices.length
-        ? validDurations
-        : Array.from(
-            { length: frameIndices.length },
-            () => anim.defaultDuration,
-          ),
-    framePalettes:
-      validPalettes.length === frameIndices.length
-        ? validPalettes
-        : Array.from({ length: frameIndices.length }, () => null),
+    frameDurations,
+    framePalettes,
+    framePaletteIds,
+    pixelOverrides: reconciled.pixelOverrides,
   });
 }
 
@@ -2248,11 +2295,15 @@ function removeFrameFromAnimation(animId: string, frameIndex: number): void {
     const framePalettes = (anim.framePalettes ?? []).filter(
       (_, i) => i !== order,
     );
+    const framePaletteIds = (anim.framePaletteIds ?? []).filter(
+      (_, i) => i !== order,
+    );
     return {
       ...anim,
       frameIndices,
       frameDurations,
       framePalettes,
+      framePaletteIds,
     };
   });
   updateProject({
@@ -2441,6 +2492,9 @@ function resolveAnimationProjectModel(prj: ProjectView): {
         const compositeName = `${entityName}_${anim.name}`;
         definitions.push({
           id: anim.id,
+          assetId:
+            anim.source.assetId ??
+            normalizeProjectAssetId(undefined, 'spritesheet', anim.id),
           name: compositeName,
           entity: entityName,
           sourceImageName: anim.source.fileName,
