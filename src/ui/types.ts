@@ -91,6 +91,8 @@ export interface AnimationSettings {
   readonly quantizationCollapsed?: boolean;
 }
 
+import type { ProjectBackgroundSettingsConfig } from '../core/project';
+
 export interface ProjectView {
   readonly assetId?: string | null;
   readonly fileName: string | null;
@@ -116,6 +118,7 @@ export interface ProjectView {
   readonly chrRegions?: readonly ChrRegion[];
   readonly animation: AnimationSettings;
   readonly scenePreview?: ProjectScenePreviewConfig;
+  readonly backgrounds?: ProjectBackgroundSettingsConfig;
   readonly quantizationSettings: QuantizationSettings;
 }
 

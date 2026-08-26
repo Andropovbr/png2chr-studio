@@ -17,10 +17,29 @@ export interface AnimationWorkspaceState {
 }
 
 export type WorkspaceView =
-  'tileset' | 'playfield' | 'animation' | 'palette' | 'chr' | 'deliver';
+  | 'tileset'
+  | 'playfield'
+  | 'background'
+  | 'animation'
+  | 'palette'
+  | 'chr'
+  | 'deliver';
 
 export type ChrHighlightScope =
   'none' | 'frame' | 'animation' | 'entity' | 'base' | 'all';
+
+export type BackgroundTool = 'pencil' | 'picker' | 'erase' | 'palette';
+
+export interface BackgroundWorkspaceState {
+  readonly selectedMapId?: string | null;
+  readonly selectedCellIndex: number | null;
+  readonly activeTool: BackgroundTool;
+  readonly selectedTileKey: string | null;
+  readonly selectedPaletteIndex: number;
+  readonly zoom: number;
+  readonly showGrid: boolean;
+  readonly showAttributeOverlay: boolean;
+}
 
 export interface ChrWorkspaceState {
   readonly zoom: number;
@@ -50,6 +69,7 @@ export interface WorkspaceState {
   };
   readonly quantizationCollapsed: boolean;
   readonly animation: AnimationWorkspaceState;
+  readonly background: BackgroundWorkspaceState;
   readonly chr: ChrWorkspaceState;
 }
 
@@ -80,6 +100,16 @@ export function createWorkspaceState(
       paletteCollapsed: false,
       mappingCollapsed: true,
       previewCollapsed: false,
+    },
+    background: {
+      selectedMapId: null,
+      selectedCellIndex: null,
+      activeTool: 'pencil',
+      selectedTileKey: null,
+      selectedPaletteIndex: 0,
+      zoom: 2,
+      showGrid: true,
+      showAttributeOverlay: true,
     },
     chr: {
       zoom: 2,

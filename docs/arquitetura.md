@@ -642,3 +642,26 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
   - Reutiliza `normalizeCIdentifier` para sanitizar símbolos contra espaços, hífens, acentos, dígitos iniciais e palavras reservadas de C/ASM.
   - Saídas são 100% determinísticas (sem timestamps, IDs aleatórios ou dependências de locale).
   - Validações estritas de tamanho de buffer (`960B`, `64B`, `8192B`) e Pattern Table (`0 | 1`) garantem integridade sem mascarar erros.
+
+### 11.5 Background Workspace e Edição Visual de Nametables (`src/ui/background-workspace.ts`)
+
+- **Composição e Arquitetura de Tela:**
+  - O **Background Workspace** organiza a experiência de edição em três regiões articuladas sem criar empilhamento vertical excessivo:
+    - **Toolbar Superior (`.background-toolbar`):** seletor de mapa ativo, botão de criação (`+ Novo Mapa`), exclusão com confirmação, renomeação de mapa, seletor de Pattern Table (`PT0 ($0000)` / `PT1 ($1000)`) e associação de asset de imagem fonte (`kind: 'background-image'`).
+    - **Painel Esquerdo:** ferramentas de edição (Carimbo, Conta-gotas, Borracha, Pintura de Subpaleta), seletor de 4 subpaletas com cores reais do NES, e **Tile Browser** do asset fonte com navegação por teclado (roving tabindex).
+    - **Painel Central (Canvas 32×30):** viewport com HTML5 Canvas 256×240 px, escalável em 1x, 2x, 3x e 4x com renderização pixelada, grade 8×8 opcional, overlay de blocos 16×16 da Attribute Table com números de subpaleta visíveis, e suporte a gestos atômicos de arrasto.
+    - **Painel Direito (Inspetor & Diagnósticos):** exibe coordenadas de tela, pixel X/Y, chave lógica (`logicalKey`), subpaleta do bloco, índice da Attribute Table, índice local compilado (`localTileIndex`), slot físico compilado (`physicalTileIndex`) e botão para inspecionar o slot correspondente na **CHR Memory**, além da lista de diagnósticos do mapa.
+- **Invariante Central: UI Edita Exclusivamente o Modelo Lógico:**
+  - O workspace manipula e comita apenas instâncias de `BackgroundMapDefinition` (`cells` lógicas e `paletteAssignments`).
+  - O canvas renderiza o estado resolvido produzido por `buildBackgroundProjectModel`, garantindo que nenhuma decisão de alocação de CHR seja antecipada ou gravada pela interface gráfica.
+- **Pintura de Subpaleta com Granularidade Real de Hardware (16×16 px):**
+  - A interface reforça a restrição de hardware da Attribute Table: paletas são atribuídas a quadrantes 16×16 (2×2 tiles de 8×8).
+  - Ao pintar uma subpaleta, o quadrante correspondente (`quadrantIndex = Math.floor(row / 2) * 16 + Math.floor(col / 2)`) é atualizado e reflete imediatamente em todas as 4 células do bloco.
+- **Acessibilidade e Atalhos de Teclado:**
+  - Viewport focável com cursor navegável via setas (`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`);
+  - `Espaço` / `Enter`: aplica a ferramenta ativa na célula atual;
+  - `Delete` / `Backspace`: apaga a célula atual (`null`);
+  - `1`, `2`, `3`, `4`: seleciona subpaletas 0 a 3;
+  - `G`: alterna grade de tiles 8×8;
+  - `A`: alterna overlay da Attribute Table 16×16;
+  - `P`, `E`, `I`: alternam para Carimbo (`pencil`), Borracha (`erase`) e Conta-gotas (`picker`).
