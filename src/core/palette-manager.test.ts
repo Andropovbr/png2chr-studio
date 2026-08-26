@@ -266,4 +266,44 @@ describe('palette-manager domain module', () => {
     expect(flashRefs[0]?.name).toBe('Boss_phase2');
     expect(flashRefs[0]?.detail).toBe('Frame palette override');
   });
+
+  it('creates custom default palette definitions based on provided basePaletteSet', () => {
+    const customBase = [
+      [0x0f, 0x10, 0x20, 0x30],
+      [0x0f, 0x11, 0x21, 0x31],
+      [0x0f, 0x12, 0x22, 0x32],
+      [0x0f, 0x13, 0x23, 0x33],
+    ] as const;
+
+    const defs = createDefaultPaletteDefinitions(customBase);
+    expect(defs).toHaveLength(4);
+    expect(defs[0]?.colors).toEqual([0x0f, 0x10, 0x20, 0x30]);
+    expect(defs[1]?.colors).toEqual([0x0f, 0x11, 0x21, 0x31]);
+    expect(defs[2]?.colors).toEqual([0x0f, 0x12, 0x22, 0x32]);
+    expect(defs[3]?.colors).toEqual([0x0f, 0x13, 0x23, 0x33]);
+  });
+
+  it('handles empty/null/undefined palette references in resolveSpritePaletteSlot gracefully', () => {
+    const resNull = resolveSpritePaletteSlot(null, null, null);
+    expect(resNull.isActive).toBe(false);
+    expect(resNull.slotIndex).toBeNull();
+    expect(resNull.definition).toBeNull();
+
+    const resEmpty = resolveSpritePaletteSlot('', ['pal_1'], []);
+    expect(resEmpty.isActive).toBe(false);
+    expect(resEmpty.slotIndex).toBeNull();
+  });
+
+  it('supports custom name when duplicating a palette', () => {
+    const original: PaletteDefinition = {
+      id: 'pal_hero',
+      name: 'Hero Normal',
+      colors: [0x0f, 0x11, 0x21, 0x30],
+    };
+
+    const duplicate = duplicatePaletteDefinition(original, 'Hero Super Saiyan');
+    expect(duplicate.name).toBe('Hero Super Saiyan');
+    expect(duplicate.colors).toEqual(original.colors);
+    expect(duplicate.id).not.toBe(original.id);
+  });
 });

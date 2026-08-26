@@ -665,3 +665,22 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
   - `G`: alterna grade de tiles 8×8;
   - `A`: alterna overlay da Attribute Table 16×16;
   - `P`, `E`, `I`: alternam para Carimbo (`pencil`), Borracha (`erase`) e Conta-gotas (`picker`).
+
+---
+
+## 12. Palette Manager (Milestone 9)
+
+A Milestone 9 formaliza o subsistema de **Paletas NES** como recursos explícitos de primeira classe do projeto, eliminando conflitos entre sprites e backgrounds e garantindo aderência rigorosa às restrições de memória de paleta da PPU do NES ($3F00..$3F1F).
+
+Para a especificação técnica completa e detalhamento de cada aspecto, consulte [**Arquitetura e Especificação: Palette Manager**](./palette-manager.md).
+
+### Princípios do Palette Manager:
+
+1. **Recurso de Primeira Classe (`PaletteDefinition`):** Paletas possuem identidade estável (`ProjectPaletteId`), nomes descritivos e 4 entradas de cor NES ($00..$3F), existindo de forma independente de suas atribuições físicas a slots de hardware.
+2. **Bancos Ativos Duplos (Dual Hardware Banks):**
+   - **Banco de Background (PPU $3F00..$3F0F):** 4 slots de subpaleta (0..3) dedicados a Nametables e cenários;
+   - **Banco de Sprites (PPU $3F10..$3F1F):** 4 slots de subpaleta (0..3) dedicados a metasprites OAM.
+3. **Gestão Canônica da Cor Universal de Background ($3F00):** O endereço `$3F00`é a cor de fundo universal do projeto; seus espelhos em`$3F04`, `$3F08`, `$3F0C` e `$3F10`, `$3F14`, `$3F18`, `$3F1C` são tratados de forma coerente e transparente em renderização e edição.
+4. **Rastreamento de Uso Bidirecional:** Localização determinística de referências em animações, metasprites, frames, mapas de background e slots ativos.
+5. **Diagnósticos e Validação NES:** Fatos diagnósticos estruturados (`dangling-palette-reference`, `unassigned-active-slot`, `slot-capacity-exceeded`, `invalid-nes-color`, `inconsistent-universal-color`).
+6. **Exportação Abrangente:** Suporte a arquivos binários `.pal` (16B e 32B), arrays em C (cc65) e ca65 Assembly com tabelas separadas para background e sprites.
