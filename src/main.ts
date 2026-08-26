@@ -3121,6 +3121,55 @@ function renderPaletteWorkspace(): void {
   app.replaceChildren(shell);
 }
 
+function buildProjectBackgroundModels(
+  currentProject: ProjectView,
+): readonly BackgroundProjectModel[] {
+  if (
+    !currentProject.backgrounds?.maps ||
+    currentProject.backgrounds.maps.length === 0
+  ) {
+    return [];
+  }
+
+  const projectAssets = extractProjectAssets(currentProject);
+  const assetTilesMap = new Map<ProjectAssetId, readonly Tile[]>();
+  if (projectAssets.length > 0 && currentProject.tiles.length > 0) {
+    for (const asset of projectAssets) {
+      assetTilesMap.set(asset.id, currentProject.tiles);
+    }
+  }
+
+  const tileMap = new Map<LogicalTileKey, Tile>();
+  for (const [assetId, tiles] of assetTilesMap.entries()) {
+    for (const t of tiles) {
+      tileMap.set(`${assetId}:${String(t.column)}:${String(t.row)}`, t);
+    }
+  }
+
+  const baseChr =
+    currentProject.animation.destinationChr.length > 0
+      ? currentProject.animation.destinationChr
+      : null;
+  const chrRegions = currentProject.chrRegions;
+
+  const models: BackgroundProjectModel[] = [];
+  for (const map of currentProject.backgrounds.maps) {
+    try {
+      const model = buildBackgroundProjectModel({
+        map,
+        baseChr,
+        chrRegions,
+        tileMap,
+      });
+      models.push(model);
+    } catch {
+      // Ignore uncompilable maps
+    }
+  }
+
+  return models;
+}
+
 function renderChrWorkspace(): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
   const manualChr =
@@ -3198,6 +3247,8 @@ function renderChrWorkspace(): void {
         )
       : undefined;
 
+  const backgroundModels = buildProjectBackgroundModels(project);
+
   const chrAssetMappingIndex = buildChrAssetMappingIndex({
     mode: project.mode,
     animationModel: animModel,
@@ -3211,6 +3262,7 @@ function renderChrWorkspace(): void {
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
     chrRegions: project.chrRegions,
+    backgroundModels,
   });
 
   const workspaceElement = createChrWorkspace({
@@ -3351,6 +3403,18 @@ function renderChrWorkspace(): void {
         activeWorkspace: 'tileset',
       });
       changeMode('tileset');
+    },
+    onNavigateToBackground: (mapId: string, cellIndex?: number) => {
+      updateWorkspace({
+        ...workspace,
+        activeWorkspace: 'background',
+        background: {
+          ...workspace.background,
+          selectedMapId: mapId,
+          selectedCellIndex: cellIndex ?? null,
+        },
+      });
+      render();
     },
     onDownloadBytes: downloadBytes,
     onDownloadText: downloadText,
@@ -3526,6 +3590,8 @@ function renderDeliveryWorkspace(): void {
       ? project.animation.destinationChr
       : null;
 
+  const backgroundModels = buildProjectBackgroundModels(project);
+
   const chrAssetMappingIndex = buildChrAssetMappingIndex({
     mode: project.mode,
     animationModel: animModel,
@@ -3539,6 +3605,7 @@ function renderDeliveryWorkspace(): void {
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
     chrRegions: project.chrRegions,
+    backgroundModels,
   });
 
   const workspaceElement = createDeliveryWorkspace({
@@ -3617,7 +3684,6 @@ function renderBackgroundWorkspace(): void {
     backgrounds.activeMapId ??
     backgrounds.maps[0]?.id ??
     null;
-  const activeMap = backgrounds.maps.find((m) => m.id === activeMapId) ?? null;
 
   // Extract available project assets
   const projectAssets = extractProjectAssets(project);
@@ -3629,38 +3695,9 @@ function renderBackgroundWorkspace(): void {
   }
 
   // Compile active map model
-  let compiledModel: BackgroundProjectModel | null = null;
-  if (activeMap) {
-    const baseChr =
-      project.animation.destinationChr.length > 0
-        ? project.animation.destinationChr
-        : null;
-    const chrRegions = project.chrRegions;
-
-    const tileMap = new Map<LogicalTileKey, Tile>();
-    if (activeMap.assetId && assetTilesMap.has(activeMap.assetId)) {
-      const tiles = assetTilesMap.get(activeMap.assetId);
-      if (tiles) {
-        for (const t of tiles) {
-          tileMap.set(
-            `${activeMap.assetId}:${String(t.column)}:${String(t.row)}`,
-            t,
-          );
-        }
-      }
-    }
-
-    try {
-      compiledModel = buildBackgroundProjectModel({
-        map: activeMap,
-        baseChr,
-        chrRegions,
-        tileMap,
-      });
-    } catch {
-      compiledModel = null;
-    }
-  }
+  const backgroundModels = buildProjectBackgroundModels(project);
+  const compiledModel =
+    backgroundModels.find((m) => m.map.id === activeMapId) ?? null;
 
   const reconciliationResult = reconcileBackgroundMaps(backgrounds.maps, {
     availableAssetIds: new Set(projectAssets.map((a) => a.id)),
@@ -3680,6 +3717,10 @@ function renderBackgroundWorkspace(): void {
       updateWorkspace({
         ...workspace,
         background: { ...workspace.background, selectedMapId: mapId },
+      });
+      updateProject({
+        ...project,
+        backgrounds: { ...backgrounds, activeMapId: mapId },
       });
       render();
     },

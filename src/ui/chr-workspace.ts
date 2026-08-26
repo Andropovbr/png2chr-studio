@@ -113,6 +113,7 @@ export interface ChrWorkspaceOptions {
     frameIndex: number,
   ) => void;
   readonly onNavigateToPlayfield?: (column: number, row: number) => void;
+  readonly onNavigateToBackground?: (mapId: string, cellIndex?: number) => void;
   readonly onNavigateToTileset?: (tileIndex: number) => void;
   readonly onDownloadBytes?: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText?: (text: string, fileName: string) => void;
@@ -2061,8 +2062,10 @@ export function createChrWorkspace(
           options.onNavigateToWorkspace('playfield');
         }
       } else if (ref.type === 'background') {
-        if (options.onNavigateToWorkspace) {
-          options.onNavigateToWorkspace('playfield');
+        if (options.onNavigateToBackground) {
+          options.onNavigateToBackground(ref.mapId, ref.nametableIndex);
+        } else if (options.onNavigateToWorkspace) {
+          options.onNavigateToWorkspace('background');
         }
       } else {
         if (options.onNavigateToTileset) {
@@ -2074,6 +2077,7 @@ export function createChrWorkspace(
     },
     onNavigateToAnimation: options.onNavigateToAnimation,
     onNavigateToPlayfield: options.onNavigateToPlayfield,
+    onNavigateToBackground: options.onNavigateToBackground,
     onNavigateToTileset: options.onNavigateToTileset,
     onDeselect: () => {
       if (options.onSelectTile) {

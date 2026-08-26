@@ -34,6 +34,12 @@ A ferramenta opera inteiramente no navegador do usuário (sem backend nem upload
    - Preview de cena multi-entidade com posicionamento e reprodução independentes.
    - Exportação de CHR física de 8 KiB, metadados JSON v5, código C pronto para cc65 e assembly para ca65.
 
+4. **Modo Background Pipeline:**
+   - Criação e composição de telas de background NES completas (32×30 tiles, 256×240 px).
+   - Pintura de Attribute Table 16×16 px com seleção de subpaletas (0..3).
+   - Alocação determinística de CHR em Pattern Tables (PT0 / PT1) com deduplicação ExactMatch, preservação de Base CHR e respeito a CHR Reservations.
+   - Exportadores para `.nam` (960 B), `.atr` (64 B), `.map` (1024 B), `.chr`, `.pal`, cc65 C (`.h`/`.c`) e ca65 ASM (`.inc`/`.s`).
+
 ---
 
 ## 📚 Índice da Documentação
@@ -52,6 +58,7 @@ A documentação técnica detalhada está estruturada nos seguintes tópicos:
 | [**Investigação: CHR Regions & Reservations**](./investigations/chr-regions-reservations.md)         | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 5 (Regiões e Reservas de CHR).                                                                        |
 | [**Investigação: Tile Ownership & Asset Mapping**](./investigations/tile-ownership-asset-mapping.md) | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 6 (Posse de Tiles, Identidade de Assets e Mapeamento Asset-to-CHR).                                   |
 | [**Investigação: Sprite Sheet → CHR Integration**](./investigations/spritesheet-chr-integration.md)  | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 7 (Integração de Sprite Sheets com CHR e Metasprites).                                                |
+| [**Investigação: Background Pipeline**](./investigations/background-pipeline.md)                     | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 8 (Pipeline de Background, Nametables e Attribute Tables).                                            |
 
 ---
 
