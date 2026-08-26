@@ -51,6 +51,7 @@ A documentação técnica detalhada está estruturada nos seguintes tópicos:
 | [**Histórico de Mudanças Técnicas**](./historico/README.md)                                          | Diretório destinado ao registro de decisões arquiteturais, alterações estruturais de formato e notas de migração técnica.                                                          |
 | [**Investigação: CHR Regions & Reservations**](./investigations/chr-regions-reservations.md)         | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 5 (Regiões e Reservas de CHR).                                                                        |
 | [**Investigação: Tile Ownership & Asset Mapping**](./investigations/tile-ownership-asset-mapping.md) | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 6 (Posse de Tiles, Identidade de Assets e Mapeamento Asset-to-CHR).                                   |
+| [**Investigação: Sprite Sheet → CHR Integration**](./investigations/spritesheet-chr-integration.md)  | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 7 (Integração de Sprite Sheets com CHR e Metasprites).                                                |
 
 ---
 
