@@ -430,3 +430,11 @@ ${id}_sprite_pattern_table:
     estimatedRomBytes: estimatedRomBytes(model),
   };
 }
+
+/**
+ * Returns the exact 8 KiB CHR-ROM binary buffer resolved by the animation project model.
+ * Does not re-encode or modify CHR data.
+ */
+export function exportAnimationChr(model: AnimationProjectModel): Uint8Array {
+  return model.finalChr;
+}

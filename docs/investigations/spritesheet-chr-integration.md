@@ -306,19 +306,25 @@ Recomendamos a decomposição da Milestone 7 nas seguintes **6 issues executáve
 
 ---
 
-### Issue 5: `exporters: align metasprite data generation for cc65 C, ca65 ASM and JSON v5`
+### Issue 5: `exporters: align metasprite data generation for cc65 C, ca65 ASM and JSON v5` (Concluída na Issue #98)
 
 - **Objetivo:** Garantir que todos os exportadores de código e metadados consumam o modelo canônico de spritesheets alocadas, gerando estruturas limpas, enxutas e prontas para ROMs de NES.
 - **Escopo:**
   - Exportador C (cc65): headers `.h` e sources `.c` com structs achatadas de metasprites, frames e animações;
   - Exportador ASM (ca65): includes `.inc` e sources `.s` com diretivas de bytes formatadas e offsets de labels;
   - Exportador JSON: metadados no formato `png2chr-studio-animation` versão 5;
+  - Exportador CHR binário puro via `exportAnimationChr`;
   - Cálculo exato da estimativa de consumo de ROM em bytes.
-- **Dependências:** Issues 1, 2 e 3.
-- **Critérios de Aceite:**
+- **Dependências:** Issues 1, 2, 3 e 4 (#94, #95, #96, #97).
+- **Critérios de Aceite Atendidos:**
   - Structs C e tabelas ASM compilam diretamente em projetos cc65/ca65 sem necessidade de ajustes manuais;
-  - Índices de tiles gravados no OAM utilizam o valor local de 8 bits `0..255`;
-  - A estimativa de consumo de ROM reflete com precisão os bytes das tabelas exportadas.
+  - Índices de tiles gravados no OAM utilizam estritamente o valor local de 8 bits `0..255`;
+  - Constantes de Pattern Table (`0` para PT0, `1` para PT1) emitidas em C (`#define`) e ASM (`=`);
+  - JSON v5 preserva distinção entre `tile` (local `0..255`) e `physical_tile_index` (global `0..511`);
+  - Coordenadas de metasprites relativas à âncora `[-128, 127]` são serializadas como números com sinal em C/JSON e bytes em complemento de dois em ASM;
+  - Deduplicação flip-aware e subpaletas são refletidas byte-a-byte no atributo OAM (`0x00..0xFF`);
+  - A estimativa de consumo de ROM reflete com precisão os bytes das tabelas exportadas;
+  - 100% de equivalência semântica verificada em suíte de testes cobrindo todos os cenários.
 
 ---
 
