@@ -350,15 +350,31 @@ A normalização de projetos legados ou parciais segue as seguintes regras estri
 
 ## 11. Validação NES e Diagnósticos
 
-O subsistema de diagnósticos receberá fatos estruturados específicos (`PaletteDiagnosticFact`):
+`analyzeProjectPaletteDiagnostics` implementa uma análise pura, sem DOM, estado global ou correções automáticas. O retorno é uma lista determinística e somente leitura de `PaletteDiagnosticFact`; cada fato mantém código discriminado, severidade e contexto estruturado, enquanto a apresentação no **Deliver & Export** aplica i18n em inglês ou português.
 
-| Tipo de Diagnóstico            | Severidade | Condição de Disparo                                                                      | Ação Sugerida                                                             |
-| :----------------------------- | :--------- | :--------------------------------------------------------------------------------------- | :------------------------------------------------------------------------ |
-| `dangling-palette-reference`   | `error`    | Asset (animação/frame) referencia `paletteId` inexistente na biblioteca.                 | Reatribuir a uma paleta válida ou recriar a definição.                    |
-| `unassigned-active-slot`       | `warning`  | Asset em uso ativo referencia paleta que não está atribuída a nenhum dos 4 slots ativos. | Atribuir a paleta a um slot livre (0..3) no banco correspondente.         |
-| `slot-capacity-exceeded`       | `error`    | Cena ou frame requer simultaneamente mais de 4 subpaletas de sprite.                     | Reutilizar subpaletas ou unificar cores de sprites para caber em 4 slots. |
-| `invalid-nes-color`            | `error`    | Código de cor fora da faixa $00..$3F.                                                    | Corrigir o índice de cor para a faixa válida de 6 bits do NES.            |
-| `inconsistent-universal-color` | `warning`  | Subpaleta de fundo possui cor 0 diferente da cor universal global `$3F00`.               | Alinhar a cor com a cor universal ou sincronizar o projeto.               |
+| Código                         | Severidade | Condição implementada                                                                                                                         | Correção possível                                                           |
+| :----------------------------- | :--------- | :-------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| `dangling-palette-reference`   | `error`    | `paletteId` persistido por animação, override de frame, instância de cena, consumer de background ou slot ativo não existe na biblioteca.     | Reatribuir a uma paleta válida, recriar a definição ou limpar a referência. |
+| `unassigned-active-slot`       | `warning`  | Um consumer usa uma paleta lógica válida, mas ela não está em nenhum dos quatro slots ativos do banco de Sprite ou Background correspondente. | Atribuir a paleta a um slot físico `0..3` no banco correto.                 |
+| `slot-capacity-exceeded`       | `error`    | Um mesmo contexto de cena visível requer mais de quatro IDs de paleta de Sprite distintos simultaneamente.                                    | Compartilhar/reduzir subpaletas entre as entidades simultâneas.             |
+| `invalid-nes-color`            | `error`    | `universalBackgroundColor` ou uma entrada de `PaletteDefinition.colors` não é inteiro no intervalo inclusivo `$00..$3F`.                      | Corrigir o valor para um código de cor NES válido.                          |
+| `inconsistent-universal-color` | `warning`  | Uma paleta de Background, ou uma paleta `shared` efetivamente alocada ao banco de Background, possui `colors[0]` diferente de `$3F00`.        | Alinhar a entrada 0 à cor universal ou alterar conscientemente `$3F00`.     |
+
+### 11.1 Referência dangling versus slot não atribuído
+
+Os dois estados são deliberadamente distintos. Uma referência a um ID ausente é erro de integridade (`dangling-palette-reference`). Uma referência a uma definição existente que ainda não ocupa um slot ativo é um warning de alocação (`unassigned-active-slot`). Paletas que existem apenas na biblioteca, slots `null` sem consumers e bibliotecas com mais de quatro recursos são estados válidos e não geram fatos por si sós.
+
+### 11.2 Simultaneidade e capacidade
+
+O limite de quatro é calculado por contexto de cena, contando um `Set` de IDs de paleta efetivamente exigidos pelas instâncias visíveis. Várias entidades que compartilham o mesmo ID consomem uma única subpaleta. Cenas distintas são avaliadas separadamente, e animações que não coexistem em uma cena não são somadas globalmente. Quando o contexto informa um frame, o override de `framePaletteIds` tem precedência sobre a paleta padrão da animação.
+
+Não há diagnóstico de overflow de Background nesta etapa: `BackgroundMapDefinition.paletteAssignments` referencia diretamente slots físicos `0..3` da Attribute Table e o modelo atual não possui um contexto que requeira mais de quatro paletas lógicas de Background simultâneas. Criar um overflow a partir do tamanho da biblioteca ou da quantidade de mapas produziria falso positivo.
+
+### 11.3 Deduplicação e ordem
+
+A chave `id` de cada fato representa a referência corrigível (consumer, frame, banco/slot ou contexto). Repetições estruturais idênticas são removidas, mas consumers diferentes continuam gerando fatos independentes. A saída ordena primeiro severidade, depois tipo e chave estável; ela não depende da ordem de iteração de objetos ou do locale ativo.
+
+O analyzer compartilha os mesmos tipos de consumer de `findPaletteUsageReferences`, mas mantém traversal próprio para os fatos: o helper de uso consolida animações por entidade e não preserva índice de frame, banco nem contexto simultâneo suficientes para uma correção diagnóstica precisa. Assim, não se altera a semântica retrocompatível desse helper nem se perde localização nos novos fatos.
 
 ---
 
@@ -441,7 +457,7 @@ O **Palette Workspace** será organizado em quatro seções principais:
 
 ## 15. Roadmap de Implementação e Fatiamento de Issues
 
-Para transformar esta especificação em incrementos executáveis, a Milestone 9 será dividida em **8 issues sequenciais**:
+Para transformar esta especificação em incrementos executáveis, a Milestone 9 foi dividida em **8 issues sequenciais**. As Issues #121 a #124 já estão implementadas; as etapas seguintes permanecem no roadmap:
 
 ```mermaid
 flowchart TD

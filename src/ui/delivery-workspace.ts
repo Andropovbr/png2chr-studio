@@ -27,7 +27,12 @@ import {
   encodeNesBackgroundPalettes,
   type NesPaletteSet,
 } from '../core/nes-palette';
-import { type PaletteDefinition } from '../core/palette-manager';
+import {
+  analyzeProjectPaletteDiagnostics,
+  formatPaletteDiagnosticMessage,
+  type PaletteDefinition,
+  type PaletteDiagnosticFact,
+} from '../core/palette-manager';
 import type { IndexedImage } from '../core/types';
 import { t, type TranslationKey } from '../i18n';
 import type { DisplayError, ProjectMode } from './types';
@@ -67,8 +72,18 @@ export interface DeliveryWorkspaceOptions {
   readonly attributeTable: Uint8Array | null;
   readonly collisionMap: Uint8Array | null;
   readonly paletteSet: NesPaletteSet;
+  readonly universalBackgroundColor?: number;
   readonly palettes?: readonly PaletteDefinition[];
+  readonly activeBackgroundSlots?: readonly (string | null)[];
+  readonly activeSpriteSlots?: readonly (string | null)[];
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly paletteAnimations?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly entity?: string;
+    readonly paletteId?: string | null;
+    readonly framePaletteIds?: readonly (string | null)[];
+  }[];
   readonly animationModel: AnimationProjectModel | null;
   readonly animationModelError: AnimationModelError | null;
   readonly error: DisplayError | null;
@@ -76,6 +91,17 @@ export interface DeliveryWorkspaceOptions {
   readonly chrSlotClassifications?: readonly ChrSlotClassification[];
   readonly chrAssetMappingIndex?: ChrAssetMappingIndex;
   readonly activeAssets?: readonly ProjectAsset[];
+  readonly scenePreview?: {
+    readonly instances?: readonly {
+      readonly id: string;
+      readonly name?: string;
+      readonly entityId?: string;
+      readonly animationName?: string;
+      readonly paletteId?: string | null;
+      readonly visible?: boolean;
+    }[];
+  };
+  readonly paletteDiagnostics?: readonly PaletteDiagnosticFact[];
   readonly onDownloadBytes: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText: (text: string, fileName: string) => void;
   readonly onNavigateWorkspace?: (view: WorkspaceView) => void;
@@ -259,22 +285,6 @@ export function createDeliveryWorkspace(
           actionLabel: t('deliveryLinkChr'),
         });
       }
-
-      if (options.palettes && options.activeSpritePaletteSlots) {
-        const unassignedSlots = options.activeSpritePaletteSlots.filter(
-          (id) => id === null || !options.palettes?.some((p) => p.id === id),
-        ).length;
-        if (unassignedSlots > 0) {
-          diagnostics.push({
-            level: 'warning',
-            message: t('scenePreviewSlotWarning', {
-              count: unassignedSlots,
-            }),
-            targetWorkspace: 'palette',
-            actionLabel: t('deliveryLinkPalettes'),
-          });
-        }
-      }
     }
   } else if (options.mode === 'playfield') {
     if (options.nametable === null && options.error === null) {
@@ -324,6 +334,29 @@ export function createDeliveryWorkspace(
         actionLabel: t('deliveryLinkChr'),
       });
     }
+  }
+
+  // 1.6 Palette integrity and NES hardware diagnostics
+  const paletteFacts =
+    options.paletteDiagnostics ??
+    analyzeProjectPaletteDiagnostics({
+      universalBackgroundColor:
+        options.universalBackgroundColor ?? options.paletteSet[0][0],
+      palettes: options.palettes ?? [],
+      activeBackgroundSlots: options.activeBackgroundSlots,
+      activeSpriteSlots:
+        options.activeSpriteSlots ?? options.activeSpritePaletteSlots,
+      animations: options.paletteAnimations,
+      scenePreview: options.scenePreview,
+    });
+  for (const fact of paletteFacts) {
+    diagnostics.push({
+      id: fact.id,
+      level: fact.severity,
+      message: formatPaletteDiagnosticMessage(fact),
+      targetWorkspace: 'palette',
+      actionLabel: t('deliveryLinkPalettes'),
+    });
   }
 
   const errorCount = diagnostics.filter((d) => d.level === 'error').length;

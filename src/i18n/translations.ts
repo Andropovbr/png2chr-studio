@@ -267,6 +267,32 @@ const en = {
     'No ownership or mapping integrity issues detected.',
   chrOwnershipDiagnosticsInspectSlot: 'Inspect slot',
   chrOwnershipDiagnosticsHighlightAsset: 'Highlight asset',
+  // Palette Diagnostics (Milestone 9 - Issue #124)
+  paletteBankBackground: 'Background',
+  paletteBankSprite: 'Sprite',
+  paletteConsumerAnimation: 'animation',
+  paletteConsumerBackground: 'background',
+  paletteConsumerScene: 'scene instance',
+  paletteDiagDanglingReference:
+    'Asset "{consumerName}" ({consumerType}) references nonexistent palette ID "{paletteId}". Reassign to a valid palette definition.',
+  paletteDiagDanglingSlotReference:
+    '{bank} Palette Slot {slotIndex} references nonexistent palette ID "{paletteId}". Assign a valid palette definition or clear the slot.',
+  paletteDiagDanglingFrameReference:
+    'Frame #{frameIndex} of "{consumerName}" references nonexistent palette ID "{paletteId}". Reassign to a valid palette definition.',
+  paletteDiagUnassignedSlot:
+    'Asset "{consumerName}" uses palette "{paletteName}", but it is not assigned to any active {bank} slot (0..3). Assign it to a hardware slot for proper rendering.',
+  paletteDiagUnassignedFrameSlot:
+    'Frame #{frameIndex} of "{consumerName}" uses palette "{paletteName}", but it is not assigned to any active {bank} slot (0..3). Assign it to a hardware slot for proper rendering.',
+  paletteDiagSlotCapacityExceeded:
+    'Context "{contextName}" requires {requiredCount} distinct {bank} palettes simultaneously, exceeding the NES hardware limit of {maxCapacity} slots. Reuse or consolidate palettes in this context.',
+  paletteDiagInvalidColor:
+    'Palette "{paletteName}" entry {colorIndex} has invalid NES color code ${hex} ({value}). NES color codes must be between $00 and $3F.',
+  paletteDiagInvalidUniversalColor:
+    'Universal background color ($3F00) has invalid NES color code ${hex} ({value}). NES color codes must be between $00 and $3F.',
+  paletteDiagInconsistentUniversalColor:
+    'Background palette "{paletteName}" has color 0 (${actualHex}) that differs from the project universal background color ${expectedHex} ($3F00). In NES hardware, all background subpalettes share color 0 at $3F00; align entry 0 or change the project universal color.',
+  paletteDiagnosticsTitle: 'Palette & Color Integrity Diagnostics',
+  paletteDiagnosticsEmpty: 'No palette or color integrity issues detected.',
   chrAssetMetricsTitle: 'Asset CHR Usage & Metrics',
   chrAssetMetricsSubtitle:
     'Resource accounting and physical slot allocation per project asset.',
@@ -1217,6 +1243,33 @@ const ptBr = {
     'Nenhum problema de propriedade ou integridade detectado.',
   chrOwnershipDiagnosticsInspectSlot: 'Inspecionar slot',
   chrOwnershipDiagnosticsHighlightAsset: 'Destacar asset',
+  // Palette Diagnostics (Milestone 9 - Issue #124)
+  paletteBankBackground: 'Background',
+  paletteBankSprite: 'Sprite',
+  paletteConsumerAnimation: 'animação',
+  paletteConsumerBackground: 'background',
+  paletteConsumerScene: 'instância de cena',
+  paletteDiagDanglingReference:
+    'O asset "{consumerName}" ({consumerType}) referencia a paleta inexistente "{paletteId}". Reatribua a uma definição de paleta válida.',
+  paletteDiagDanglingSlotReference:
+    'O slot {slotIndex} de paleta de {bank} referencia a paleta inexistente "{paletteId}". Atribua uma definição válida ou limpe o slot.',
+  paletteDiagDanglingFrameReference:
+    'O frame #{frameIndex} de "{consumerName}" referencia a paleta inexistente "{paletteId}". Reatribua a uma definição de paleta válida.',
+  paletteDiagUnassignedSlot:
+    'O asset "{consumerName}" usa a paleta "{paletteName}", mas ela não está atribuída a nenhum slot ativo de {bank} (0..3). Atribua-a a um slot de hardware para renderização correta.',
+  paletteDiagUnassignedFrameSlot:
+    'O frame #{frameIndex} de "{consumerName}" usa a paleta "{paletteName}", mas ela não está atribuída a nenhum slot ativo de {bank} (0..3). Atribua-a a um slot de hardware para renderização correta.',
+  paletteDiagSlotCapacityExceeded:
+    'O contexto "{contextName}" requer {requiredCount} subpaletas distintas de {bank} simultaneamente, excedendo o limite de hardware do NES de {maxCapacity} slots. Reutilize ou consolide paletas nesse contexto.',
+  paletteDiagInvalidColor:
+    'A entrada {colorIndex} da paleta "{paletteName}" possui código de cor NES inválido ${hex} ({value}). Códigos de cor NES devem estar entre $00 e $3F.',
+  paletteDiagInvalidUniversalColor:
+    'A cor universal de background ($3F00) possui código de cor NES inválido ${hex} ({value}). Códigos de cor NES devem estar entre $00 e $3F.',
+  paletteDiagInconsistentUniversalColor:
+    'A subpaleta de background "{paletteName}" possui cor 0 (${actualHex}) diferente da cor universal de fundo do projeto ${expectedHex} ($3F00). No hardware do NES, todas compartilham a cor 0 em $3F00; alinhe a entrada 0 ou altere a cor universal do projeto.',
+  paletteDiagnosticsTitle: 'Diagnósticos de Paleta e Cores',
+  paletteDiagnosticsEmpty:
+    'Nenhum problema de integridade de paletas ou cores detectado.',
   chrAssetMetricsTitle: 'Uso de CHR por Asset & Métricas',
   chrAssetMetricsSubtitle:
     'Contabilidade de recursos e alocação física de slots por asset do projeto.',

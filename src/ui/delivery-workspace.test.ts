@@ -622,4 +622,65 @@ describe('Delivery Workspace', () => {
     fixBtn?.click();
     expect(onNavigateWorkspace).toHaveBeenCalledWith('chr');
   });
+
+  it('aggregates palette diagnostics with existing readiness diagnostics', () => {
+    const options = createOptions({
+      mode: 'playfield',
+      nametable: null,
+      palettes: [
+        {
+          id: 'pal_valid',
+          name: 'Valid',
+          colors: [0x0f, 0x01, 0x11, 0x21],
+          target: 'sprite',
+        },
+      ],
+      activeBackgroundSlots: [null, null, null, null],
+      activeSpriteSlots: ['pal_valid', null, null, null],
+      paletteAnimations: [
+        {
+          id: 'anim_boss',
+          name: 'Boss Walk',
+          paletteId: 'pal_missing',
+        },
+      ],
+    });
+
+    const el = createDeliveryWorkspace(options) as unknown as MockElement;
+    const diagnostics = el.querySelectorAll('.delivery-diag-item');
+
+    expect(
+      diagnostics.some((item) => item.textContent.includes('pal_missing')),
+    ).toBe(true);
+    expect(diagnostics.length).toBeGreaterThanOrEqual(2);
+    expect(
+      el
+        .querySelector('.delivery-status-card')
+        ?.classList.contains('status-error'),
+    ).toBe(true);
+  });
+
+  it('does not create palette false positives for a large unused library or empty slots', () => {
+    const palettes = Array.from({ length: 7 }, (_, index) => ({
+      id: `pal_${String(index)}`,
+      name: `Palette ${String(index)}`,
+      colors: [0x0f, 0x01, 0x11, 0x21] as const,
+      target: 'sprite' as const,
+    }));
+    const options = createOptions({
+      palettes,
+      activeBackgroundSlots: [null, null, null, null],
+      activeSpriteSlots: ['pal_0', 'pal_1', 'pal_2', 'pal_3'],
+      activeSpritePaletteSlots: ['pal_0', 'pal_1', 'pal_2', 'pal_3'],
+      paletteAnimations: [],
+    });
+
+    const el = createDeliveryWorkspace(options) as unknown as MockElement;
+    expect(el.querySelectorAll('.delivery-diag-item')).toHaveLength(0);
+    expect(
+      el
+        .querySelector('.delivery-status-card')
+        ?.classList.contains('status-ready'),
+    ).toBe(true);
+  });
 });
