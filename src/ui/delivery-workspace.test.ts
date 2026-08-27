@@ -10,10 +10,13 @@ import {
 } from '../core/animation-model';
 import { padChrRom } from '../core/chr-rom';
 import {
-  createDefaultNesPaletteSet,
-  encodeNesBackgroundPalettes,
-} from '../core/nes-palette';
-import { createDefaultPaletteDefinitions } from '../core/palette-manager';
+  exportBackgroundPaletteBinary,
+  exportFullPpuPaletteBinary,
+  exportSpritePaletteBinary,
+  generateCa65PaletteExport,
+  generateCPaletteExport,
+} from '../core/palette-exporters';
+import { createDefaultDualBankPaletteState } from '../core/palette-manager';
 import type { IndexedImage } from '../core/types';
 import {
   createDeliveryWorkspace,
@@ -213,8 +216,7 @@ function createSampleAnimationModel(): AnimationProjectModel {
 function createOptions(
   overrides?: Partial<DeliveryWorkspaceOptions>,
 ): DeliveryWorkspaceOptions {
-  const paletteSet = createDefaultNesPaletteSet();
-  const palettes = createDefaultPaletteDefinitions(paletteSet);
+  const paletteState = createDefaultDualBankPaletteState();
   return {
     mode: 'tileset',
     projectName: 'Demo Project',
@@ -230,9 +232,7 @@ function createOptions(
     nametable: null,
     attributeTable: null,
     collisionMap: null,
-    paletteSet,
-    palettes,
-    activeSpritePaletteSlots: palettes.slice(0, 4).map((p) => p.id),
+    paletteState,
     animationModel: null,
     animationModelError: null,
     error: null,
@@ -267,9 +267,9 @@ describe('Delivery Workspace', () => {
     expect(statusCard).not.toBeNull();
     expect(statusCard?.classList.contains('status-ready')).toBe(true);
 
-    // Artifacts rendered: CHR and Palette
+    // CHR plus 7 canonical palette artifacts.
     const artifactCards = mockEl.querySelectorAll('.delivery-artifact-card');
-    expect(artifactCards.length).toBe(2);
+    expect(artifactCards.length).toBe(8);
 
     // Download CHR button
     const chrBtn = artifactCards[0]?.querySelector('.delivery-download-btn');
@@ -283,7 +283,7 @@ describe('Delivery Workspace', () => {
     const palBtn = artifactCards[1]?.querySelector('.delivery-download-btn');
     palBtn?.click();
     expect(onDownloadBytes).toHaveBeenCalledWith(
-      encodeNesBackgroundPalettes(options.paletteSet),
+      exportBackgroundPaletteBinary(options.paletteState),
       'tiles.pal',
     );
   });
@@ -312,9 +312,9 @@ describe('Delivery Workspace', () => {
     const statusCard = mockEl.querySelector('.delivery-status-card');
     expect(statusCard?.classList.contains('status-ready')).toBe(true);
 
-    // 5 Artifacts: CHR, Palette, Nametable, Attribute Table, Collision Map
+    // 5 original artifacts plus 6 additional palette artifacts.
     const artifactCards = mockEl.querySelectorAll('.delivery-artifact-card');
-    expect(artifactCards.length).toBe(5);
+    expect(artifactCards.length).toBe(11);
 
     // Nametable download
     const namBtn = artifactCards[2]?.querySelector('.delivery-download-btn');
@@ -352,9 +352,9 @@ describe('Delivery Workspace', () => {
     const el = createDeliveryWorkspace(options);
     const mockEl = el as unknown as MockElement;
 
-    // 7 Artifacts: CHR, Palette, JSON, C Header, C Source, ASM Include, ASM Source
+    // 7 original artifacts plus 6 additional palette artifacts.
     const artifactCards = mockEl.querySelectorAll('.delivery-artifact-card');
-    expect(artifactCards.length).toBe(7);
+    expect(artifactCards.length).toBe(13);
 
     // Download CHR (padded 8 KiB)
     artifactCards[0]?.querySelector('.delivery-download-btn')?.click();
@@ -366,7 +366,7 @@ describe('Delivery Workspace', () => {
     // Download Palette
     artifactCards[1]?.querySelector('.delivery-download-btn')?.click();
     expect(onDownloadBytes).toHaveBeenCalledWith(
-      encodeNesBackgroundPalettes(options.paletteSet),
+      exportBackgroundPaletteBinary(options.paletteState),
       `${model.symbolBase}.pal`,
     );
 
@@ -627,16 +627,19 @@ describe('Delivery Workspace', () => {
     const options = createOptions({
       mode: 'playfield',
       nametable: null,
-      palettes: [
-        {
-          id: 'pal_valid',
-          name: 'Valid',
-          colors: [0x0f, 0x01, 0x11, 0x21],
-          target: 'sprite',
-        },
-      ],
-      activeBackgroundSlots: [null, null, null, null],
-      activeSpriteSlots: ['pal_valid', null, null, null],
+      paletteState: {
+        universalBackgroundColor: 0x0f,
+        palettes: [
+          {
+            id: 'pal_valid',
+            name: 'Valid',
+            colors: [0x0f, 0x01, 0x11, 0x21],
+            target: 'sprite',
+          },
+        ],
+        activeBackgroundSlots: [null, null, null, null],
+        activeSpriteSlots: ['pal_valid', null, null, null],
+      },
       paletteAnimations: [
         {
           id: 'anim_boss',
@@ -668,10 +671,12 @@ describe('Delivery Workspace', () => {
       target: 'sprite' as const,
     }));
     const options = createOptions({
-      palettes,
-      activeBackgroundSlots: [null, null, null, null],
-      activeSpriteSlots: ['pal_0', 'pal_1', 'pal_2', 'pal_3'],
-      activeSpritePaletteSlots: ['pal_0', 'pal_1', 'pal_2', 'pal_3'],
+      paletteState: {
+        universalBackgroundColor: 0x0f,
+        palettes,
+        activeBackgroundSlots: [null, null, null, null],
+        activeSpriteSlots: ['pal_0', 'pal_1', 'pal_2', 'pal_3'],
+      },
       paletteAnimations: [],
     });
 
@@ -682,5 +687,63 @@ describe('Delivery Workspace', () => {
         .querySelector('.delivery-status-card')
         ?.classList.contains('status-ready'),
     ).toBe(true);
+  });
+
+  it('downloads canonical Sprite, full PPU, C, and ca65 palette artifacts', () => {
+    const onDownloadBytes = vi.fn();
+    const onDownloadText = vi.fn();
+    const options = createOptions({
+      mode: 'tileset',
+      fileName: 'tiles.png',
+      onDownloadBytes,
+      onDownloadText,
+    });
+    const element = createDeliveryWorkspace(options) as unknown as MockElement;
+    const cards = element.querySelectorAll('.delivery-artifact-card');
+    const findCard = (name: string): MockElement | undefined =>
+      cards.find(
+        (card) =>
+          card.querySelector('.delivery-artifact-name')?.textContent === name,
+      );
+
+    findCard('tiles_sprites.pal')
+      ?.querySelector('.delivery-download-btn')
+      ?.click();
+    findCard('tiles_ppu.pal')?.querySelector('.delivery-download-btn')?.click();
+    findCard('tiles_palette.h')
+      ?.querySelector('.delivery-download-btn')
+      ?.click();
+    findCard('tiles_palette.c')
+      ?.querySelector('.delivery-download-btn')
+      ?.click();
+    findCard('tiles_palette.inc')
+      ?.querySelector('.delivery-download-btn')
+      ?.click();
+    findCard('tiles_palette.s')
+      ?.querySelector('.delivery-download-btn')
+      ?.click();
+
+    expect(onDownloadBytes).toHaveBeenNthCalledWith(
+      1,
+      exportSpritePaletteBinary(options.paletteState),
+      'tiles_sprites.pal',
+    );
+    expect(onDownloadBytes).toHaveBeenNthCalledWith(
+      2,
+      exportFullPpuPaletteBinary(options.paletteState),
+      'tiles_ppu.pal',
+    );
+    const c = generateCPaletteExport(options.paletteState, {
+      symbolBase: 'tiles_palette',
+    });
+    const asm = generateCa65PaletteExport(options.paletteState, {
+      symbolBase: 'tiles_palette',
+    });
+    expect(onDownloadText.mock.calls).toEqual([
+      [c.header, c.headerFileName],
+      [c.source, c.sourceFileName],
+      [asm.include, asm.includeFileName],
+      [asm.source, asm.sourceFileName],
+    ]);
   });
 });

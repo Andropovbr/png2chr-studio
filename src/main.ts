@@ -3243,6 +3243,7 @@ function renderPaletteWorkspace(): void {
         ?.focus();
     },
     onDownloadBytes: downloadBytes,
+    onDownloadText: downloadText,
   });
 
   const sidebar = createSidebar({
@@ -3725,8 +3726,6 @@ function renderDeliveryWorkspace(): void {
   }
 
   const paletteState = resolveProjectPaletteState(project);
-  const palettes = paletteState.palettes;
-  const activeSpritePaletteSlots = paletteState.activeSpriteSlots;
 
   const classifications = classifyChrSlots({
     finalChrBytes: animModel?.finalChr ?? chr ?? new Uint8Array(8192),
@@ -3778,12 +3777,7 @@ function renderDeliveryWorkspace(): void {
     nametable,
     attributeTable,
     collisionMap,
-    paletteSet: backgroundPaletteSet,
-    universalBackgroundColor: paletteState.universalBackgroundColor,
-    palettes,
-    activeBackgroundSlots: paletteState.activeBackgroundSlots,
-    activeSpriteSlots: paletteState.activeSpriteSlots,
-    activeSpritePaletteSlots,
+    paletteState,
     paletteAnimations: project.animation.animations,
     scenePreview: project.scenePreview,
     animationModel: animModel,
