@@ -24,6 +24,8 @@ When working on this repository:
 * Do not silently change file formats, indexes, ownership semantics, or hardware interpretation.
 * Avoid adding dependencies when the existing stack or browser APIs can reasonably solve the problem.
 * Keep the application usable without a backend or external runtime service.
+* Read seu-camilo.md
+* Read professor-carvalho.md
 
 The goal is not architectural perfection. The goal is reliable software that remains understandable as the project grows.
 
