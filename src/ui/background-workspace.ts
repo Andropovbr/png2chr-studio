@@ -10,6 +10,12 @@ import {
 } from '../core/background-model';
 import { type ProjectAsset, type ProjectAssetId } from '../core/asset-identity';
 import { NES_MASTER_PALETTE, type NesPaletteSet } from '../core/nes-palette';
+import {
+  findPaletteDefinition,
+  resolveActiveBackgroundPaletteSet,
+  type ActivePaletteSlots,
+  type PaletteDefinition,
+} from '../core/palette-manager';
 import type { Tile } from '../core/types';
 import { t } from '../i18n';
 import type {
@@ -20,7 +26,9 @@ import type {
 export interface BackgroundWorkspaceOptions {
   readonly maps: readonly BackgroundMapDefinition[];
   readonly activeMapId: string | null;
-  readonly paletteSet: NesPaletteSet;
+  readonly palettes: readonly PaletteDefinition[];
+  readonly activeBackgroundSlots: ActivePaletteSlots;
+  readonly universalBackgroundColor: number;
   readonly availableAssets?: readonly ProjectAsset[];
   readonly assetTilesMap?: ReadonlyMap<ProjectAssetId, readonly Tile[]>;
   readonly compiledModel?: BackgroundProjectModel | null;
@@ -61,6 +69,16 @@ const NES_SCREEN_HEIGHT_PX = 240;
 const TILE_SIZE = 8;
 const BLOCK_SIZE = 16;
 const TOTAL_CELLS = BACKGROUND_WIDTH_TILES * BACKGROUND_HEIGHT_TILES; // 960
+
+export function resolveBackgroundPaletteSet(
+  options: BackgroundWorkspaceOptions,
+): NesPaletteSet {
+  return resolveActiveBackgroundPaletteSet(
+    options.palettes,
+    options.activeBackgroundSlots,
+    options.universalBackgroundColor,
+  );
+}
 
 export function createBackgroundWorkspace(
   options: BackgroundWorkspaceOptions,
@@ -384,6 +402,7 @@ function createLeftPanel(
   swatchesContainer.className = 'background-subpalette-swatches';
   swatchesContainer.setAttribute('role', 'radiogroup');
   swatchesContainer.setAttribute('aria-label', t('backgroundSubpaletteLabel'));
+  const paletteSet = resolveBackgroundPaletteSet(options);
 
   for (let pIdx = 0; pIdx < 4; pIdx += 1) {
     const isSelected = options.state.selectedPaletteIndex === pIdx;
@@ -392,11 +411,24 @@ function createLeftPanel(
     swatchBox.className = `background-subpalette-box${isSelected ? ' is-selected' : ''}`;
     swatchBox.id = `bg-subpalette-${String(pIdx)}`;
     swatchBox.setAttribute('aria-pressed', String(isSelected));
-    swatchBox.setAttribute('aria-label', `Subpalette ${String(pIdx)}`);
-    swatchBox.title = `Subpalette ${String(pIdx)}`;
+    const paletteId = options.activeBackgroundSlots[pIdx] ?? null;
+    const definition = findPaletteDefinition(options.palettes, paletteId);
+    const paletteStatus =
+      definition?.name ??
+      (paletteId === null
+        ? t('paletteManagerSlotEmpty')
+        : t('paletteManagerMissingPalette', { paletteId }));
+    const paletteLabel = `BG ${String(pIdx)} — ${paletteStatus}`;
+    swatchBox.setAttribute('aria-label', paletteLabel);
+    swatchBox.title = paletteLabel;
+    swatchBox.setAttribute(
+      'data-palette-status',
+      definition ? 'assigned' : paletteId === null ? 'empty' : 'dangling',
+    );
+    if (definition === null) swatchBox.classList.add('is-unassigned');
 
     // Render 4 colors of this subpalette
-    const subPalette = options.paletteSet[pIdx];
+    const subPalette = paletteSet[pIdx];
     const miniRow = document.createElement('div');
     miniRow.className = 'subpalette-color-row';
 
@@ -416,7 +448,7 @@ function createLeftPanel(
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'subpalette-num';
-    labelSpan.textContent = `SP${String(pIdx)}`;
+    labelSpan.textContent = paletteLabel;
 
     swatchBox.append(labelSpan, miniRow);
 
@@ -471,6 +503,7 @@ function createTileBrowserSection(
   browserGrid.className = 'background-tile-grid';
   browserGrid.setAttribute('role', 'grid');
   browserGrid.setAttribute('aria-label', t('backgroundTileBrowserTitle'));
+  const paletteSet = resolveBackgroundPaletteSet(options);
 
   // Render tile items
   tiles.forEach((tile, index) => {
@@ -495,8 +528,7 @@ function createTileBrowserSection(
     if (ctx) {
       const imgData = ctx.createImageData(8, 8);
       const subPalette =
-        options.paletteSet[options.state.selectedPaletteIndex] ??
-        options.paletteSet[0];
+        paletteSet[options.state.selectedPaletteIndex] ?? paletteSet[0];
 
       for (let y = 0; y < 8; y += 1) {
         for (let x = 0; x < 8; x += 1) {
@@ -677,13 +709,14 @@ function renderBackgroundScreen(
   if (!ctx) return;
 
   const model = options.compiledModel;
+  const paletteSet = resolveBackgroundPaletteSet(options);
   const imgData = ctx.createImageData(
     NES_SCREEN_WIDTH_PX,
     NES_SCREEN_HEIGHT_PX,
   );
 
   // Fill default background color
-  const defaultBgIdx = options.paletteSet[0][0];
+  const defaultBgIdx = options.universalBackgroundColor;
   const defaultBg = NES_MASTER_PALETTE[defaultBgIdx] ?? {
     red: 0,
     green: 0,
@@ -707,7 +740,7 @@ function renderBackgroundScreen(
           Math.floor(row / 2) * BACKGROUND_PALETTE_COLUMNS +
           Math.floor(col / 2);
         const paletteIndex = activeMap.paletteAssignments[quadrantIndex] ?? 0;
-        const subPalette = options.paletteSet[paletteIndex];
+        const subPalette = paletteSet[paletteIndex];
 
         // 16 bytes for this tile
         const tileByteOffset = ptOffset + localTileIndex * 16;
@@ -1125,6 +1158,11 @@ function createRightPanel(
     const quadrantIndex =
       Math.floor(row / 2) * BACKGROUND_PALETTE_COLUMNS + Math.floor(col / 2);
     const paletteIndex = activeMap.paletteAssignments[quadrantIndex] ?? 0;
+    const paletteId = options.activeBackgroundSlots[paletteIndex] ?? null;
+    const paletteDefinition = findPaletteDefinition(
+      options.palettes,
+      paletteId,
+    );
 
     const dl = document.createElement('dl');
     dl.className = 'inspector-props-list';
@@ -1150,7 +1188,12 @@ function createRightPanel(
     dtSubpalette.textContent = `${t('backgroundSubpaletteLabel')}:`;
     const ddSubpalette = document.createElement('dd');
     ddSubpalette.id = 'bg-inspect-subpalette';
-    ddSubpalette.textContent = `SP${String(paletteIndex)} (Slot ${String(paletteIndex)})`;
+    ddSubpalette.textContent = `BG ${String(paletteIndex)} — ${
+      paletteDefinition?.name ??
+      (paletteId === null
+        ? t('paletteManagerSlotEmpty')
+        : t('paletteManagerMissingPalette', { paletteId }))
+    }`;
 
     const dtBlock = document.createElement('dt');
     dtBlock.textContent = `${t('backgroundAttributeBlock')}:`;

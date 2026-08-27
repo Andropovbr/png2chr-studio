@@ -469,13 +469,22 @@ O filtro **Em Uso** consulta `findPaletteUsageReferences` com slots dos dois ban
   - Filtro ativo na biblioteca (`all | sprite | background | in-use`);
   - Estado aberto/fechado do modal mestre de cores.
 
-As mutações do workspace passam por callbacks do dispatcher e alteram apenas os campos canônicos correspondentes. `paletteSet` e `activeSpritePaletteSlots` continuam sendo aceitos como compatibilidade de leitura/migração, mas não recebem dual writes da UI. Previews ainda legados devem consumir resolvers derivados do estado canônico.
+As mutações do workspace passam por callbacks do dispatcher e alteram apenas os campos canônicos correspondentes. `paletteSet` e `activeSpritePaletteSlots` continuam sendo aceitos como compatibilidade de leitura/migração, mas não recebem dual writes da UI. Todos os consumers integrados abaixo usam resolvers derivados do estado canônico.
+
+### 14.1 Integração dos consumers (#126)
+
+- **Background Workspace:** os cards BG 0..3 resolvem `palettes + activeBackgroundSlots + universalBackgroundColor`, mostram identidade lógica e estado empty/dangling, mas `paletteAssignments` permanece uma matriz de índices físicos `0..3` compatível com a Attribute Table.
+- **Tileset e Playfield:** os previews e a edição contextual também recebem o banco de Background derivado. Alterar cores nesses editores atualiza a definição lógica atualmente atribuída ao slot BG (ou `$3F00` no índice 0), sem dual write em `paletteSet` e sem depender do banco SPR.
+- **Animation Editor:** animações persistem `paletteId` e frames persistem `framePaletteIds`. Os seletores exibem nome lógico e slot SPR ativo; ao selecionar por ID, o índice legado é limpo. Preview, pixel editor e mapeamento aplicam `framePaletteIds[frame] ?? paletteId`, mantendo `paletteIndex`/`framePalettes` somente como fallback de leitura para arquivos legados.
+- **CHR Workspace:** oferece exatamente nove modos transitórios: `grayscale`, BG 0..3 e SPR 0..3. Background força `$3F00` no índice 0; Sprite torna o índice 0 transparente. O Tile Inspector identifica banco, slot, nome/ID, códigos NES, RGB e estado de resolução.
+- **Scene Preview:** considera somente instâncias visíveis e a paleta efetiva do frame atual. IDs duplicados contam uma vez; mais de quatro IDs distintos simultâneos geram um único alerta com o total, o limite NES e as paletas envolvidas.
+- **Fallbacks:** slots vazios ou referências dangling usam resolução determinística e estado visual explícito. O CHR Inspector identifica os códigos exibidos como fallback de preview; eles não causam escrita silenciosa no modelo nem acoplam o banco de Sprite ao banco de Background.
 
 ---
 
 ## 15. Roadmap de Implementação e Fatiamento de Issues
 
-Para transformar esta especificação em incrementos executáveis, a Milestone 9 foi dividida em **8 issues sequenciais**. As Issues #121 a #125 já estão implementadas; as etapas seguintes permanecem no roadmap:
+Para transformar esta especificação em incrementos executáveis, a Milestone 9 foi dividida em **8 issues sequenciais**. As Issues #121 a #126 já estão implementadas; as etapas seguintes permanecem no roadmap:
 
 ```mermaid
 flowchart TD

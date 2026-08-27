@@ -131,7 +131,7 @@ const en = {
   chrWorkspacePaletteGroupBg: 'Background Subpalettes',
   chrWorkspacePaletteGroupSp: 'Sprite Subpalettes',
   chrWorkspacePaletteBg: 'BG {index}',
-  chrWorkspacePaletteSp: 'Sprite {index}',
+  chrWorkspacePaletteSp: 'SPR {index}',
   chrWorkspacePaletteCustomGroup: 'Custom Palettes',
   chrWorkspaceZoomLabel: 'Zoom',
   chrWorkspaceHighlightLabel: 'Highlight',
@@ -652,6 +652,10 @@ const en = {
     '{entities} entities · {instances} instances (NES 256×240)',
   scenePreviewPalettesUsed: 'Sprite palettes: {count} / 4',
   scenePreviewSlotWarning: '{count} without active slot',
+  scenePreviewPaletteCapacityAlert:
+    'This scene requires {count} distinct sprite palettes at the same time, exceeding the NES limit of 4: {palettes}. Reassign or reuse palettes among visible instances.',
+  chrTileInspectorPaletteContext: 'Preview Palette Context',
+  chrTileInspectorPaletteFallback: 'Deterministic preview fallback',
   scenePreviewInvalidEntityWarning:
     'Entity "{name}" was not found in project animations.',
   paletteManagerTitle: 'Project Palettes',
@@ -1169,7 +1173,7 @@ const ptBr = {
   chrWorkspacePaletteGroupBg: 'Subpaletas de Background',
   chrWorkspacePaletteGroupSp: 'Subpaletas de Sprite',
   chrWorkspacePaletteBg: 'BG {index}',
-  chrWorkspacePaletteSp: 'Sprite {index}',
+  chrWorkspacePaletteSp: 'SPR {index}',
   chrWorkspacePaletteCustomGroup: 'Paletas Personalizadas',
   chrWorkspaceZoomLabel: 'Zoom',
   chrWorkspaceHighlightLabel: 'Destaque',
@@ -1698,6 +1702,10 @@ const ptBr = {
     '{entities} entidades · {instances} instâncias (NES 256×240)',
   scenePreviewPalettesUsed: 'Paletas de sprite: {count} / 4',
   scenePreviewSlotWarning: '{count} sem slot ativo',
+  scenePreviewPaletteCapacityAlert:
+    'Esta cena requer {count} paletas de sprite distintas ao mesmo tempo, acima do limite de 4 do NES: {palettes}. Reatribua ou reutilize paletas entre as instâncias visíveis.',
+  chrTileInspectorPaletteContext: 'Contexto da Paleta de Preview',
+  chrTileInspectorPaletteFallback: 'Fallback determinístico de preview',
   scenePreviewInvalidEntityWarning:
     'A entidade "{name}" não foi encontrada nas animações do projeto.',
   paletteManagerTitle: 'Paletas do Projeto',

@@ -339,6 +339,28 @@ export function resolveSpritePaletteSlot(
 }
 
 /**
+ * Projects a logical sprite palette ID to the 2-bit physical OAM palette
+ * index. The numeric fallback is used only by compatibility adapters when the
+ * logical palette is absent or not assigned to an active SPR slot.
+ */
+export function resolveEffectiveSpritePaletteIndex(
+  paletteId: string | null | undefined,
+  activeSlots: readonly (string | null)[] | undefined | null,
+  palettes: readonly PaletteDefinition[] | undefined | null,
+  legacyFallbackIndex = 0,
+): 0 | 1 | 2 | 3 {
+  const resolvedSlot = resolveSpritePaletteSlot(
+    paletteId,
+    activeSlots,
+    palettes,
+  ).slotIndex;
+  if (resolvedSlot !== null) return resolvedSlot;
+
+  const clampedFallback = Math.max(0, Math.min(3, legacyFallbackIndex));
+  return ([0, 1, 2, 3] as const)[clampedFallback] ?? 0;
+}
+
+/**
  * Resolves a palette ID against the 4 active background palette slots.
  */
 export function resolveBackgroundPaletteSlot(

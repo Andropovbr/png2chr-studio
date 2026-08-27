@@ -49,7 +49,6 @@ import {
   mapImageToNesPalettes,
   NES_MASTER_PALETTE,
   PLAYFIELD_PALETTE_REGION_SIZE,
-  setNesPaletteColor,
   TILESET_PALETTE_REGION_SIZE,
 } from './core/nes-palette';
 import {
@@ -62,6 +61,8 @@ import {
   findPaletteUsageReferences,
   resolveProjectBackgroundPaletteSet,
   resolveProjectPaletteState,
+  resolveProjectSpritePaletteSet,
+  resolveEffectiveSpritePaletteIndex,
   updatePaletteColor,
   updatePaletteName,
   updatePaletteTarget,
@@ -1258,7 +1259,7 @@ async function changeQuantizationSettings(
       });
       const mapping = mapAnimationImageToNesPalette(
         indexedImage,
-        project.paletteSet,
+        resolveProjectSpritePaletteSet(project),
         project.animation.spritePalette,
         TILESET_PALETTE_REGION_SIZE,
         undefined,
@@ -1274,7 +1275,7 @@ async function changeQuantizationSettings(
     } else {
       mappedImage = mapImageToNesPalettes(
         indexedImage,
-        project.paletteSet,
+        resolveProjectBackgroundPaletteSet(project),
         assignments,
         paletteRegionSize(project.mode, indexedImage),
         pixelOverrides,
@@ -1842,6 +1843,7 @@ function restoreChrEditorFocus(selector: string | null): void {
 
 function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
+  const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
 
   let playfieldNametable: Uint8Array | null = null;
   if (project.mode === 'playfield' && project.tiles.length > 0) {
@@ -1865,7 +1867,7 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
         transparentIndex: 0,
         colorCount: 4,
       },
-      project.paletteSet,
+      backgroundPaletteSet,
       project.paletteAssignments,
       regionSize,
       project.pixelOverrides,
@@ -1927,7 +1929,7 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
     destinationPatternTable: destPt,
     indexedImage: project.indexedImage,
     pixelOverrides: project.pixelOverrides,
-    paletteSet: project.paletteSet,
+    paletteSet: backgroundPaletteSet,
     paletteAssignments: project.paletteAssignments,
     paletteRegionSize: regionSize,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
@@ -2275,6 +2277,8 @@ function setAnimationFramePalette(
   paletteIndex: number | null,
   paletteId?: string | null,
 ): void {
+  const activeSpriteSlots =
+    resolveProjectPaletteState(project).activeSpriteSlots;
   const animations = project.animation.animations.map((anim) => {
     if (anim.id !== animId) return anim;
     const framePalettes = [...(anim.framePalettes ?? [])];
@@ -2290,8 +2294,8 @@ function setAnimationFramePalette(
     framePaletteIds[frameOrderIndex] =
       paletteId !== undefined
         ? paletteId
-        : paletteIndex !== null && project.palettes
-          ? (project.palettes[paletteIndex]?.id ?? null)
+        : paletteIndex !== null
+          ? (activeSpriteSlots[paletteIndex] ?? null)
           : null;
 
     return {
@@ -2603,6 +2607,21 @@ function updateUniversalBackgroundColor(colorCode: number): void {
     ?.focus();
 }
 
+function updateActiveBackgroundPaletteColor(
+  paletteIndex: number,
+  colorIndex: number,
+  colorCode: number,
+): void {
+  if (colorIndex === 0) {
+    updateUniversalBackgroundColor(colorCode);
+    return;
+  }
+  const paletteState = resolveProjectPaletteState(project);
+  const paletteId = paletteState.activeBackgroundSlots[paletteIndex];
+  if (paletteId === null || paletteId === undefined) return;
+  updateProjectPaletteColor(paletteId, colorIndex, colorCode);
+}
+
 function resolveAnimationProjectModel(prj: ProjectView): {
   model: AnimationProjectModel | null;
   modelError: AnimationModelError | null;
@@ -2615,6 +2634,7 @@ function resolveAnimationProjectModel(prj: ProjectView): {
   }
 
   try {
+    const paletteState = resolveProjectPaletteState(prj);
     const definitions: AnimationDefinitionInput[] = [];
     for (const anim of prj.animation.animations) {
       if (anim.source !== null && anim.frameIndices.length > 0) {
@@ -2623,6 +2643,24 @@ function resolveAnimationProjectModel(prj: ProjectView): {
             ? anim.entity.trim()
             : 'entity';
         const compositeName = `${entityName}_${anim.name}`;
+        const effectivePaletteIndex = resolveEffectiveSpritePaletteIndex(
+          anim.paletteId,
+          paletteState.activeSpriteSlots,
+          paletteState.palettes,
+          anim.paletteIndex ?? prj.animation.defaultPaletteIndex,
+        );
+        const effectiveFramePalettes = anim.frameIndices.map((_, index) => {
+          const framePaletteId = anim.framePaletteIds?.[index];
+          if (framePaletteId === null || framePaletteId === undefined) {
+            return null;
+          }
+          return resolveEffectiveSpritePaletteIndex(
+            framePaletteId,
+            paletteState.activeSpriteSlots,
+            paletteState.palettes,
+            anim.framePalettes?.[index] ?? effectivePaletteIndex,
+          );
+        });
         definitions.push({
           id: anim.id,
           assetId:
@@ -2632,7 +2670,7 @@ function resolveAnimationProjectModel(prj: ProjectView): {
           entity: entityName,
           sourceImageName: anim.source.fileName,
           image: anim.source.indexedImage,
-          paletteIndex: anim.paletteIndex ?? null,
+          paletteIndex: effectivePaletteIndex,
           quantizationMode: anim.quantizationMode ?? 'median-cut',
           frameWidth: anim.frameWidth,
           frameHeight: anim.frameHeight,
@@ -2646,7 +2684,7 @@ function resolveAnimationProjectModel(prj: ProjectView): {
           frameIndices: anim.frameIndices,
           frameDuration: anim.defaultDuration,
           frameDurations: anim.frameDurations,
-          framePalettes: anim.framePalettes,
+          framePalettes: effectiveFramePalettes,
           pixelOverrides: anim.pixelOverrides,
         });
       }
@@ -2681,6 +2719,8 @@ function renderAnimationWorkspace(): void {
   const workspaceElement = document.createElement('div');
   workspaceElement.className = 'workspace animation-workspace';
   const { model, modelError } = resolveAnimationProjectModel(project);
+  const paletteState = resolveProjectPaletteState(project);
+  const spritePaletteSet = resolveProjectSpritePaletteSet(project);
 
   const selectedAnimationId =
     workspace.animation.selectedAnimationId !== undefined &&
@@ -2713,10 +2753,9 @@ function renderAnimationWorkspace(): void {
     paletteCollapsed: workspace.animation.paletteCollapsed,
     model,
     modelError,
-    paletteSet: project.paletteSet,
-    palettes: project.palettes,
-    activeSpritePaletteSlots:
-      project.activeSpriteSlots ?? project.activeSpritePaletteSlots,
+    spritePaletteSet,
+    palettes: paletteState.palettes,
+    activeSpriteSlots: paletteState.activeSpriteSlots,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     scenePreview: project.scenePreview,
     onSelectAnimation: selectAnimation,
@@ -2739,17 +2778,6 @@ function renderAnimationWorkspace(): void {
           flipDeduplication: animation.flipDeduplication,
           patternTable: animation.patternTable,
           destinationPatternTable: animation.destinationPatternTable,
-        },
-      });
-      setDerivedStatus({ ...derivedStatus, error: null });
-      render();
-    },
-    onDefaultPaletteIndexChange: (defaultPaletteIndex: number) => {
-      updateProject({
-        ...project,
-        animation: {
-          ...project.animation,
-          defaultPaletteIndex,
         },
       });
       setDerivedStatus({ ...derivedStatus, error: null });
@@ -2789,40 +2817,12 @@ function renderAnimationWorkspace(): void {
     onFramePaletteChange: setAnimationFramePalette,
     onApplyDefaultDurationToAll: applyDefaultDurationToAll,
     onFrameRemoveFromAnimation: removeFrameFromAnimation,
-    onCreatePalette: createNewProjectPalette,
-    onUpdatePaletteName: updateProjectPaletteName,
-    onUpdatePaletteColorDef: updateProjectPaletteColor,
-    onDuplicatePalette: duplicateProjectPalette,
-    onDeletePalette: deleteProjectPalette,
-    onUpdateActiveSlot: updateActiveSpritePaletteSlot,
     onSpritePaletteSelectionChange: (
       paletteIndex: number,
       colorIndex: number,
     ) => {
       updateProject({
         ...project,
-        animation: {
-          ...project.animation,
-          spritePalette: paletteIndex,
-          spriteColorIndex: colorIndex,
-        },
-      });
-      setDerivedStatus({ ...derivedStatus, error: null });
-      render();
-    },
-    onPaletteColorChange: (
-      paletteIndex: number,
-      colorIndex: number,
-      colorCode: number,
-    ) => {
-      updateProject({
-        ...project,
-        paletteSet: setNesPaletteColor(
-          project.paletteSet,
-          paletteIndex,
-          colorIndex,
-          colorCode,
-        ),
         animation: {
           ...project.animation,
           spritePalette: paletteIndex,
@@ -2902,6 +2902,7 @@ function renderAnimationWorkspace(): void {
 
 function renderTilesetWorkspace(): void {
   ensureQuantizationPreviews();
+  const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
   const workspaceElement = createTilesetWorkspace({
     fileName: project.fileName,
     sourceKind: project.sourceKind,
@@ -2912,7 +2913,7 @@ function renderTilesetWorkspace(): void {
     tiles: project.tiles,
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
-    paletteSet: project.paletteSet,
+    paletteSet: backgroundPaletteSet,
     paletteAssignments: project.paletteAssignments,
     pixelOverrides: project.pixelOverrides,
     activePaletteIndex: project.activePaletteIndex,
@@ -2967,16 +2968,7 @@ function renderTilesetWorkspace(): void {
       render();
     },
     onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
-      updateProject({
-        ...project,
-        paletteSet: setNesPaletteColor(
-          project.paletteSet,
-          paletteIndex,
-          colorIndex,
-          colorCode,
-        ),
-      });
-      render();
+      updateActiveBackgroundPaletteColor(paletteIndex, colorIndex, colorCode);
     },
     onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
       updateProject({ ...project, pixelOverrides, paletteAssignments });
@@ -3044,6 +3036,7 @@ function renderTilesetWorkspace(): void {
 
 function renderPlayfieldWorkspace(): void {
   ensureQuantizationPreviews();
+  const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
   const workspaceElement = createPlayfieldWorkspace({
     fileName: project.fileName,
     sourceKind: project.sourceKind,
@@ -3056,7 +3049,7 @@ function renderPlayfieldWorkspace(): void {
     collisionCells: project.collisionCells,
     activeCollisionType: project.activeCollisionType,
     randomPlayfieldFeatures: project.randomPlayfieldFeatures,
-    paletteSet: project.paletteSet,
+    paletteSet: backgroundPaletteSet,
     paletteAssignments: project.paletteAssignments,
     pixelOverrides: project.pixelOverrides,
     activePaletteIndex: project.activePaletteIndex,
@@ -3128,16 +3121,7 @@ function renderPlayfieldWorkspace(): void {
       render();
     },
     onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
-      updateProject({
-        ...project,
-        paletteSet: setNesPaletteColor(
-          project.paletteSet,
-          paletteIndex,
-          colorIndex,
-          colorCode,
-        ),
-      });
-      render();
+      updateActiveBackgroundPaletteColor(paletteIndex, colorIndex, colorCode);
     },
     onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
       updateProject({ ...project, pixelOverrides, paletteAssignments });
@@ -3340,6 +3324,8 @@ function buildProjectBackgroundModels(
 
 function renderChrWorkspace(): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
+  const paletteState = resolveProjectPaletteState(project);
+  const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
   const manualChr =
     project.animation.destinationChr.length > 0
       ? project.animation.destinationChr
@@ -3355,7 +3341,7 @@ function renderChrWorkspace(): void {
         : TILESET_PALETTE_REGION_SIZE;
     const mappedImage = mapImageToNesPalettes(
       project.indexedImage,
-      project.paletteSet,
+      backgroundPaletteSet,
       project.paletteAssignments,
       regionSize,
       project.pixelOverrides,
@@ -3527,10 +3513,10 @@ function renderChrWorkspace(): void {
       });
       render();
     },
-    paletteSet: project.paletteSet,
-    palettes: project.palettes,
-    activeSpritePaletteSlots:
-      project.activeSpriteSlots ?? project.activeSpritePaletteSlots,
+    palettes: paletteState.palettes,
+    universalBackgroundColor: paletteState.universalBackgroundColor,
+    activeBackgroundSlots: paletteState.activeBackgroundSlots,
+    activeSpriteSlots: paletteState.activeSpriteSlots,
     loading: derivedStatus.loading,
     error: derivedStatus.error,
     onNavigateToWorkspace: (view) => {
@@ -3654,6 +3640,7 @@ function renderChrWorkspace(): void {
 function renderDeliveryWorkspace(): void {
   const { model: animModel, modelError: animModelError } =
     resolveAnimationProjectModel(project);
+  const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
 
   const tiles = project.tiles;
   const deduplicated = deduplicateTiles(tiles);
@@ -3705,7 +3692,7 @@ function renderDeliveryWorkspace(): void {
       const regionSize = PLAYFIELD_PALETTE_REGION_SIZE;
       const mappedImage = mapImageToNesPalettes(
         project.indexedImage,
-        project.paletteSet,
+        backgroundPaletteSet,
         project.paletteAssignments,
         regionSize,
         project.pixelOverrides,
@@ -3791,7 +3778,7 @@ function renderDeliveryWorkspace(): void {
     nametable,
     attributeTable,
     collisionMap,
-    paletteSet: project.paletteSet,
+    paletteSet: backgroundPaletteSet,
     universalBackgroundColor: paletteState.universalBackgroundColor,
     palettes,
     activeBackgroundSlots: paletteState.activeBackgroundSlots,
@@ -3852,6 +3839,7 @@ function renderDeliveryWorkspace(): void {
 
 function renderBackgroundWorkspace(): void {
   const backgrounds = project.backgrounds ?? { maps: [] };
+  const paletteState = resolveProjectPaletteState(project);
   const activeMapId =
     workspace.background.selectedMapId ??
     backgrounds.activeMapId ??
@@ -3880,7 +3868,9 @@ function renderBackgroundWorkspace(): void {
   const workspaceElement = createBackgroundWorkspace({
     maps: backgrounds.maps,
     activeMapId,
-    paletteSet: resolveProjectBackgroundPaletteSet(project),
+    palettes: paletteState.palettes,
+    activeBackgroundSlots: paletteState.activeBackgroundSlots,
+    universalBackgroundColor: paletteState.universalBackgroundColor,
     availableAssets: projectAssets,
     assetTilesMap,
     compiledModel,
@@ -4120,7 +4110,10 @@ async function loadFile(file: File): Promise<void> {
   const mode = project.mode;
   const deduplicationEnabled = project.deduplicationEnabled;
   const flipDeduplicationEnabled = project.flipDeduplicationEnabled;
-  const paletteSet = project.paletteSet;
+  const paletteSet =
+    mode === 'animation'
+      ? resolveProjectSpritePaletteSet(project)
+      : resolveProjectBackgroundPaletteSet(project);
   const activePaletteIndex = project.activePaletteIndex;
   const paletteColorTarget = workspace.paletteColorTarget;
   const activeColorIndex = project.activeColorIndex;

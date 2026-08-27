@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildAnimationProjectModel } from '../core/animation-model';
 import { createDefaultNesPaletteSet } from '../core/nes-palette';
+import {
+  resolveEffectivePaletteColors,
+  resolveEffectiveSpritePaletteIndex,
+  resolveSpritePaletteSlot,
+  type PaletteDefinition,
+} from '../core/palette-manager';
+import { renderIndexedImageWithPalette } from '../core/animation-palette';
 import type { IndexedImage } from '../core/types';
 import {
   createAnimationEditor,
@@ -9,10 +16,12 @@ import {
   type AnimationEditorOptions,
 } from './animation-editor';
 import type { AnimationItemSetting, AnimationSettings } from './types';
+import { setLocale } from '../i18n';
 
 class MockElement {
   tagName: string;
   className = '';
+  hidden = false;
   id = '';
   children: MockElement[] = [];
   attributes = new Map<string, string>();
@@ -316,6 +325,7 @@ describe('animation mapping identity', () => {
 
 describe('Animation Editor Split Architecture', () => {
   beforeEach(() => {
+    setLocale('en');
     (
       globalThis as unknown as {
         document: unknown;
@@ -365,6 +375,14 @@ describe('Animation Editor Split Architecture', () => {
   });
 
   const basePaletteSet = createDefaultNesPaletteSet();
+  const palettes: readonly PaletteDefinition[] = basePaletteSet.map(
+    (colors, index) => ({
+      id: `pal_${String(index)}`,
+      name: `Sprite ${String(index)}`,
+      colors,
+      target: 'sprite',
+    }),
+  );
 
   function createOptions(
     overrides: Partial<AnimationEditorOptions> = {},
@@ -419,11 +437,17 @@ describe('Animation Editor Split Architecture', () => {
       activeTab: 'frames',
       model,
       modelError: null,
-      paletteSet: basePaletteSet,
+      spritePaletteSet: basePaletteSet,
+      palettes,
+      activeSpriteSlots: [
+        palettes[0]?.id ?? null,
+        palettes[1]?.id ?? null,
+        palettes[2]?.id ?? null,
+        palettes[3]?.id ?? null,
+      ],
       onSelectAnimation: vi.fn(),
       onSelectTab: vi.fn(),
       onSettingsChange: vi.fn(),
-      onDefaultPaletteIndexChange: vi.fn(),
       onAddAnimation: vi.fn(),
       onDuplicateAnimation: vi.fn(),
       onRemoveAnimation: vi.fn(),
@@ -445,7 +469,6 @@ describe('Animation Editor Split Architecture', () => {
       onApplyDefaultDurationToAll: vi.fn(),
       onFrameRemoveFromAnimation: vi.fn(),
       onSpritePaletteSelectionChange: vi.fn(),
-      onPaletteColorChange: vi.fn(),
       onDestinationFile: vi.fn(),
       onDestinationClear: vi.fn(),
       onDownloadBytes: vi.fn(),
@@ -870,6 +893,300 @@ describe('Animation Editor Split Architecture', () => {
     );
     duplicateBtn?.click();
     expect(onDuplicateSceneInstance).toHaveBeenCalledWith('inst-2');
+  });
+
+  it('stores animation and frame palette selections by logical palette ID', () => {
+    const onUpdateAnimation = vi.fn();
+    const onFramePaletteChange = vi.fn();
+    const base = createOptions();
+    const animation: AnimationItemSetting = {
+      ...createSampleAnimation('anim-1', 'idle', 'hero'),
+      paletteId: 'pal_1',
+      paletteIndex: null,
+      framePaletteIds: [null],
+    };
+    const options = createOptions({
+      settings: { ...base.settings, animations: [animation] },
+      selectedAnimationId: animation.id,
+      onUpdateAnimation,
+      onFramePaletteChange,
+    });
+
+    const panels = createAnimationEditor(options);
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const paletteSelect = editor.querySelector('.animation-palette-select');
+    expect(paletteSelect?.textContent).toContain('Sprite 1 — SPR Slot 1');
+    expect(paletteSelect?.value).toBe('pal_1');
+    if (paletteSelect) {
+      paletteSelect.value = 'pal_2';
+      paletteSelect.dispatchEvent({ type: 'change' });
+    }
+    expect(onUpdateAnimation).toHaveBeenCalledWith(animation.id, {
+      paletteId: 'pal_2',
+      paletteIndex: null,
+    });
+
+    const frameSelect = editor.querySelector('.animation-frame-palette-input');
+    if (frameSelect) {
+      frameSelect.value = 'pal_3';
+      frameSelect.dispatchEvent({ type: 'change' });
+    }
+    expect(onFramePaletteChange).toHaveBeenCalledWith(
+      animation.id,
+      0,
+      null,
+      'pal_3',
+    );
+  });
+
+  it('keeps palette identity and preview colors when the logical palette moves from SPR 0 to SPR 3', () => {
+    const base = createOptions();
+    const paletteId = base.palettes[0]?.id ?? null;
+    const animation: AnimationItemSetting = {
+      ...createSampleAnimation('anim-1', 'idle', 'hero'),
+      paletteId,
+      paletteIndex: null,
+    };
+    const slotsAtZero = [paletteId, null, null, null] as const;
+    const frameOverridePaletteId = base.palettes[1]?.id ?? null;
+    const slotsAtThree = [
+      null,
+      frameOverridePaletteId,
+      null,
+      paletteId,
+    ] as const;
+    const colorsBefore = resolveEffectivePaletteColors(
+      animation.paletteId,
+      base.palettes,
+      0,
+      base.spritePaletteSet,
+    );
+    const colorsAfter = resolveEffectivePaletteColors(
+      animation.paletteId,
+      base.palettes,
+      3,
+      base.spritePaletteSet,
+    );
+
+    expect(colorsAfter).toEqual(colorsBefore);
+    expect(
+      resolveSpritePaletteSlot(paletteId, slotsAtZero, base.palettes).slotIndex,
+    ).toBe(0);
+    expect(
+      resolveSpritePaletteSlot(paletteId, slotsAtThree, base.palettes)
+        .slotIndex,
+    ).toBe(3);
+
+    const physicalPaletteIndex = resolveEffectiveSpritePaletteIndex(
+      paletteId,
+      slotsAtThree,
+      base.palettes,
+      0,
+    );
+    const frameOverridePaletteIndex = resolveEffectiveSpritePaletteIndex(
+      frameOverridePaletteId,
+      slotsAtThree,
+      base.palettes,
+      physicalPaletteIndex,
+    );
+    const twoFrameImage: IndexedImage = {
+      ...singleTileImage(),
+      width: 16,
+      pixels: new Uint8Array(128).fill(1),
+    };
+    const hardwareModel = buildAnimationProjectModel({
+      name: 'hero',
+      animations: [
+        {
+          id: animation.id,
+          name: animation.name,
+          image: twoFrameImage,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0, 1],
+          frameDuration: 8,
+          paletteIndex: physicalPaletteIndex,
+          framePalettes: [null, frameOverridePaletteIndex],
+        },
+      ],
+    });
+    expect(
+      (hardwareModel.animations[0]?.frames[0]?.sprites[0]?.attributes ?? 0) &
+        0x03,
+    ).toBe(3);
+    expect(
+      (hardwareModel.animations[0]?.frames[1]?.sprites[0]?.attributes ?? 0) &
+        0x03,
+    ).toBe(1);
+
+    const panels = createAnimationEditor(
+      createOptions({
+        settings: { ...base.settings, animations: [animation] },
+        selectedAnimationId: animation.id,
+        activeSpriteSlots: slotsAtThree,
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    expect(editor.querySelector('.animation-palette-select')?.value).toBe(
+      paletteId,
+    );
+    expect(
+      editor.querySelector('.animation-palette-slot-badge')?.textContent,
+    ).toBe('SPR 3');
+
+    const imageWithTransparentPixel = singleTileImage();
+    imageWithTransparentPixel.pixels[0] = 0;
+    const rendered = renderIndexedImageWithPalette(
+      imageWithTransparentPixel,
+      colorsAfter,
+    );
+    expect(rendered.data[3]).toBe(0);
+  });
+
+  it('marks a valid but unassigned logical sprite palette without changing its ID', () => {
+    const base = createOptions();
+    const paletteId = base.palettes[1]?.id ?? null;
+    const animation: AnimationItemSetting = {
+      ...createSampleAnimation('anim-1', 'idle', 'hero'),
+      paletteId,
+      paletteIndex: null,
+    };
+    const panels = createAnimationEditor(
+      createOptions({
+        settings: { ...base.settings, animations: [animation] },
+        selectedAnimationId: animation.id,
+        activeSpriteSlots: [null, null, null, null],
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const badge = editor.querySelector('.animation-palette-slot-badge');
+    expect(editor.querySelector('.animation-palette-select')?.value).toBe(
+      paletteId,
+    );
+    expect(badge?.classList.contains('is-unassigned')).toBe(true);
+    expect(badge?.textContent).toBe('No active slot');
+  });
+
+  it('shows one capacity alert only when five distinct visible sprite palettes are simultaneous', () => {
+    const base = createOptions();
+    const palettes: readonly PaletteDefinition[] = Array.from(
+      { length: 5 },
+      (_, index) => ({
+        id: `scene_pal_${String(index)}`,
+        name: `Scene Palette ${String(index)}`,
+        colors: [0x0f, 0x01 + index, 0x11 + index, 0x21 + index],
+        target: 'sprite',
+      }),
+    );
+    const animations = palettes.map((palette, index) => ({
+      ...createSampleAnimation(
+        `scene_anim_${String(index)}`,
+        `idle_${String(index)}`,
+        `entity_${String(index)}`,
+      ),
+      paletteId: palette.id,
+    }));
+    const instances = animations.map((animation, index) => ({
+      id: `scene_inst_${String(index)}`,
+      entityId: animation.entity ?? '',
+      animationName: animation.name,
+      x: index * 8,
+      y: 0,
+      visible: true,
+    }));
+    const options = createOptions({
+      activeTab: 'scene',
+      settings: { ...base.settings, animations },
+      palettes,
+      activeSpriteSlots: [
+        palettes[0]?.id ?? null,
+        palettes[1]?.id ?? null,
+        palettes[2]?.id ?? null,
+        palettes[3]?.id ?? null,
+      ],
+      scenePreview: { instances },
+    });
+
+    const panels = createAnimationEditor(options);
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const alerts = editor.querySelectorAll(
+      '.scene-preview-palette-capacity-alert',
+    );
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.hidden).toBe(false);
+    expect(alerts[0]?.textContent).toContain('requires 5 distinct');
+    expect(alerts[0]?.textContent).toContain('limit of 4');
+
+    const fourPalettePanels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        settings: { ...base.settings, animations },
+        palettes,
+        activeSpriteSlots: [
+          palettes[0]?.id ?? null,
+          palettes[1]?.id ?? null,
+          palettes[2]?.id ?? null,
+          palettes[3]?.id ?? null,
+        ],
+        scenePreview: { instances: instances.slice(0, 4) },
+      }),
+    );
+    const fourPaletteEditor = fourPalettePanels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    expect(
+      fourPaletteEditor.querySelector('.scene-preview-palette-capacity-alert')
+        ?.hidden,
+    ).toBe(true);
+  });
+
+  it('keeps a hidden scene palette badge available for a later frame override', () => {
+    const base = createOptions();
+    const animation: AnimationItemSetting = {
+      ...createSampleAnimation('scene-override', 'idle', 'hero'),
+      paletteId: null,
+      frameIndices: [0, 0],
+      frameDurations: [1, 1],
+      framePaletteIds: [null, base.palettes[0]?.id ?? null],
+    };
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        settings: { ...base.settings, animations: [animation] },
+        scenePreview: {
+          instances: [
+            {
+              id: 'scene-inst-override',
+              entityId: 'hero',
+              animationName: 'idle',
+              x: 0,
+              y: 0,
+              visible: true,
+            },
+          ],
+        },
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const badge = editor
+      .querySelectorAll('span')
+      .find(
+        (element) =>
+          element.getAttribute('data-scene-palette-instance') ===
+          'scene-inst-override',
+      );
+    expect(badge).toBeDefined();
+    expect(badge?.hidden).toBe(true);
   });
 
   it('renders collapsible preview with toggle button and triggers onTogglePreviewCollapse', () => {

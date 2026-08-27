@@ -8,6 +8,7 @@ import {
   NES_SCREEN_WIDTH,
   resetPlaybackStates,
   resolveInstanceAnimation,
+  resolveScenePaletteIds,
   type InstancePlaybackState,
   type ScenePreviewInstance,
 } from '../core/scene-preview';
@@ -28,9 +29,9 @@ export interface ScenePreviewPanelOptions {
   readonly instances: readonly ScenePreviewInstance[];
   readonly selectedInstanceId?: string | null;
   readonly animations: readonly AnimationItemSetting[];
-  readonly paletteSet: NesPaletteSet;
-  readonly palettes?: readonly PaletteDefinition[];
-  readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly spritePaletteSet: NesPaletteSet;
+  readonly palettes: readonly PaletteDefinition[];
+  readonly activeSpriteSlots: readonly (string | null)[];
   readonly defaultPaletteIndex: number;
   readonly onSelectInstance?: (instanceId: string | null) => void;
   readonly onAddInstance: (instance: ScenePreviewInstance) => void;
@@ -64,30 +65,12 @@ export function createScenePreviewPanel(
 
   titleGroup.append(title, hint);
 
-  // Palette analysis & Stats badge
   const availableEntities = getAvailableEntities(options.animations);
-  const visiblePaletteIds = options.instances
-    .filter((i) => i.visible)
-    .map((i) => {
-      const anim = resolveInstanceAnimation(i, options.animations);
-      return anim?.paletteId ?? '';
-    });
-  const paletteAnalysis = analyzeScenePalettes(
-    visiblePaletteIds,
-    options.activeSpritePaletteSlots ?? [],
-    options.palettes ?? [],
-  );
-
   const statsBadge = document.createElement('span');
   statsBadge.className = 'status-badge scene-preview-stats-badge';
-  const slotWarningText =
-    paletteAnalysis.unassignedPaletteIds.length > 0
-      ? ` (⚠️ ${t('scenePreviewSlotWarning', { count: paletteAnalysis.unassignedPaletteIds.length })})`
-      : '';
-  statsBadge.textContent = `${t('scenePreviewStats', {
-    entities: availableEntities.length,
-    instances: options.instances.length,
-  })} · ${t('scenePreviewPalettesUsed', { count: paletteAnalysis.requiredCount })}${slotWarningText}`;
+  const capacityAlert = document.createElement('p');
+  capacityAlert.className = 'scene-preview-palette-capacity-alert';
+  capacityAlert.setAttribute('role', 'alert');
 
   // Action controls
   const toolbar = document.createElement('div');
@@ -100,6 +83,96 @@ export function createScenePreviewPanel(
       : (options.instances[0]?.id ?? null);
   let playbackStates: Map<string, InstancePlaybackState> =
     initializePlaybackStates(options.instances);
+
+  const renderPaletteStatus = (): void => {
+    const paletteIds = resolveScenePaletteIds(
+      options.instances,
+      playbackStates,
+      options.animations,
+    );
+    const paletteAnalysis = analyzeScenePalettes(
+      paletteIds,
+      options.activeSpriteSlots,
+      options.palettes,
+    );
+    const slotWarningText =
+      paletteAnalysis.unassignedPaletteIds.length > 0
+        ? ` (⚠️ ${t('scenePreviewSlotWarning', { count: paletteAnalysis.unassignedPaletteIds.length })})`
+        : '';
+    statsBadge.textContent = `${t('scenePreviewStats', {
+      entities: availableEntities.length,
+      instances: options.instances.length,
+    })} · ${t('scenePreviewPalettesUsed', { count: paletteAnalysis.requiredCount })}${slotWarningText}`;
+
+    capacityAlert.hidden = paletteAnalysis.requiredCount <= 4;
+    if (!capacityAlert.hidden) {
+      const paletteNames = paletteAnalysis.distinctPaletteIds
+        .map(
+          (paletteId) =>
+            options.palettes.find((palette) => palette.id === paletteId)
+              ?.name ?? paletteId,
+        )
+        .join(', ');
+      capacityAlert.textContent = t('scenePreviewPaletteCapacityAlert', {
+        count: paletteAnalysis.requiredCount,
+        palettes: paletteNames,
+      });
+    }
+
+    options.instances.forEach((instance) => {
+      const badge = section.querySelector<HTMLElement>(
+        `[data-scene-palette-instance="${instance.id}"]`,
+      );
+      if (badge === null) return;
+      const animation = resolveInstanceAnimation(instance, options.animations);
+      const frameIndex =
+        playbackStates.get(instance.id)?.currentFrameIndex ?? 0;
+      const paletteId =
+        animation?.framePaletteIds?.[frameIndex] ?? animation?.paletteId;
+      badge.hidden = !paletteId;
+      if (!paletteId) return;
+      const slot = resolveSpritePaletteSlot(
+        paletteId,
+        options.activeSpriteSlots,
+        options.palettes,
+      );
+      badge.className = `status-badge ${slot.isActive ? 'scene-slot-active-badge' : 'scene-slot-inactive-badge'}`;
+      badge.textContent = slot.isActive
+        ? `SPR ${String(slot.slotIndex)}`
+        : `⚠️ ${t('paletteManagerSlotInactive')}`;
+      badge.title = slot.definition?.name ?? paletteId;
+    });
+
+    const selectedInstance = options.instances.find(
+      (instance) => instance.id === currentSelectedInstanceId,
+    );
+    const inspectorStatus = section.querySelector<HTMLElement>(
+      '.scene-preview-inspector-palette-status',
+    );
+    if (selectedInstance !== undefined && inspectorStatus !== null) {
+      const animation = resolveInstanceAnimation(
+        selectedInstance,
+        options.animations,
+      );
+      const frameIndex =
+        playbackStates.get(selectedInstance.id)?.currentFrameIndex ?? 0;
+      const paletteId =
+        animation?.framePaletteIds?.[frameIndex] ?? animation?.paletteId;
+      const slot = resolveSpritePaletteSlot(
+        paletteId,
+        options.activeSpriteSlots,
+        options.palettes,
+      );
+      inspectorStatus.textContent = `${t('scenePreviewPaletteStatus')}: ${
+        slot.definition?.name ?? paletteId ?? t('paletteManagerSlotEmpty')
+      } · ${
+        slot.isActive
+          ? `SPR ${String(slot.slotIndex)}`
+          : t('paletteManagerSlotInactive')
+      }`;
+    }
+  };
+  renderPaletteStatus();
 
   const btnPlayPause = document.createElement('button');
   btnPlayPause.type = 'button';
@@ -155,7 +228,7 @@ export function createScenePreviewPanel(
 
   toolbar.append(btnPlayPause, btnReset, addContainer, statsBadge);
   header.append(titleGroup, toolbar);
-  section.append(header);
+  section.append(header, capacityAlert);
 
   // Main Layout
   const layout = document.createElement('div');
@@ -239,22 +312,23 @@ export function createScenePreviewPanel(
       });
 
       const instAnim = resolveInstanceAnimation(inst, options.animations);
-      const effectivePaletteId = instAnim?.paletteId;
+      const currentFrameIndex =
+        playbackStates.get(inst.id)?.currentFrameIndex ?? 0;
+      const effectivePaletteId =
+        instAnim?.framePaletteIds?.[currentFrameIndex] ?? instAnim?.paletteId;
       const slotRes = resolveSpritePaletteSlot(
         effectivePaletteId,
-        options.activeSpritePaletteSlots,
+        options.activeSpriteSlots,
         options.palettes,
       );
 
-      if (
-        effectivePaletteId &&
-        options.palettes &&
-        options.palettes.length > 0
-      ) {
+      if (options.palettes.length > 0) {
         const slotBadge = document.createElement('span');
+        slotBadge.setAttribute('data-scene-palette-instance', inst.id);
+        slotBadge.hidden = !effectivePaletteId;
         slotBadge.className = `status-badge ${slotRes.isActive ? 'scene-slot-active-badge' : 'scene-slot-inactive-badge'}`;
         slotBadge.textContent = slotRes.isActive
-          ? `Slot ${String(slotRes.slotIndex)}`
+          ? `SPR ${String(slotRes.slotIndex)}`
           : `⚠️ ${t('paletteManagerSlotInactive')}`;
         slotBadge.title = slotRes.definition?.name ?? '';
         cardActions.append(slotBadge);
@@ -311,6 +385,32 @@ export function createScenePreviewPanel(
 
     const inspectorCard = document.createElement('div');
     inspectorCard.className = 'scene-preview-inspector-card';
+
+    const selectedAnimation = resolveInstanceAnimation(
+      selectedInst,
+      options.animations,
+    );
+    const selectedFrameIndex =
+      playbackStates.get(selectedInst.id)?.currentFrameIndex ?? 0;
+    const selectedPaletteId =
+      selectedAnimation?.framePaletteIds?.[selectedFrameIndex] ??
+      selectedAnimation?.paletteId;
+    const selectedPaletteSlot = resolveSpritePaletteSlot(
+      selectedPaletteId,
+      options.activeSpriteSlots,
+      options.palettes,
+    );
+    const paletteStatus = document.createElement('p');
+    paletteStatus.className = 'scene-preview-inspector-palette-status';
+    paletteStatus.textContent = `${t('scenePreviewPaletteStatus')}: ${
+      selectedPaletteSlot.definition?.name ??
+      selectedPaletteId ??
+      t('paletteManagerSlotEmpty')
+    } · ${
+      selectedPaletteSlot.isActive
+        ? `SPR ${String(selectedPaletteSlot.slotIndex)}`
+        : t('paletteManagerSlotInactive')
+    }`;
 
     // Name field
     const nameLabel = document.createElement('label');
@@ -467,6 +567,7 @@ export function createScenePreviewPanel(
     inspectorActions.append(btnDelete);
 
     inspectorCard.append(
+      paletteStatus,
       nameLabel,
       entityLabel,
       animLabel,
@@ -533,7 +634,7 @@ export function createScenePreviewPanel(
         anim.framePalettes?.[safeIndex] ??
           anim.paletteIndex ??
           options.defaultPaletteIndex,
-        options.paletteSet,
+        options.spritePaletteSet,
       );
 
       const nesImage = renderIndexedImageWithPalette(
@@ -605,6 +706,7 @@ export function createScenePreviewPanel(
 
   btnReset.addEventListener('click', () => {
     playbackStates = resetPlaybackStates(options.instances);
+    renderPaletteStatus();
     drawScene();
   });
 
@@ -632,6 +734,7 @@ export function createScenePreviewPanel(
           options.animations,
           ticks,
         );
+        renderPaletteStatus();
         drawScene();
       }
     }
@@ -716,6 +819,7 @@ export function createScenePreviewPanel(
   observer.observe(document.body, { childList: true, subtree: true });
 
   // Initial draw
+  renderPaletteStatus();
   drawScene();
 
   return section;

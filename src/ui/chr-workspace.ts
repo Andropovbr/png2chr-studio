@@ -34,14 +34,12 @@ import {
   type ChrAssetMappingIndex,
 } from '../core/chr-asset-mapping';
 import type { ProjectAsset, ProjectAssetId } from '../core/asset-identity';
-import {
-  createDefaultNesPaletteSet,
-  NES_MASTER_PALETTE,
-  type NesPaletteSet,
-} from '../core/nes-palette';
+import { NES_MASTER_PALETTE, type NesPalette } from '../core/nes-palette';
 import {
   findPaletteDefinition,
-  resolveActivePaletteSet,
+  resolveActiveBackgroundPaletteSet,
+  resolveActiveSpritePaletteSet,
+  type ActivePaletteSlots,
   type PaletteDefinition,
 } from '../core/palette-manager';
 import {
@@ -101,9 +99,10 @@ export interface ChrWorkspaceOptions {
   readonly onSelectEntity?: (entity: string) => void;
   readonly heatmapEnabled?: boolean;
   readonly onToggleHeatmap?: (enabled: boolean) => void;
-  readonly paletteSet?: NesPaletteSet;
-  readonly palettes?: readonly PaletteDefinition[];
-  readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly palettes: readonly PaletteDefinition[];
+  readonly universalBackgroundColor: number;
+  readonly activeBackgroundSlots: ActivePaletteSlots;
+  readonly activeSpriteSlots: ActivePaletteSlots;
   readonly chrRegions?: readonly ChrRegion[];
   readonly loading?: boolean;
   readonly error?: DisplayError | null;
@@ -275,83 +274,151 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
 export interface ChrPreviewPaletteOption {
   readonly id: string;
   readonly label: string;
-  readonly group: 'grayscale' | 'background' | 'sprite' | 'custom';
-  readonly colors: readonly {
-    readonly red: number;
-    readonly green: number;
-    readonly blue: number;
-  }[];
+  readonly group: 'grayscale' | 'background' | 'sprite';
+  readonly colors: readonly ChrPreviewColor[];
+}
+
+export interface ChrPreviewColor {
+  readonly red: number;
+  readonly green: number;
+  readonly blue: number;
+  readonly alpha?: number;
+}
+
+export interface ChrPreviewPaletteContext {
+  readonly bank: 'grayscale' | 'background' | 'sprite';
+  readonly slotIndex: 0 | 1 | 2 | 3 | null;
+  readonly paletteId: string | null;
+  readonly paletteName: string | null;
+  readonly colorCodes: NesPalette | null;
+  readonly colors: readonly ChrPreviewColor[];
+  readonly status: 'neutral' | 'assigned' | 'empty' | 'dangling';
+  readonly transparentZero: boolean;
+}
+
+function parsePaletteSlot(value: string): 0 | 1 | 2 | 3 | null {
+  const slot = Number(value);
+  return slot === 0 || slot === 1 || slot === 2 || slot === 3 ? slot : null;
+}
+
+function mapPaletteCodesToPreviewColors(
+  colorCodes: NesPalette,
+  transparentZero: boolean,
+): readonly ChrPreviewColor[] {
+  return colorCodes.map((code, index) => {
+    const color = NES_MASTER_PALETTE[code] ?? { red: 0, green: 0, blue: 0 };
+    return {
+      red: color.red,
+      green: color.green,
+      blue: color.blue,
+      alpha: transparentZero && index === 0 ? 0 : 255,
+    };
+  });
+}
+
+export function resolveChrPreviewPaletteContext(
+  previewPaletteId = 'grayscale',
+  palettes: readonly PaletteDefinition[] = [],
+  activeBackgroundSlots: ActivePaletteSlots = [null, null, null, null],
+  activeSpriteSlots: ActivePaletteSlots = [null, null, null, null],
+  universalBackgroundColor = 0x0f,
+): ChrPreviewPaletteContext {
+  if (!previewPaletteId || previewPaletteId === 'grayscale') {
+    return {
+      bank: 'grayscale',
+      slotIndex: null,
+      paletteId: null,
+      paletteName: null,
+      colorCodes: null,
+      colors: NEUTRAL_NES_GRAYSCALE,
+      status: 'neutral',
+      transparentZero: false,
+    };
+  }
+
+  if (previewPaletteId.startsWith('bg-')) {
+    const slotIndex = parsePaletteSlot(previewPaletteId.slice(3));
+    if (slotIndex === null) {
+      return resolveChrPreviewPaletteContext();
+    }
+    const paletteId = activeBackgroundSlots[slotIndex];
+    const definition = findPaletteDefinition(palettes, paletteId);
+    const colorCodes = resolveActiveBackgroundPaletteSet(
+      palettes,
+      activeBackgroundSlots,
+      universalBackgroundColor,
+    )[slotIndex];
+    return {
+      bank: 'background',
+      slotIndex,
+      paletteId,
+      paletteName: definition?.name ?? null,
+      colorCodes,
+      colors: mapPaletteCodesToPreviewColors(colorCodes, false),
+      status:
+        definition !== null
+          ? 'assigned'
+          : paletteId === null
+            ? 'empty'
+            : 'dangling',
+      transparentZero: false,
+    };
+  }
+
+  if (previewPaletteId.startsWith('sp-')) {
+    const slotIndex = parsePaletteSlot(previewPaletteId.slice(3));
+    if (slotIndex === null) {
+      return resolveChrPreviewPaletteContext();
+    }
+    const paletteId = activeSpriteSlots[slotIndex];
+    const definition = findPaletteDefinition(palettes, paletteId);
+    const colorCodes = resolveActiveSpritePaletteSet(
+      palettes,
+      activeSpriteSlots,
+      undefined,
+      universalBackgroundColor,
+    )[slotIndex];
+    return {
+      bank: 'sprite',
+      slotIndex,
+      paletteId,
+      paletteName: definition?.name ?? null,
+      colorCodes,
+      colors: mapPaletteCodesToPreviewColors(colorCodes, true),
+      status:
+        definition !== null
+          ? 'assigned'
+          : paletteId === null
+            ? 'empty'
+            : 'dangling',
+      transparentZero: true,
+    };
+  }
+
+  return resolveChrPreviewPaletteContext();
 }
 
 export function resolveChrPreviewPaletteColors(
   previewPaletteId = 'grayscale',
-  paletteSet?: NesPaletteSet,
-  palettes?: readonly PaletteDefinition[],
-  activeSpritePaletteSlots?: readonly (string | null)[],
-): readonly {
-  readonly red: number;
-  readonly green: number;
-  readonly blue: number;
-}[] {
-  if (!previewPaletteId || previewPaletteId === 'grayscale') {
-    return NEUTRAL_NES_GRAYSCALE;
-  }
-
-  const defaultPalettes = paletteSet ?? createDefaultNesPaletteSet();
-
-  if (previewPaletteId.startsWith('bg-')) {
-    const bgIndex = parseInt(previewPaletteId.slice(3), 10);
-    if (!Number.isNaN(bgIndex) && bgIndex >= 0 && bgIndex < 4) {
-      const palette = defaultPalettes[bgIndex];
-      if (palette) {
-        return palette.map(
-          (code) => NES_MASTER_PALETTE[code] ?? { red: 0, green: 0, blue: 0 },
-        );
-      }
-    }
-    return NEUTRAL_NES_GRAYSCALE;
-  }
-
-  if (previewPaletteId.startsWith('sp-')) {
-    const spIndex = parseInt(previewPaletteId.slice(3), 10);
-    if (!Number.isNaN(spIndex) && spIndex >= 0 && spIndex < 4) {
-      const slotPalId = activeSpritePaletteSlots?.[spIndex];
-      const def = findPaletteDefinition(palettes, slotPalId);
-      if (def) {
-        return def.colors.map(
-          (code) => NES_MASTER_PALETTE[code] ?? { red: 0, green: 0, blue: 0 },
-        );
-      }
-      const activeSet = resolveActivePaletteSet(
-        palettes ?? [],
-        activeSpritePaletteSlots ?? [],
-        defaultPalettes,
-      );
-      const slotPal = activeSet[spIndex];
-      if (slotPal) {
-        return slotPal.map(
-          (code) => NES_MASTER_PALETTE[code] ?? { red: 0, green: 0, blue: 0 },
-        );
-      }
-    }
-    return NEUTRAL_NES_GRAYSCALE;
-  }
-
-  // Check if previewPaletteId matches a specific palette definition ID
-  const def = findPaletteDefinition(palettes, previewPaletteId);
-  if (def) {
-    return def.colors.map(
-      (code) => NES_MASTER_PALETTE[code] ?? { red: 0, green: 0, blue: 0 },
-    );
-  }
-
-  return NEUTRAL_NES_GRAYSCALE;
+  palettes: readonly PaletteDefinition[] = [],
+  activeBackgroundSlots: ActivePaletteSlots = [null, null, null, null],
+  activeSpriteSlots: ActivePaletteSlots = [null, null, null, null],
+  universalBackgroundColor = 0x0f,
+): readonly ChrPreviewColor[] {
+  return resolveChrPreviewPaletteContext(
+    previewPaletteId,
+    palettes,
+    activeBackgroundSlots,
+    activeSpriteSlots,
+    universalBackgroundColor,
+  ).colors;
 }
 
 export function getChrPreviewPaletteOptions(
-  paletteSet?: NesPaletteSet,
-  palettes?: readonly PaletteDefinition[],
-  activeSpritePaletteSlots?: readonly (string | null)[],
+  palettes: readonly PaletteDefinition[] = [],
+  activeBackgroundSlots: ActivePaletteSlots = [null, null, null, null],
+  activeSpriteSlots: ActivePaletteSlots = [null, null, null, null],
+  universalBackgroundColor = 0x0f,
 ): readonly ChrPreviewPaletteOption[] {
   const options: ChrPreviewPaletteOption[] = [
     {
@@ -362,64 +429,55 @@ export function getChrPreviewPaletteOptions(
     },
   ];
 
-  const defaultPalettes = paletteSet ?? createDefaultNesPaletteSet();
-
   // Background Palettes (BG 0..3)
   for (let i = 0; i < 4; i += 1) {
-    const bgCodes = defaultPalettes[i];
-    const bgColors = bgCodes
-      ? bgCodes.map(
-          (code) => NES_MASTER_PALETTE[code] ?? { red: 0, green: 0, blue: 0 },
-        )
-      : NEUTRAL_NES_GRAYSCALE;
+    const context = resolveChrPreviewPaletteContext(
+      `bg-${String(i)}`,
+      palettes,
+      activeBackgroundSlots,
+      activeSpriteSlots,
+      universalBackgroundColor,
+    );
+    const paletteStatus =
+      context.paletteName ??
+      (context.paletteId === null
+        ? t('paletteManagerSlotEmpty')
+        : t('paletteManagerMissingPalette', {
+            paletteId: context.paletteId,
+          }));
 
     options.push({
       id: `bg-${String(i)}`,
-      label: t('chrWorkspacePaletteBg', { index: i }),
+      label: `${t('chrWorkspacePaletteBg', { index: i })} — ${paletteStatus}`,
       group: 'background',
-      colors: bgColors,
+      colors: context.colors,
     });
   }
 
   // Sprite Palettes (SP 0..3)
   for (let i = 0; i < 4; i += 1) {
-    const slotPalId = activeSpritePaletteSlots?.[i];
-    const def = findPaletteDefinition(palettes, slotPalId);
-    const spLabel = def
-      ? `${t('chrWorkspacePaletteSp', { index: i })}: ${def.name}`
-      : t('chrWorkspacePaletteSp', { index: i });
-
-    const spColors = resolveChrPreviewPaletteColors(
+    const context = resolveChrPreviewPaletteContext(
       `sp-${String(i)}`,
-      paletteSet,
       palettes,
-      activeSpritePaletteSlots,
+      activeBackgroundSlots,
+      activeSpriteSlots,
+      universalBackgroundColor,
     );
+    const paletteStatus =
+      context.paletteName ??
+      (context.paletteId === null
+        ? t('paletteManagerSlotEmpty')
+        : t('paletteManagerMissingPalette', {
+            paletteId: context.paletteId,
+          }));
 
     options.push({
       id: `sp-${String(i)}`,
-      label: spLabel,
+      label: `${t('chrWorkspacePaletteSp', { index: i })} — ${paletteStatus}`,
       group: 'sprite',
-      colors: spColors,
+      colors: context.colors,
     });
   }
-
-  // Custom Palettes (if any palette definitions in `palettes` are not assigned to active slots)
-  const activeIds = new Set(
-    (activeSpritePaletteSlots ?? []).filter((id): id is string => Boolean(id)),
-  );
-  (palettes ?? []).forEach((pal) => {
-    if (!activeIds.has(pal.id)) {
-      options.push({
-        id: pal.id,
-        label: pal.name,
-        group: 'custom',
-        colors: pal.colors.map(
-          (code) => NES_MASTER_PALETTE[code] ?? { red: 0, green: 0, blue: 0 },
-        ),
-      });
-    }
-  });
 
   return options;
 }
@@ -428,11 +486,10 @@ export function renderPatternTableToCanvas(
   canvas: HTMLCanvasElement,
   chrBytes: Uint8Array,
   patternTable: SpritePatternTable,
-  colors: readonly {
-    readonly red: number;
-    readonly green: number;
-    readonly blue: number;
-  }[] = NEUTRAL_NES_GRAYSCALE,
+  colors: readonly ChrPreviewColor[] = NEUTRAL_NES_GRAYSCALE.map((color) => ({
+    ...color,
+    alpha: 255,
+  })),
 ): void {
   const context = canvas.getContext('2d');
   if (context === null) {
@@ -466,14 +523,19 @@ export function renderPatternTableToCanvas(
       for (let px = 0; px < 8; px += 1) {
         const bit = 7 - px;
         const colorVal = ((plane0 >> bit) & 1) | (((plane1 >> bit) & 1) << 1);
-        const fallbackColor = colors[0] ?? { red: 0, green: 0, blue: 0 };
+        const fallbackColor = colors[0] ?? {
+          red: 0,
+          green: 0,
+          blue: 0,
+          alpha: 255,
+        };
         const color = colors[colorVal] ?? fallbackColor;
 
         const pixelOffset = ((startY + py) * 128 + (startX + px)) * 4;
         data[pixelOffset] = color.red;
         data[pixelOffset + 1] = color.green;
         data[pixelOffset + 2] = color.blue;
-        data[pixelOffset + 3] = 255;
+        data[pixelOffset + 3] = color.alpha ?? 255;
       }
     }
   }
@@ -502,11 +564,7 @@ function createPatternTableView(
   activeSpritePatternTable: SpritePatternTable,
   zoom: number,
   selectedTileIndex: number | null,
-  previewColors: readonly {
-    readonly red: number;
-    readonly green: number;
-    readonly blue: number;
-  }[],
+  previewColors: readonly ChrPreviewColor[],
   classifications: readonly ChrSlotClassification[],
   highlightedIndices: ReadonlySet<number>,
   highlightScope: ChrHighlightScope,
@@ -587,6 +645,7 @@ function createPatternTableView(
   canvas.width = 128;
   canvas.height = 128;
   canvas.className = 'chr-pt-canvas';
+  if (previewColors[0]?.alpha === 0) canvas.classList.add('checkerboard');
   canvas.setAttribute('role', 'img');
   canvas.setAttribute(
     'aria-label',
@@ -921,11 +980,7 @@ function createViewerPanel(
   options: ChrWorkspaceOptions,
   metrics: ComputedChrMetrics,
   zoom: number,
-  previewColors: readonly {
-    readonly red: number;
-    readonly green: number;
-    readonly blue: number;
-  }[],
+  previewColors: readonly ChrPreviewColor[],
   classifications: readonly ChrSlotClassification[],
   highlightedIndices: ReadonlySet<number>,
   highlightScope: ChrHighlightScope,
@@ -976,9 +1031,10 @@ function createViewerPanel(
   paletteSelect.setAttribute('aria-label', t('chrWorkspacePaletteLabel'));
 
   const paletteOptions = getChrPreviewPaletteOptions(
-    options.paletteSet,
     options.palettes,
-    options.activeSpritePaletteSlots,
+    options.activeBackgroundSlots,
+    options.activeSpriteSlots,
+    options.universalBackgroundColor,
   );
   const selectedPaletteId = options.previewPalette ?? 'grayscale';
 
@@ -1013,14 +1069,8 @@ function createViewerPanel(
         t('chrWorkspacePaletteGroupBg'),
       );
       groupEl.append(optEl);
-    } else if (opt.group === 'sprite') {
-      const groupEl = getOptGroup('sprite', t('chrWorkspacePaletteGroupSp'));
-      groupEl.append(optEl);
     } else {
-      const groupEl = getOptGroup(
-        'custom',
-        t('chrWorkspacePaletteCustomGroup'),
-      );
+      const groupEl = getOptGroup('sprite', t('chrWorkspacePaletteGroupSp'));
       groupEl.append(optEl);
     }
   });
@@ -1037,7 +1087,12 @@ function createViewerPanel(
   previewColors.forEach((col) => {
     const swatch = document.createElement('span');
     swatch.className = 'chr-palette-swatch';
-    swatch.style.backgroundColor = `rgb(${String(col.red)}, ${String(col.green)}, ${String(col.blue)})`;
+    if (col.alpha === 0) {
+      swatch.classList.add('is-transparent');
+      swatch.setAttribute('title', t('paletteManagerTransparent'));
+    } else {
+      swatch.style.backgroundColor = `rgb(${String(col.red)}, ${String(col.green)}, ${String(col.blue)})`;
+    }
     swatches.append(swatch);
   });
 
@@ -1832,12 +1887,14 @@ export function createChrWorkspace(
   const highlightScope = options.highlightScope ?? 'none';
   const heatmapEnabled = options.heatmapEnabled ?? false;
 
-  const previewColors = resolveChrPreviewPaletteColors(
+  const previewPaletteContext = resolveChrPreviewPaletteContext(
     options.previewPalette,
-    options.paletteSet,
     options.palettes,
-    options.activeSpritePaletteSlots,
+    options.activeBackgroundSlots,
+    options.activeSpriteSlots,
+    options.universalBackgroundColor,
   );
+  const previewColors = previewPaletteContext.colors;
 
   const classifications = classifyChrSlots({
     finalChrBytes: metrics.finalChrBytes,
@@ -2032,6 +2089,7 @@ export function createChrWorkspace(
     destinationPatternTable: options.destinationPatternTable,
     tiles: options.tiles,
     colors: previewColors,
+    paletteContext: previewPaletteContext,
     isHighlighted: isSelectedTileHighlighted,
     highlightScopeLabel:
       highlightScope !== 'none' || Boolean(options.highlightedAssetId)

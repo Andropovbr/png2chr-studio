@@ -22,6 +22,7 @@ import {
   resolveActiveSpritePaletteSet,
   resolveBackgroundPaletteSlot,
   resolveEffectivePaletteColors,
+  resolveEffectiveSpritePaletteIndex,
   resolveSpritePaletteSlot,
   resolveUniversalBackgroundMirroring,
   updatePaletteColor,
@@ -367,6 +368,36 @@ describe('palette-manager domain module', () => {
       const resBgNull = resolveBackgroundPaletteSlot(null, null, null);
       expect(resBgNull.isActive).toBe(false);
       expect(resBgNull.slotIndex).toBeNull();
+    });
+
+    it('projects logical sprite IDs to physical OAM palette bits with a clamped legacy fallback', () => {
+      const palette = createPaletteDefinition({ id: 'pal_hero' });
+      const palettes = [palette];
+
+      expect(
+        resolveEffectiveSpritePaletteIndex(
+          'pal_hero',
+          [null, null, null, 'pal_hero'],
+          palettes,
+          0,
+        ),
+      ).toBe(3);
+      expect(
+        resolveEffectiveSpritePaletteIndex(
+          'pal_unassigned',
+          [null, null, null, null],
+          palettes,
+          2,
+        ),
+      ).toBe(2);
+      expect(
+        resolveEffectiveSpritePaletteIndex(
+          null,
+          [null, null, null, null],
+          palettes,
+          99,
+        ),
+      ).toBe(3);
     });
   });
 
