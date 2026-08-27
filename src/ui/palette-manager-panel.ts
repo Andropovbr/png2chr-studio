@@ -265,6 +265,7 @@ function createDeleteDialog(onDeletePalette: (paletteId: string) => void): {
     }
     usageList.hidden = references.length === 0;
     deleteButton.hidden = references.length > 0;
+    deleteButton.disabled = references.length > 0;
     cancelButton.textContent =
       references.length === 0
         ? t('paletteManagerCancel')

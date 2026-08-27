@@ -420,7 +420,21 @@ export function createDefaultProject(
  * Serializes a StudioProject into formatted JSON string.
  */
 export function serializeProject(project: StudioProject): string {
-  return JSON.stringify(project, null, 2);
+  const paletteSet = resolveActiveBackgroundPaletteSet(
+    project.palette.palettes,
+    project.palette.activeBackgroundSlots,
+    project.palette.universalBackgroundColor,
+    project.palette.paletteSet,
+  );
+  const persistableProject: StudioProject = {
+    ...project,
+    palette: {
+      ...project.palette,
+      paletteSet,
+      activeSpritePaletteSlots: project.palette.activeSpriteSlots,
+    },
+  };
+  return JSON.stringify(persistableProject, null, 2);
 }
 
 /**

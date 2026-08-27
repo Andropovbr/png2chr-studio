@@ -240,7 +240,7 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
   - **Atribuições Contextuais Preservadas:** A seleção de paletas por frame ou animação, o pincel de subpaletas em tiles/metatiles e a edição de pixel overrides permanecem estritamente contextuais nos seus respectivos editores (Tileset, Playfield e Animação).
   - **Estado e Callbacks:** `selectedPaletteId` e filtro vivem em `WorkspaceState`; mutações passam por callbacks do dispatcher e escrevem somente em `palettes`, `universalBackgroundColor`, `activeBackgroundSlots` ou `activeSpriteSlots`. O `paletteSet` legado não é source of truth nem recebe dual write.
   - **Acessibilidade e Foco:** Controles nativos, labels e estados ARIA descrevem slots, filtros, targets e códigos NES; dialogs restauram foco ao trigger e criação/duplicação focam o nome da nova definição.
-  - **Exportação de Paleta:** O painel de resumo mantém o binário `.pal` de Background de 16 bytes, agora derivado do banco canônico. Novos formatos continuam reservados à Issue #127.
+  - **Exportação de Paleta:** O painel e o workspace de entrega derivam do estado dual-bank canônico os binários `.pal` de Background e Sprite de 16 bytes, o arquivo PPU completo de 32 bytes e as tabelas cc65 C e ca65 Assembly.
 
 ### 6.5 Workspace de Memória CHR e Tabelas de Padrões (`src/ui/chr-workspace.ts`)
 
@@ -688,7 +688,7 @@ Para a especificação técnica completa e detalhamento de cada aspecto, consult
 2. **Bancos Ativos Duplos (Dual Hardware Banks):**
    - **Banco de Background (PPU $3F00..$3F0F):** 4 slots de subpaleta (0..3) dedicados a Nametables e cenários;
    - **Banco de Sprites (PPU $3F10..$3F1F):** 4 slots de subpaleta (0..3) dedicados a metasprites OAM.
-3. **Gestão Canônica da Cor Universal de Background ($3F00):** O endereço `$3F00`é a cor de fundo universal do projeto; seus espelhos em`$3F04`, `$3F08`, `$3F0C` e `$3F10`, `$3F14`, `$3F18`, `$3F1C` são tratados de forma coerente e transparente em renderização e edição.
+3. **Gestão Canônica da Cor Universal de Background ($3F00):** O endereço `$3F00` é a cor de fundo universal do projeto; seus espelhos em `$3F04`, `$3F08`, `$3F0C` e `$3F10`, `$3F14`, `$3F18`, `$3F1C` são tratados de forma coerente em renderização, edição e exportação. Em sprites, o índice de cor 0 continua transparente.
 4. **Rastreamento de Uso Bidirecional:** Localização determinística de referências em animações, metasprites, frames, mapas de background e slots ativos.
 5. **Diagnósticos e Validação NES:** `analyzeProjectPaletteDiagnostics` produz fatos puros e estruturados (`dangling-palette-reference`, `unassigned-active-slot`, `slot-capacity-exceeded`, `invalid-nes-color`, `inconsistent-universal-color`) e o agregador de readiness em `delivery-workspace.ts` os apresenta com i18n. A capacidade é avaliada por contexto simultâneo de cena e por IDs distintos, nunca pelo tamanho total da biblioteca.
 6. **Exportação Abrangente:** Suporte a arquivos binários `.pal` (16B e 32B), arrays em C (cc65) e ca65 Assembly com tabelas separadas para background e sprites.

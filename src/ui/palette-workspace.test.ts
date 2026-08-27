@@ -501,12 +501,14 @@ describe('PaletteWorkspace component', () => {
     usedCard?.querySelector('.palette-delete-button')?.click();
     const dialog = workspace.querySelector('.palette-delete-dialog');
     expect(dialog?.open).toBe(true);
-    expect(dialog?.querySelector('.danger-button')?.hidden).toBe(true);
+    const destructive = dialog?.querySelector('.danger-button');
+    expect(destructive?.hidden).toBe(true);
+    expect(destructive?.disabled).toBe(true);
     expect(
       dialog?.querySelectorAll('.palette-delete-usage-list')[0]?.children
         .length,
     ).toBeGreaterThan(0);
-    dialog?.querySelector('.danger-button')?.click();
+    destructive?.click();
     expect(onDeletePalette).not.toHaveBeenCalled();
   });
 

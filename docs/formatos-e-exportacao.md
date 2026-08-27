@@ -168,21 +168,31 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
     }
   },
   "palette": {
-    "paletteSet": [
-      [15, 0, 16, 48],
-      [15, 6, 22, 38],
-      [15, 9, 25, 41],
-      [15, 12, 28, 44]
-    ],
-    "activePaletteIndex": 0,
-    "activeColorIndex": 1,
+    "universalBackgroundColor": 15,
     "palettes": [
       {
         "id": "pal_hero_blue",
         "name": "Hero Blue",
-        "colors": [15, 1, 17, 33]
+        "colors": [15, 1, 17, 33],
+        "target": "sprite"
+      },
+      {
+        "id": "pal_sky",
+        "name": "Sky",
+        "colors": [15, 6, 22, 38],
+        "target": "background"
       }
     ],
+    "activeBackgroundSlots": ["pal_sky", null, null, null],
+    "activeSpriteSlots": ["pal_hero_blue", null, null, null],
+    "paletteSet": [
+      [15, 6, 22, 38],
+      [15, 9, 25, 41],
+      [15, 12, 28, 44],
+      [15, 0, 16, 48]
+    ],
+    "activePaletteIndex": 0,
+    "activeColorIndex": 1,
     "activeSpritePaletteSlots": ["pal_hero_blue", null, null, null]
   },
   "chrRegions": [
@@ -306,7 +316,7 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
   - `dataUrl`: dados binários embutidos codificados em Base64 para garantir portabilidade completa offline.
   - `sourceKind` e `name`: tipo de origem (`png`, `chr`, `nes`) e nome de exibição.
 - **Chaves Canônicas de Tiles Lógicos (`LogicalTileKey`):** Identifica tiles na grade lógica de origem no formato `${assetId}:${tileX}:${tileY}` (ex: `asset-hero:0:0`), estritamente desacoplada da alocação de slots físicos em CHR (Pattern Tables, offsets ou deduplicação).
-- **Gerenciador de Paletas (`palette`):** Persiste a biblioteca declarativa de paletas (`palettes: readonly PaletteDefinition[]`), a cor universal de fundo da PPU `$3F00` (`universalBackgroundColor: number`), os 4 slots ativos de hardware de Background (`activeBackgroundSlots: ActivePaletteSlots`), os 4 slots ativos de Sprites (`activeSpriteSlots: ActivePaletteSlots`), além dos índices de edição da UI e campos legados (`paletteSet`, `activeSpritePaletteSlots`) para retrocompatibilidade determinística e transparente (`formatVersion: 1`).
+- **Gerenciador de Paletas (`palette`):** Persiste a biblioteca declarativa de paletas (`palettes: readonly PaletteDefinition[]`), a cor universal de fundo da PPU `$3F00` (`universalBackgroundColor: number`), os 4 slots ativos de hardware de Background (`activeBackgroundSlots: ActivePaletteSlots`), os 4 slots ativos de Sprites (`activeSpriteSlots: ActivePaletteSlots`), além dos índices de edição da UI e campos legados (`paletteSet`, `activeSpritePaletteSlots`) para retrocompatibilidade determinística e transparente (`formatVersion: 1`). No save, `serializeProject` deriva os campos legados dos bancos canônicos; eles não competem como fontes de verdade de runtime.
 - **Regiões e Reservas de CHR (`chrRegions`):** Lista opcional de partições lógicas e reservas de exclusão de CHR (`ChrRegion`). Cada item contém `id`, `name`, `patternTable` (`0` ou `1`), `startTile` e `endTile` (índices locais `$00..$FF` / `0..255`, inclusive), `kind` (`"region"` para faixas organizacionais neutras ou `"reservation"` para reservas que bloqueiam novas alocações automáticas de tiles), além de `notes` e `color` opcionais. Uma reserva bloqueia novas alocações sem mover, apagar ou alterar tiles físicos existentes, permitindo que tiles reais pré-existentes na faixa sejam referenciados por deduplicação. Mantém total retrocompatibilidade (`formatVersion: 1`).
 - **Tileset & Playfield:** Persiste caminhos/dados de imagem, atribuições de paleta por tile/metatile, substituições de pixels 8×8 (`pixelOverrides`), mapa de colisão de 480 bytes (`collisionCells` com 11 tipos), tipo de colisão ativo e parâmetros de geração procedural.
 - **Animações e Metasprites (`animation`):** Múltiplas animações com identificadores estáveis (`id`), dimensões e âncoras de origem por animação, sequenciamento e temporização por frame, paletas atribuídas por frame ou globais (`paletteId` / `framePaletteIds`), mapa de substituições de pixel 8×8 (`pixelOverrides`) e alocação de Base CHR com isolamento de Pattern Table (PT0/PT1).
