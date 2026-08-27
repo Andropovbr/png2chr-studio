@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { IndexedImage } from './types';
 import {
+  assertNesColorCode,
   assignPalettePreservingPixelIndices,
   createDefaultNesPaletteSet,
   createPaletteAssignments,
   createPixelOverrides,
   encodeNesBackgroundPalettes,
   encodePlayfieldAttributeTable,
+  isValidNesColorCode,
   mapImageToNesPalettes,
   NES_MASTER_PALETTE,
   renderNesPaletteImage,
@@ -97,6 +99,31 @@ describe('NES palettes', () => {
     expect(() =>
       setNesPaletteColor(createDefaultNesPaletteSet(), 0, 1, 0x40),
     ).toThrow(RangeError);
+  });
+
+  it('validates NES color codes correctly with isValidNesColorCode and assertNesColorCode', () => {
+    expect(isValidNesColorCode(0)).toBe(true);
+    expect(isValidNesColorCode(63)).toBe(true);
+    expect(isValidNesColorCode(0x0f)).toBe(true);
+    expect(isValidNesColorCode(-1)).toBe(false);
+    expect(isValidNesColorCode(64)).toBe(false);
+    expect(isValidNesColorCode(3.14)).toBe(false);
+    expect(isValidNesColorCode('0x0f')).toBe(false);
+    expect(isValidNesColorCode(null)).toBe(false);
+    expect(isValidNesColorCode(undefined)).toBe(false);
+
+    expect(() => {
+      assertNesColorCode(0);
+    }).not.toThrow();
+    expect(() => {
+      assertNesColorCode(63);
+    }).not.toThrow();
+    expect(() => {
+      assertNesColorCode(-1);
+    }).toThrow(RangeError);
+    expect(() => {
+      assertNesColorCode(64);
+    }).toThrow(RangeError);
   });
 
   it('maps source colors to local two-bit indices in each assigned region', () => {

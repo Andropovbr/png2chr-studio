@@ -98,8 +98,17 @@ const DEFAULT_PALETTE_CODES: NesPaletteSet = [
   [0x0f, 0x03, 0x13, 0x23],
 ];
 
-function assertNesColorCode(colorCode: number): void {
-  if (!Number.isInteger(colorCode) || colorCode < 0 || colorCode >= 64) {
+export function isValidNesColorCode(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value < NES_COLOR_COUNT
+  );
+}
+
+export function assertNesColorCode(colorCode: number): void {
+  if (!isValidNesColorCode(colorCode)) {
     throw new RangeError('NES color codes must be between $00 and $3F.');
   }
 }
