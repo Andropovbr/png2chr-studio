@@ -85,16 +85,35 @@ Define a atribuição de paleta de background para as regiões do playfield.
 
 ## 6. Arquivo de Paletas do NES (`.pal`)
 
-Armazena as paletas de cores configuradas para background ou sprites.
+Os exportadores de `src/core/palette-exporters.ts` serializam exclusivamente o estado dual-bank canônico. Cada byte é um código de cor NES `$00..$3F`; slots vazios ou com referência dangling usam o fallback determinístico do domínio.
 
-- **Tamanho:** **16 bytes**.
-- **Formato:** Sequência de 16 bytes, onde cada byte é um código de cor da PPU do NES no intervalo hexadecimal `$00` a `$3F` (64 cores).
-- **Disposição:**
-  - Bytes 0–3: Paleta 0 (Byte 0 = Cor Universal de Fundo)
-  - Bytes 4–7: Paleta 1 (Byte 4 = Cor Universal de Fundo)
-  - Bytes 8–11: Paleta 2 (Byte 8 = Cor Universal de Fundo)
-  - Bytes 12–15: Paleta 3 (Byte 12 = Cor Universal de Fundo)
-- **Regra de Hardware:** O índice 0 de todas as 4 paletas compartilha a mesma cor universal de fundo da PPU (`$3F00`).
+### 6.1 Binários
+
+| Variante            | Tamanho      | Layout                                                                                 |
+| :------------------ | :----------- | :------------------------------------------------------------------------------------- |
+| Background `.pal`   | **16 bytes** | Quatro subpaletas BG em ordem de slot, correspondentes a `$3F00..$3F0F`.               |
+| Sprite `.pal`       | **16 bytes** | Quatro subpaletas SPR em ordem de slot, correspondentes a `$3F10..$3F1F`.              |
+| PPU completa `.pal` | **32 bytes** | Concatenação exata de **16 bytes Background + 16 bytes Sprites**, para `$3F00..$3F1F`. |
+
+Em cada banco, os offsets `0`, `4`, `8` e `12` contêm `universalBackgroundColor`. No banco BG isso implementa os espelhos `$3F00/$04/$08/$0C`; no banco SPR representa os endereços transparentes `$3F10/$14/$18/$1C`, que espelham `$3F00` no hardware. Os bancos nunca consultam slots um do outro.
+
+### 6.2 C para cc65 (`.h` / `.c`)
+
+`generateCPaletteExport` gera:
+
+- macros de tamanho, offsets BG/SPR e índices absolutos dos oito slots na Palette RAM;
+- declarações `extern const unsigned char <símbolo>_bg[16]` e `<símbolo>_spr[16]`;
+- duas tabelas `const` com valores `0xXX`, organizadas e comentadas por subpaleta física.
+
+O símbolo e os nomes de arquivo passam por `normalizeCIdentifier`. As duas tabelas ocupam **32 bytes** de ROM.
+
+### 6.3 Assembly para ca65 (`.inc` / `.s`)
+
+`generateCa65PaletteExport` gera:
+
+- include `.inc` com constantes de tamanho/offset/slot e diretivas `.import`;
+- source `.s` com `.segment "RODATA"` por padrão, diretivas `.export` e tabelas `.byte $XX` separadas para BG e SPR;
+- exatamente os mesmos 32 bytes e a mesma ordem da exportação C e do binário PPU completo.
 
 ---
 

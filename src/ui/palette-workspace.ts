@@ -1,8 +1,14 @@
-import { encodeNesBackgroundPalettes } from '../core/nes-palette';
+import {
+  exportBackgroundPaletteBinary,
+  exportFullPpuPaletteBinary,
+  exportSpritePaletteBinary,
+  generateCa65PaletteExport,
+  generateCPaletteExport,
+} from '../core/palette-exporters';
 import {
   findPaletteUsageReferences,
-  resolveActiveBackgroundPaletteSet,
   type ActivePaletteSlots,
+  type DualBankPaletteState,
   type PaletteDefinition,
   type PaletteDiagnosticFact,
   type PaletteTarget,
@@ -51,6 +57,7 @@ export interface PaletteWorkspaceOptions {
   readonly onSelectPalette: (paletteId: string | null) => void;
   readonly onFilterChange: (filter: PaletteLibraryFilter) => void;
   readonly onDownloadBytes?: (bytes: Uint8Array, fileName: string) => void;
+  readonly onDownloadText?: (text: string, fileName: string) => void;
 }
 
 export type PaletteWorkspaceElement = HTMLElement & {
@@ -131,23 +138,99 @@ export function createPaletteWorkspace(
 
   const exportActions = document.createElement('div');
   exportActions.className = 'export-actions';
+  const paletteState: DualBankPaletteState = {
+    palettes: options.palettes,
+    universalBackgroundColor: options.universalBackgroundColor,
+    activeBackgroundSlots: options.activeBackgroundSlots,
+    activeSpriteSlots: options.activeSpriteSlots,
+  };
+  const cExport = generateCPaletteExport(paletteState, {
+    symbolBase: 'project_palette',
+  });
+  const asmExport = generateCa65PaletteExport(paletteState, {
+    symbolBase: 'project_palette',
+  });
+  const createExportButton = (
+    exportId: string,
+    label: string,
+    onClick: () => void,
+  ): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button secondary-button';
+    button.setAttribute('data-palette-export', exportId);
+    button.textContent = label;
+    button.addEventListener('click', onClick);
+    return button;
+  };
   if (options.onDownloadBytes) {
-    const downloadButton = document.createElement('button');
-    downloadButton.type = 'button';
-    downloadButton.className = 'button secondary-button';
-    downloadButton.textContent = t('paletteWorkspaceDownloadPal');
-    downloadButton.addEventListener('click', () => {
-      const resolvedBackgroundBank = resolveActiveBackgroundPaletteSet(
-        options.palettes,
-        options.activeBackgroundSlots,
-        options.universalBackgroundColor,
-      );
-      options.onDownloadBytes?.(
-        encodeNesBackgroundPalettes(resolvedBackgroundBank),
-        'project.pal',
-      );
-    });
-    exportActions.append(downloadButton);
+    exportActions.append(
+      createExportButton(
+        'background-pal',
+        t('paletteWorkspaceDownloadBackgroundPal'),
+        () => {
+          options.onDownloadBytes?.(
+            exportBackgroundPaletteBinary(paletteState),
+            'project.pal',
+          );
+        },
+      ),
+      createExportButton(
+        'sprite-pal',
+        t('paletteWorkspaceDownloadSpritePal'),
+        () => {
+          options.onDownloadBytes?.(
+            exportSpritePaletteBinary(paletteState),
+            'project_sprites.pal',
+          );
+        },
+      ),
+      createExportButton(
+        'full-pal',
+        t('paletteWorkspaceDownloadFullPal'),
+        () => {
+          options.onDownloadBytes?.(
+            exportFullPpuPaletteBinary(paletteState),
+            'project_ppu.pal',
+          );
+        },
+      ),
+    );
+  }
+  if (options.onDownloadText) {
+    exportActions.append(
+      createExportButton(
+        'c-header',
+        t('paletteWorkspaceDownloadCHeader'),
+        () => {
+          options.onDownloadText?.(cExport.header, cExport.headerFileName);
+        },
+      ),
+      createExportButton(
+        'c-source',
+        t('paletteWorkspaceDownloadCSource'),
+        () => {
+          options.onDownloadText?.(cExport.source, cExport.sourceFileName);
+        },
+      ),
+      createExportButton(
+        'asm-include',
+        t('paletteWorkspaceDownloadAsmInclude'),
+        () => {
+          options.onDownloadText?.(
+            asmExport.include,
+            asmExport.includeFileName,
+          );
+        },
+      ),
+      createExportButton(
+        'asm-source',
+        t('paletteWorkspaceDownloadAsmSource'),
+        () => {
+          options.onDownloadText?.(asmExport.source, asmExport.sourceFileName);
+        },
+      ),
+    );
   }
   exportSection.append(exportHeader, statsText, exportActions);
   workspace.append(managerPanel, exportSection);

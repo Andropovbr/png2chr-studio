@@ -380,45 +380,15 @@ O analyzer compartilha os mesmos tipos de consumer de `findPaletteUsageReference
 
 ## 12. Exportadores
 
-A exportação de paletas contemplará:
+`src/core/palette-exporters.ts` implementa serializadores puros para:
 
-1. **Binário de Paleta de Background (`.pal` - 16 bytes):** Os 16 bytes das 4 subpaletas ativas de background (`$3F00..$3F0F`).
-2. **Binário de Paleta Completa da PPU (`.pal` - 32 bytes):** Os 32 bytes completos da PPU (16B Background seguidos de 16B Sprites).
-3. **Exportação C (cc65):**
-   ```c
-   /* Paletas de Background (16 bytes) */
-   const unsigned char palette_bg[16] = {
-       0x0F, 0x01, 0x11, 0x21,
-       0x0F, 0x06, 0x16, 0x26,
-       0x0F, 0x09, 0x19, 0x29,
-       0x0F, 0x03, 0x13, 0x23
-   };
+- `exportBackgroundPaletteBinary`: 16 bytes BG (`$3F00..$3F0F`);
+- `exportSpritePaletteBinary`: 16 bytes SPR (`$3F10..$3F1F`);
+- `exportFullPpuPaletteBinary`: 32 bytes na ordem exata BG + SPR;
+- `generateCPaletteExport`: header e source cc65;
+- `generateCa65PaletteExport`: include e source ca65.
 
-   /* Paletas de Sprites (16 bytes) */
-   const unsigned char palette_spr[16] = {
-       0x0F, 0x11, 0x21, 0x30,
-       0x0F, 0x05, 0x15, 0x25,
-       0x0F, 0x17, 0x27, 0x37,
-       0x0F, 0x00, 0x10, 0x30
-   };
-   ```
-4. **Exportação Assembly (ca65):**
-   ```ca65
-   .segment "RODATA"
-   .export _palette_bg, _palette_spr
-
-   _palette_bg:
-       .byte $0F, $01, $11, $21
-       .byte $0F, $06, $16, $26
-       .byte $0F, $09, $19, $29
-       .byte $0F, $03, $13, $23
-
-   _palette_spr:
-       .byte $0F, $11, $21, $30
-       .byte $0F, $05, $15, $25
-       .byte $0F, $17, $27, $37
-       .byte $0F, $00, $10, $30
-   ```
+Todos recebem `DualBankPaletteState`, reutilizam os resolvers canônicos de banco e não alteram definições, slots ou estado persistido. O contrato detalhado dos arquivos fica centralizado em [Formatos e Exportação](formatos-e-exportacao.md#6-arquivo-de-paletas-do-nes-pal).
 
 ---
 

@@ -90,7 +90,10 @@ const en = {
   backgroundCreateFirstMap:
     'Create your first background map to start editing.',
   deliveryArtifactChr: 'NES CHR-ROM Pattern Table binary (8 KiB / 512 tiles)',
-  deliveryArtifactPalette: 'NES Hardware Palette binary (16 bytes)',
+  deliveryArtifactPalette: 'NES Background Palette binary (16 bytes)',
+  deliveryArtifactSpritePalette: 'NES Sprite Palette binary (16 bytes)',
+  deliveryArtifactFullPalette:
+    'Complete NES PPU Palette RAM binary (32 bytes: Background + Sprite)',
   deliveryArtifactNametable: 'NES Nametable Tile Map binary (960 bytes)',
   deliveryArtifactAttributeTable: 'NES Attribute Table binary (64 bytes)',
   deliveryArtifactCollision: 'Game Collision Map binary',
@@ -112,8 +115,15 @@ const en = {
     'Reusable 4-color palette definitions available across animations and entities.',
   paletteWorkspaceExportTitle: 'Export Palette',
   paletteWorkspaceExportHint:
-    'Download the active 16-byte NES palette file (.pal).',
-  paletteWorkspaceDownloadPal: 'Download Palette (.pal)',
+    'Download canonical Background, Sprite, or complete PPU binaries and ready-to-use cc65 or ca65 tables.',
+  paletteWorkspaceDownloadPal: 'Download Background Palette (.pal)',
+  paletteWorkspaceDownloadBackgroundPal: 'Background Palette — 16 B (.pal)',
+  paletteWorkspaceDownloadSpritePal: 'Sprite Palette — 16 B (.pal)',
+  paletteWorkspaceDownloadFullPal: 'Complete PPU Palette — 32 B (.pal)',
+  paletteWorkspaceDownloadCHeader: 'cc65 Header (.h)',
+  paletteWorkspaceDownloadCSource: 'cc65 Source (.c)',
+  paletteWorkspaceDownloadAsmInclude: 'ca65 Include (.inc)',
+  paletteWorkspaceDownloadAsmSource: 'ca65 Source (.s)',
   paletteWorkspaceStats:
     '{count} palette definitions · {active} active slots · {references} references',
   chrWorkspaceTitle: 'CHR Memory & Pattern Tables',
@@ -1131,7 +1141,10 @@ const ptBr = {
     'Crie seu primeiro mapa de background para começar a editar.',
   deliveryArtifactChr:
     'Binário de Pattern Table CHR-ROM NES (8 KiB / 512 tiles)',
-  deliveryArtifactPalette: 'Binário de Paleta de Hardware NES (16 bytes)',
+  deliveryArtifactPalette: 'Binário de Paleta de Background NES (16 bytes)',
+  deliveryArtifactSpritePalette: 'Binário de Paleta de Sprites NES (16 bytes)',
+  deliveryArtifactFullPalette:
+    'Binário completo da Palette RAM da PPU NES (32 bytes: Background + Sprites)',
   deliveryArtifactNametable:
     'Binário de Mapa de Tiles Nametable NES (960 bytes)',
   deliveryArtifactAttributeTable: 'Binário de Attribute Table NES (64 bytes)',
@@ -1154,8 +1167,15 @@ const ptBr = {
     'Definições reutilizáveis de 4 cores disponíveis para entidades e animações.',
   paletteWorkspaceExportTitle: 'Exportar Paleta',
   paletteWorkspaceExportHint:
-    'Baixar o arquivo de paleta NES de 16 bytes (.pal).',
-  paletteWorkspaceDownloadPal: 'Baixar Paleta (.pal)',
+    'Baixe binários canônicos de Background, Sprites ou da PPU completa e tabelas prontas para cc65 ou ca65.',
+  paletteWorkspaceDownloadPal: 'Baixar Paleta de Background (.pal)',
+  paletteWorkspaceDownloadBackgroundPal: 'Paleta de Background — 16 B (.pal)',
+  paletteWorkspaceDownloadSpritePal: 'Paleta de Sprites — 16 B (.pal)',
+  paletteWorkspaceDownloadFullPal: 'Paleta PPU Completa — 32 B (.pal)',
+  paletteWorkspaceDownloadCHeader: 'Cabeçalho cc65 (.h)',
+  paletteWorkspaceDownloadCSource: 'Código cc65 (.c)',
+  paletteWorkspaceDownloadAsmInclude: 'Include ca65 (.inc)',
+  paletteWorkspaceDownloadAsmSource: 'Código ca65 (.s)',
   paletteWorkspaceStats:
     '{count} definições de paleta · {active} slots ativos · {references} referências',
   chrWorkspaceTitle: 'Memória CHR e Tabelas de Padrões',

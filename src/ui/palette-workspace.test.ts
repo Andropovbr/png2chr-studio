@@ -6,6 +6,13 @@ import type {
   PaletteDiagnosticFact,
 } from '../core/palette-manager';
 import {
+  exportBackgroundPaletteBinary,
+  exportFullPpuPaletteBinary,
+  exportSpritePaletteBinary,
+  generateCa65PaletteExport,
+  generateCPaletteExport,
+} from '../core/palette-exporters';
+import {
   createPaletteWorkspace,
   type PaletteWorkspaceOptions,
 } from './palette-workspace';
@@ -622,21 +629,46 @@ describe('PaletteWorkspace component', () => {
     expect(mockDocument.activeElement?.textContent).toMatch(/Cancel|Cancelar/);
   });
 
-  it('exports the resolved canonical Background bank instead of a legacy paletteSet', () => {
+  it('downloads every canonical binary, cc65, and ca65 palette artifact', () => {
     const onDownloadBytes = vi.fn();
-    const workspace = createPaletteWorkspace(
-      createOptions({ onDownloadBytes }),
-    ) as unknown as MockElement;
-    workspace
-      .querySelector('.palette-export-panel')
-      ?.querySelector('button')
-      ?.click();
-    expect(onDownloadBytes).toHaveBeenCalledWith(
-      expect.any(Uint8Array),
-      'project.pal',
-    );
-    const bytes = onDownloadBytes.mock.calls[0]?.[0] as Uint8Array;
-    expect(bytes).toHaveLength(16);
-    expect(Array.from(bytes.slice(0, 4))).toEqual([0x0f, 0x01, 0x11, 0x21]);
+    const onDownloadText = vi.fn();
+    const options = createOptions({ onDownloadBytes, onDownloadText });
+    const workspace = createPaletteWorkspace(options) as unknown as MockElement;
+    const clickExport = (id: string): void => {
+      workspace.querySelector(`[data-palette-export="${id}"]`)?.click();
+    };
+    [
+      'background-pal',
+      'sprite-pal',
+      'full-pal',
+      'c-header',
+      'c-source',
+      'asm-include',
+      'asm-source',
+    ].forEach(clickExport);
+
+    const paletteState = {
+      palettes: options.palettes,
+      universalBackgroundColor: options.universalBackgroundColor,
+      activeBackgroundSlots: options.activeBackgroundSlots,
+      activeSpriteSlots: options.activeSpriteSlots,
+    };
+    expect(onDownloadBytes.mock.calls).toEqual([
+      [exportBackgroundPaletteBinary(paletteState), 'project.pal'],
+      [exportSpritePaletteBinary(paletteState), 'project_sprites.pal'],
+      [exportFullPpuPaletteBinary(paletteState), 'project_ppu.pal'],
+    ]);
+    const c = generateCPaletteExport(paletteState, {
+      symbolBase: 'project_palette',
+    });
+    const asm = generateCa65PaletteExport(paletteState, {
+      symbolBase: 'project_palette',
+    });
+    expect(onDownloadText.mock.calls).toEqual([
+      [c.header, c.headerFileName],
+      [c.source, c.sourceFileName],
+      [asm.include, asm.includeFileName],
+      [asm.source, asm.sourceFileName],
+    ]);
   });
 });

@@ -24,14 +24,18 @@ import {
 import type { ProjectAsset } from '../core/asset-identity';
 import { padChrRom } from '../core/chr-rom';
 import {
-  encodeNesBackgroundPalettes,
-  type NesPaletteSet,
-} from '../core/nes-palette';
+  exportBackgroundPaletteBinary,
+  exportFullPpuPaletteBinary,
+  exportSpritePaletteBinary,
+  generateCa65PaletteExport,
+  generateCPaletteExport,
+  sanitizePaletteIdentifier,
+} from '../core/palette-exporters';
 import {
   analyzeProjectPaletteDiagnostics,
   formatPaletteDiagnosticMessage,
-  type PaletteDefinition,
   type PaletteDiagnosticFact,
+  type DualBankPaletteState,
 } from '../core/palette-manager';
 import type { IndexedImage } from '../core/types';
 import { t, type TranslationKey } from '../i18n';
@@ -71,12 +75,7 @@ export interface DeliveryWorkspaceOptions {
   readonly nametable: Uint8Array | null;
   readonly attributeTable: Uint8Array | null;
   readonly collisionMap: Uint8Array | null;
-  readonly paletteSet: NesPaletteSet;
-  readonly universalBackgroundColor?: number;
-  readonly palettes?: readonly PaletteDefinition[];
-  readonly activeBackgroundSlots?: readonly (string | null)[];
-  readonly activeSpriteSlots?: readonly (string | null)[];
-  readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly paletteState: DualBankPaletteState;
   readonly paletteAnimations?: readonly {
     readonly id: string;
     readonly name: string;
@@ -211,6 +210,108 @@ export function convertChrRegionDiagnosticFactsToDeliveryItems(
   }));
 }
 
+function createPaletteDeliveryArtifacts(
+  options: Pick<DeliveryWorkspaceOptions, 'onDownloadBytes' | 'onDownloadText'>,
+  paletteState: DualBankPaletteState,
+  baseName: string,
+  artifactPrefix: string,
+): readonly [
+  DeliveryArtifact,
+  DeliveryArtifact,
+  DeliveryArtifact,
+  DeliveryArtifact,
+  DeliveryArtifact,
+  DeliveryArtifact,
+  DeliveryArtifact,
+] {
+  const background = exportBackgroundPaletteBinary(paletteState);
+  const sprites = exportSpritePaletteBinary(paletteState);
+  const full = exportFullPpuPaletteBinary(paletteState);
+  const symbolBase = `${sanitizePaletteIdentifier(baseName)}_palette`;
+  const c = generateCPaletteExport(paletteState, { symbolBase });
+  const asm = generateCa65PaletteExport(paletteState, { symbolBase });
+
+  return [
+    {
+      id: `${artifactPrefix}-pal`,
+      name: `${baseName}.pal`,
+      category: 'Palette',
+      description: t('deliveryArtifactPalette'),
+      sizeBytes: background.length,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadBytes(background, `${baseName}.pal`);
+      },
+    },
+    {
+      id: `${artifactPrefix}-spr-pal`,
+      name: `${baseName}_sprites.pal`,
+      category: 'Palette',
+      description: t('deliveryArtifactSpritePalette'),
+      sizeBytes: sprites.length,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadBytes(sprites, `${baseName}_sprites.pal`);
+      },
+    },
+    {
+      id: `${artifactPrefix}-ppu-pal`,
+      name: `${baseName}_ppu.pal`,
+      category: 'Palette',
+      description: t('deliveryArtifactFullPalette'),
+      sizeBytes: full.length,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadBytes(full, `${baseName}_ppu.pal`);
+      },
+    },
+    {
+      id: `${artifactPrefix}-palette-c-header`,
+      name: c.headerFileName,
+      category: 'C Header',
+      description: t('deliveryArtifactCHeader'),
+      sizeBytes: new Blob([c.header]).size,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadText(c.header, c.headerFileName);
+      },
+    },
+    {
+      id: `${artifactPrefix}-palette-c-source`,
+      name: c.sourceFileName,
+      category: 'C Source',
+      description: t('deliveryArtifactCSource'),
+      sizeBytes: new Blob([c.source]).size,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadText(c.source, c.sourceFileName);
+      },
+    },
+    {
+      id: `${artifactPrefix}-palette-asm-include`,
+      name: asm.includeFileName,
+      category: 'ASM Include',
+      description: t('deliveryArtifactAsmInclude'),
+      sizeBytes: new Blob([asm.include]).size,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadText(asm.include, asm.includeFileName);
+      },
+    },
+    {
+      id: `${artifactPrefix}-palette-asm-source`,
+      name: asm.sourceFileName,
+      category: 'ASM Source',
+      description: t('deliveryArtifactAsmSource'),
+      sizeBytes: new Blob([asm.source]).size,
+      isPrimary: false,
+      onDownload: () => {
+        options.onDownloadText(asm.source, asm.sourceFileName);
+      },
+    },
+  ];
+}
+
 export function createDeliveryWorkspace(
   options: DeliveryWorkspaceOptions,
 ): HTMLElement {
@@ -340,12 +441,10 @@ export function createDeliveryWorkspace(
   const paletteFacts =
     options.paletteDiagnostics ??
     analyzeProjectPaletteDiagnostics({
-      universalBackgroundColor:
-        options.universalBackgroundColor ?? options.paletteSet[0][0],
-      palettes: options.palettes ?? [],
-      activeBackgroundSlots: options.activeBackgroundSlots,
-      activeSpriteSlots:
-        options.activeSpriteSlots ?? options.activeSpritePaletteSlots,
+      universalBackgroundColor: options.paletteState.universalBackgroundColor,
+      palettes: options.paletteState.palettes,
+      activeBackgroundSlots: options.paletteState.activeBackgroundSlots,
+      activeSpriteSlots: options.paletteState.activeSpriteSlots,
       animations: options.paletteAnimations,
       scenePreview: options.scenePreview,
     });
@@ -444,6 +543,7 @@ export function createDeliveryWorkspace(
   const baseName = options.fileName
     ? options.fileName.replace(/\.[^/.]+$/, '')
     : 'graphics';
+  let supplementalPaletteArtifacts: readonly DeliveryArtifact[] = [];
 
   if (options.mode === 'animation' && options.animationModel !== null) {
     const model = options.animationModel;
@@ -451,6 +551,9 @@ export function createDeliveryWorkspace(
     const id = model.symbolBase;
     const c = generateCAnimationExport(model);
     const asm = generateCa65AnimationExport(model);
+    const [backgroundPaletteArtifact, ...additionalPaletteArtifacts] =
+      createPaletteDeliveryArtifacts(options, options.paletteState, id, 'anim');
+    supplementalPaletteArtifacts = additionalPaletteArtifacts;
 
     artifacts.push(
       {
@@ -464,20 +567,7 @@ export function createDeliveryWorkspace(
           options.onDownloadBytes(exportedChr, model.chr.output || `${id}.chr`);
         },
       },
-      {
-        id: 'anim-pal',
-        name: `${id}.pal`,
-        category: 'Palette',
-        description: t('deliveryArtifactPalette'),
-        sizeBytes: 16,
-        isPrimary: false,
-        onDownload: () => {
-          options.onDownloadBytes(
-            encodeNesBackgroundPalettes(options.paletteSet),
-            `${id}.pal`,
-          );
-        },
-      },
+      backgroundPaletteArtifact,
       {
         id: 'anim-json',
         name: `${id}.json`,
@@ -538,7 +628,14 @@ export function createDeliveryWorkspace(
       },
     );
   } else if (options.mode === 'playfield') {
-    const palBytes = encodeNesBackgroundPalettes(options.paletteSet);
+    const [backgroundPaletteArtifact, ...additionalPaletteArtifacts] =
+      createPaletteDeliveryArtifacts(
+        options,
+        options.paletteState,
+        baseName,
+        'pf',
+      );
+    supplementalPaletteArtifacts = additionalPaletteArtifacts;
     if (options.chr !== null) {
       artifacts.push({
         id: 'pf-chr',
@@ -554,17 +651,7 @@ export function createDeliveryWorkspace(
       });
     }
 
-    artifacts.push({
-      id: 'pf-pal',
-      name: `${baseName}.pal`,
-      category: 'Palette',
-      description: t('deliveryArtifactPalette'),
-      sizeBytes: palBytes.length,
-      isPrimary: false,
-      onDownload: () => {
-        options.onDownloadBytes(palBytes, `${baseName}.pal`);
-      },
-    });
+    artifacts.push(backgroundPaletteArtifact);
 
     if (options.nametable !== null) {
       artifacts.push({
@@ -615,7 +702,14 @@ export function createDeliveryWorkspace(
     }
   } else {
     // Tileset mode
-    const palBytes = encodeNesBackgroundPalettes(options.paletteSet);
+    const [backgroundPaletteArtifact, ...additionalPaletteArtifacts] =
+      createPaletteDeliveryArtifacts(
+        options,
+        options.paletteState,
+        baseName,
+        'ts',
+      );
+    supplementalPaletteArtifacts = additionalPaletteArtifacts;
     if (options.chr !== null) {
       artifacts.push({
         id: 'ts-chr',
@@ -631,18 +725,10 @@ export function createDeliveryWorkspace(
       });
     }
 
-    artifacts.push({
-      id: 'ts-pal',
-      name: `${baseName}.pal`,
-      category: 'Palette',
-      description: t('deliveryArtifactPalette'),
-      sizeBytes: palBytes.length,
-      isPrimary: false,
-      onDownload: () => {
-        options.onDownloadBytes(palBytes, `${baseName}.pal`);
-      },
-    });
+    artifacts.push(backgroundPaletteArtifact);
   }
+
+  artifacts.push(...supplementalPaletteArtifacts);
 
   // 4. Artifacts Panel
   const artifactsPanel = document.createElement('section');
@@ -670,6 +756,7 @@ export function createDeliveryWorkspace(
     artifacts.forEach((art) => {
       const card = document.createElement('article');
       card.className = `delivery-artifact-card${art.isPrimary ? ' is-primary' : ''}`;
+      card.setAttribute('data-artifact-id', art.id);
 
       const cardHeader = document.createElement('div');
       cardHeader.className = 'delivery-artifact-header';
