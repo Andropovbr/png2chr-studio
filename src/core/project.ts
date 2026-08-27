@@ -51,11 +51,17 @@ export * from './background-model';
 export * from './background-exporters';
 export type {
   ActivePaletteSlots,
+  AnalyzePaletteDiagnosticsOptions,
   DualBankPaletteState,
+  PaletteConsumerType,
   PaletteDefinition,
+  PaletteDiagnosticFact,
+  PaletteDiagnosticKind,
   ProjectPaletteId,
 } from './palette-manager';
 export {
+  analyzeProjectPaletteDiagnostics,
+  formatPaletteDiagnosticMessage,
   resolveProjectBackgroundPaletteSet,
   resolveProjectPaletteState,
   resolveProjectSpritePaletteSet,

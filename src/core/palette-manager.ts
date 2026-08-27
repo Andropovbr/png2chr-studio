@@ -14,10 +14,15 @@ import {
   assertNesColorCode,
   createDefaultNesPaletteSet,
   isValidNesColorCode,
+  NES_BACKGROUND_PALETTE_COUNT,
   NES_COLORS_PER_PALETTE,
 } from './nes-palette';
+import { t } from '../i18n';
 
 export { assertNesColorCode, isValidNesColorCode };
+
+/** Both NES palette banks expose four physical subpalette slots. */
+const NES_PALETTE_BANK_SLOT_COUNT = NES_BACKGROUND_PALETTE_COUNT;
 
 /**
  * Stable logical identifier for an authored palette in the project library.
@@ -927,4 +932,844 @@ export function findPaletteUsageReferences(
   }
 
   return references;
+}
+
+/**
+ * Palette diagnostic kind identifiers (Milestone 9 - Issue #124).
+ */
+export type PaletteDiagnosticKind =
+  | 'dangling-palette-reference'
+  | 'unassigned-active-slot'
+  | 'slot-capacity-exceeded'
+  | 'invalid-nes-color'
+  | 'inconsistent-universal-color';
+
+/**
+ * Consumer categories that reference palettes across project assets.
+ */
+export type PaletteConsumerType =
+  'animation' | 'frame' | 'scene' | 'slot' | 'background';
+
+export interface BasePaletteDiagnosticFact {
+  readonly id: string;
+  readonly code: PaletteDiagnosticKind;
+  readonly kind: PaletteDiagnosticKind;
+  readonly severity: 'error' | 'warning';
+}
+
+export interface DanglingPaletteReferenceDiagnosticFact extends BasePaletteDiagnosticFact {
+  readonly code: 'dangling-palette-reference';
+  readonly kind: 'dangling-palette-reference';
+  readonly severity: 'error';
+  readonly paletteId: string;
+  readonly consumerType: PaletteConsumerType;
+  readonly consumerId?: string;
+  readonly consumerName: string;
+  readonly bank?: 'sprite' | 'background';
+  readonly slotIndex?: number;
+  readonly frameIndex?: number;
+  readonly contextId?: string;
+}
+
+export interface UnassignedActiveSlotDiagnosticFact extends BasePaletteDiagnosticFact {
+  readonly code: 'unassigned-active-slot';
+  readonly kind: 'unassigned-active-slot';
+  readonly severity: 'warning';
+  readonly paletteId: string;
+  readonly paletteName: string;
+  readonly bank: 'sprite' | 'background';
+  readonly consumerType: 'animation' | 'frame' | 'scene' | 'background';
+  readonly consumerId?: string;
+  readonly consumerName: string;
+  readonly frameIndex?: number;
+  readonly contextId?: string;
+}
+
+export interface SlotCapacityExceededDiagnosticFact extends BasePaletteDiagnosticFact {
+  readonly code: 'slot-capacity-exceeded';
+  readonly kind: 'slot-capacity-exceeded';
+  readonly severity: 'error';
+  readonly bank: 'sprite' | 'background';
+  readonly contextType: 'scene' | 'animation' | 'frame';
+  readonly contextId?: string;
+  readonly contextName: string;
+  readonly requiredCount: number;
+  readonly maxCapacity: number;
+  readonly distinctPaletteIds: readonly string[];
+}
+
+export interface InvalidNesColorDiagnosticFact extends BasePaletteDiagnosticFact {
+  readonly code: 'invalid-nes-color';
+  readonly kind: 'invalid-nes-color';
+  readonly severity: 'error';
+  readonly paletteId?: string;
+  readonly paletteName?: string;
+  readonly colorIndex?: number;
+  readonly colorValue: number;
+  readonly isUniversalBackground: boolean;
+}
+
+export interface InconsistentUniversalColorDiagnosticFact extends BasePaletteDiagnosticFact {
+  readonly code: 'inconsistent-universal-color';
+  readonly kind: 'inconsistent-universal-color';
+  readonly severity: 'warning';
+  readonly paletteId: string;
+  readonly paletteName: string;
+  readonly actualColor: number;
+  readonly expectedColor: number;
+}
+
+export type PaletteDiagnosticFact =
+  | DanglingPaletteReferenceDiagnosticFact
+  | UnassignedActiveSlotDiagnosticFact
+  | SlotCapacityExceededDiagnosticFact
+  | InvalidNesColorDiagnosticFact
+  | InconsistentUniversalColorDiagnosticFact;
+
+export interface AnalyzePaletteDiagnosticsOptions {
+  readonly universalBackgroundColor?: number;
+  readonly palettes?: readonly PaletteDefinition[];
+  readonly activeBackgroundSlots?:
+    ActivePaletteSlots | readonly (string | null)[];
+  readonly activeSpriteSlots?: ActivePaletteSlots | readonly (string | null)[];
+  readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly paletteSet?: NesPaletteSet;
+  readonly animations?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly entity?: string;
+    readonly paletteId?: string | null;
+    readonly framePaletteIds?: readonly (string | null)[];
+  }[];
+  readonly animation?: {
+    readonly animations?: readonly {
+      readonly id: string;
+      readonly name: string;
+      readonly entity?: string;
+      readonly paletteId?: string | null;
+      readonly framePaletteIds?: readonly (string | null)[];
+    }[];
+  };
+  readonly backgrounds?:
+    | readonly {
+        readonly id: string;
+        readonly name: string;
+        readonly paletteId?: string | null;
+      }[]
+    | {
+        readonly maps?: readonly {
+          readonly id: string;
+          readonly name: string;
+          readonly paletteId?: string | null;
+        }[];
+      };
+  readonly scenePreview?: {
+    readonly instances?: readonly {
+      readonly id: string;
+      readonly name?: string;
+      readonly entityId?: string;
+      readonly animationName?: string;
+      readonly paletteId?: string | null;
+      readonly visible?: boolean;
+    }[];
+  };
+  readonly sceneInstances?: readonly {
+    readonly id: string;
+    readonly name?: string;
+    readonly entityId?: string;
+    readonly animationName?: string;
+    readonly paletteId?: string | null;
+    readonly visible?: boolean;
+    readonly frameIndex?: number;
+  }[];
+  readonly sceneContexts?: readonly {
+    readonly id: string;
+    readonly name?: string;
+    readonly instances: readonly {
+      readonly id: string;
+      readonly name?: string;
+      readonly entityId?: string;
+      readonly animationName?: string;
+      readonly paletteId?: string | null;
+      readonly visible?: boolean;
+      readonly frameIndex?: number;
+    }[];
+  }[];
+  readonly palette?: {
+    readonly universalBackgroundColor?: number;
+    readonly palettes?: readonly PaletteDefinition[];
+    readonly activeBackgroundSlots?:
+      ActivePaletteSlots | readonly (string | null)[];
+    readonly activeSpriteSlots?:
+      ActivePaletteSlots | readonly (string | null)[];
+    readonly activeSpritePaletteSlots?: readonly (string | null)[];
+    readonly paletteSet?: NesPaletteSet;
+  };
+}
+
+interface PaletteDiagnosticSceneInstance {
+  readonly id: string;
+  readonly name?: string;
+  readonly entityId?: string;
+  readonly animationName?: string;
+  readonly paletteId?: string | null;
+  readonly visible?: boolean;
+  readonly frameIndex?: number;
+}
+
+interface PaletteDiagnosticSceneContext {
+  readonly id: string;
+  readonly name?: string;
+  readonly instances: readonly PaletteDiagnosticSceneInstance[];
+}
+
+function isPaletteDiagnosticSceneContextArray(
+  value: unknown,
+): value is readonly PaletteDiagnosticSceneContext[] {
+  return Array.isArray(value);
+}
+
+function diagnosticDisplayName(
+  name: string | undefined,
+  fallback: string,
+): string {
+  const trimmed = name?.trim();
+  return trimmed === undefined || trimmed === '' ? fallback : trimmed;
+}
+
+function activePaletteIdSet(
+  slots: readonly (string | null)[],
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const id of slots) {
+    if (typeof id === 'string' && id.trim() !== '') {
+      ids.add(id.trim());
+    }
+  }
+  return ids;
+}
+
+function compareDiagnosticText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function sortPaletteDiagnosticFacts(
+  facts: readonly PaletteDiagnosticFact[],
+): readonly PaletteDiagnosticFact[] {
+  return [...facts].sort((a, b) => {
+    if (a.severity !== b.severity) {
+      return a.severity === 'error' ? -1 : 1;
+    }
+    if (a.kind !== b.kind) {
+      return compareDiagnosticText(a.kind, b.kind);
+    }
+    return compareDiagnosticText(a.id, b.id);
+  });
+}
+
+/**
+ * Pure domain analyzer for palette integrity, NES hardware constraints,
+ * dangling references, slot allocations, capacity, and color consistency.
+ */
+export function analyzeProjectPaletteDiagnostics(
+  projectOrOptions:
+    | AnalyzePaletteDiagnosticsOptions
+    | {
+        readonly palette?: {
+          readonly universalBackgroundColor?: number;
+          readonly palettes?: readonly PaletteDefinition[];
+          readonly activeBackgroundSlots?: ActivePaletteSlots;
+          readonly activeSpriteSlots?: ActivePaletteSlots;
+          readonly activeSpritePaletteSlots?: readonly (string | null)[];
+          readonly paletteSet?: NesPaletteSet;
+        };
+        readonly universalBackgroundColor?: number;
+        readonly palettes?: readonly PaletteDefinition[];
+        readonly activeBackgroundSlots?: ActivePaletteSlots;
+        readonly activeSpriteSlots?: ActivePaletteSlots;
+        readonly activeSpritePaletteSlots?: readonly (string | null)[];
+        readonly animation?: {
+          readonly animations?: readonly {
+            readonly id: string;
+            readonly name: string;
+            readonly entity?: string;
+            readonly paletteId?: string | null;
+            readonly framePaletteIds?: readonly (string | null)[];
+          }[];
+        };
+        readonly backgrounds?: {
+          readonly maps?: readonly {
+            readonly id: string;
+            readonly name: string;
+            readonly paletteId?: string | null;
+          }[];
+        };
+        readonly scenePreview?: {
+          readonly instances?: readonly {
+            readonly id: string;
+            readonly name?: string;
+            readonly entityId?: string;
+            readonly animationName?: string;
+            readonly paletteId?: string | null;
+            readonly visible?: boolean;
+            readonly frameIndex?: number;
+          }[];
+        };
+        readonly sceneContexts?: readonly {
+          readonly id: string;
+          readonly name?: string;
+          readonly instances: readonly {
+            readonly id: string;
+            readonly name?: string;
+            readonly entityId?: string;
+            readonly animationName?: string;
+            readonly paletteId?: string | null;
+            readonly visible?: boolean;
+            readonly frameIndex?: number;
+          }[];
+        }[];
+      },
+): readonly PaletteDiagnosticFact[] {
+  const palConfig =
+    'palette' in projectOrOptions && projectOrOptions.palette
+      ? projectOrOptions.palette
+      : projectOrOptions;
+
+  const palettes = palConfig.palettes ?? [];
+  const paletteMap = new Map<string, PaletteDefinition>();
+  for (const p of palettes) {
+    if (typeof p.id === 'string' && p.id.trim() !== '') {
+      paletteMap.set(p.id.trim(), p);
+    }
+  }
+
+  const universalBackgroundColor =
+    palConfig.universalBackgroundColor ??
+    projectOrOptions.universalBackgroundColor;
+
+  const rawBgSlots = palConfig.activeBackgroundSlots ??
+    projectOrOptions.activeBackgroundSlots ?? [null, null, null, null];
+  const activeBgSlots: (string | null)[] = [
+    rawBgSlots[0] ?? null,
+    rawBgSlots[1] ?? null,
+    rawBgSlots[2] ?? null,
+    rawBgSlots[3] ?? null,
+  ];
+  const activeBgSet = activePaletteIdSet(activeBgSlots);
+
+  const rawSpSlots = palConfig.activeSpriteSlots ??
+    palConfig.activeSpritePaletteSlots ??
+    projectOrOptions.activeSpriteSlots ??
+    projectOrOptions.activeSpritePaletteSlots ?? [null, null, null, null];
+  const activeSpSlots: (string | null)[] = [
+    rawSpSlots[0] ?? null,
+    rawSpSlots[1] ?? null,
+    rawSpSlots[2] ?? null,
+    rawSpSlots[3] ?? null,
+  ];
+  const activeSpSet = activePaletteIdSet(activeSpSlots);
+
+  let animations: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly entity?: string;
+    readonly paletteId?: string | null;
+    readonly framePaletteIds?: readonly (string | null)[];
+  }[] = [];
+  if (
+    'animations' in projectOrOptions &&
+    Array.isArray(projectOrOptions.animations)
+  ) {
+    animations = projectOrOptions.animations;
+  } else if (
+    'animation' in projectOrOptions &&
+    projectOrOptions.animation &&
+    Array.isArray(projectOrOptions.animation.animations)
+  ) {
+    animations = projectOrOptions.animation.animations;
+  }
+
+  let backgroundMaps: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly paletteId?: string | null;
+  }[] = [];
+  if ('backgrounds' in projectOrOptions && projectOrOptions.backgrounds) {
+    const backgrounds = projectOrOptions.backgrounds;
+    if (Array.isArray(backgrounds)) {
+      backgroundMaps = backgrounds;
+    } else {
+      const backgroundCollection = backgrounds as {
+        readonly maps?: readonly {
+          readonly id: string;
+          readonly name: string;
+          readonly paletteId?: string | null;
+        }[];
+      };
+      if (Array.isArray(backgroundCollection.maps)) {
+        backgroundMaps = backgroundCollection.maps;
+      }
+    }
+  }
+
+  let sceneInstances: readonly {
+    readonly id: string;
+    readonly name?: string;
+    readonly entityId?: string;
+    readonly animationName?: string;
+    readonly paletteId?: string | null;
+    readonly visible?: boolean;
+    readonly frameIndex?: number;
+  }[] = [];
+  if (
+    'sceneInstances' in projectOrOptions &&
+    Array.isArray(projectOrOptions.sceneInstances)
+  ) {
+    sceneInstances = projectOrOptions.sceneInstances;
+  } else if (
+    'scenePreview' in projectOrOptions &&
+    projectOrOptions.scenePreview &&
+    Array.isArray(projectOrOptions.scenePreview.instances)
+  ) {
+    sceneInstances = projectOrOptions.scenePreview.instances;
+  }
+
+  const sceneContexts: readonly PaletteDiagnosticSceneContext[] =
+    'sceneContexts' in projectOrOptions &&
+    isPaletteDiagnosticSceneContextArray(projectOrOptions.sceneContexts)
+      ? projectOrOptions.sceneContexts
+      : [
+          {
+            id: 'preview',
+            name: 'Scene Preview',
+            instances: sceneInstances,
+          },
+        ];
+
+  const facts: PaletteDiagnosticFact[] = [];
+  const emittedKeys = new Set<string>();
+
+  const emit = (fact: PaletteDiagnosticFact): void => {
+    if (!emittedKeys.has(fact.id)) {
+      emittedKeys.add(fact.id);
+      facts.push(fact);
+    }
+  };
+
+  // 1. Check invalid NES color codes
+  if (
+    universalBackgroundColor !== undefined &&
+    !isValidNesColorCode(universalBackgroundColor)
+  ) {
+    emit({
+      id: 'invalid-nes-color:universal-bg',
+      code: 'invalid-nes-color',
+      kind: 'invalid-nes-color',
+      severity: 'error',
+      isUniversalBackground: true,
+      colorValue: universalBackgroundColor,
+    });
+  }
+
+  for (const palette of palettes) {
+    for (let c = 0; c < NES_COLORS_PER_PALETTE; c++) {
+      const color = palette.colors[c];
+      if (!isValidNesColorCode(color)) {
+        emit({
+          id: `invalid-nes-color:${palette.id}:${String(c)}`,
+          code: 'invalid-nes-color',
+          kind: 'invalid-nes-color',
+          severity: 'error',
+          paletteId: palette.id,
+          paletteName: palette.name,
+          colorIndex: c,
+          colorValue: color ?? Number.NaN,
+          isUniversalBackground: false,
+        });
+      }
+    }
+  }
+
+  // 2. Check universal background color consistency ($3F00) on background subpalettes
+  if (
+    universalBackgroundColor !== undefined &&
+    isValidNesColorCode(universalBackgroundColor)
+  ) {
+    for (const palette of palettes) {
+      const isBgTarget = palette.target === 'background';
+      const isAssignedToBgSlot = activeBgSet.has(palette.id);
+      if (isBgTarget || isAssignedToBgSlot) {
+        const color0 = palette.colors[0];
+        if (
+          isValidNesColorCode(color0) &&
+          color0 !== universalBackgroundColor
+        ) {
+          emit({
+            id: `inconsistent-universal-color:${palette.id}`,
+            code: 'inconsistent-universal-color',
+            kind: 'inconsistent-universal-color',
+            severity: 'warning',
+            paletteId: palette.id,
+            paletteName: palette.name,
+            actualColor: color0,
+            expectedColor: universalBackgroundColor,
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Check dangling palette references on active slots
+  for (let s = 0; s < NES_PALETTE_BANK_SLOT_COUNT; s++) {
+    const palId = activeBgSlots[s];
+    if (typeof palId === 'string' && palId.trim() !== '') {
+      if (!paletteMap.has(palId.trim())) {
+        emit({
+          id: `dangling:slot:bg:${String(s)}:${palId.trim()}`,
+          code: 'dangling-palette-reference',
+          kind: 'dangling-palette-reference',
+          severity: 'error',
+          paletteId: palId.trim(),
+          consumerType: 'slot',
+          consumerName: `Background Palette Slot ${String(s)}`,
+          bank: 'background',
+          slotIndex: s,
+        });
+      }
+    }
+  }
+
+  for (let s = 0; s < NES_PALETTE_BANK_SLOT_COUNT; s++) {
+    const palId = activeSpSlots[s];
+    if (typeof palId === 'string' && palId.trim() !== '') {
+      if (!paletteMap.has(palId.trim())) {
+        emit({
+          id: `dangling:slot:sp:${String(s)}:${palId.trim()}`,
+          code: 'dangling-palette-reference',
+          kind: 'dangling-palette-reference',
+          severity: 'error',
+          paletteId: palId.trim(),
+          consumerType: 'slot',
+          consumerName: `Sprite Palette Slot ${String(s)}`,
+          bank: 'sprite',
+          slotIndex: s,
+        });
+      }
+    }
+  }
+
+  // 4. Check animations & frame overrides
+  for (const anim of animations) {
+    const animName = anim.name.trim() || anim.id;
+    if (typeof anim.paletteId === 'string' && anim.paletteId.trim() !== '') {
+      const palId = anim.paletteId.trim();
+      if (!paletteMap.has(palId)) {
+        emit({
+          id: `dangling:anim:${anim.id}:${palId}`,
+          code: 'dangling-palette-reference',
+          kind: 'dangling-palette-reference',
+          severity: 'error',
+          paletteId: palId,
+          consumerType: 'animation',
+          consumerId: anim.id,
+          consumerName: animName,
+          bank: 'sprite',
+        });
+      } else if (!activeSpSet.has(palId)) {
+        emit({
+          id: `unassigned:anim:${anim.id}:${palId}`,
+          code: 'unassigned-active-slot',
+          kind: 'unassigned-active-slot',
+          severity: 'warning',
+          paletteId: palId,
+          paletteName: paletteMap.get(palId)?.name ?? palId,
+          bank: 'sprite',
+          consumerType: 'animation',
+          consumerId: anim.id,
+          consumerName: animName,
+        });
+      }
+    }
+
+    if (anim.framePaletteIds) {
+      for (let f = 0; f < anim.framePaletteIds.length; f++) {
+        const framePalId = anim.framePaletteIds[f];
+        if (typeof framePalId === 'string' && framePalId.trim() !== '') {
+          const palId = framePalId.trim();
+          if (!paletteMap.has(palId)) {
+            emit({
+              id: `dangling:frame:${anim.id}:${String(f)}:${palId}`,
+              code: 'dangling-palette-reference',
+              kind: 'dangling-palette-reference',
+              severity: 'error',
+              paletteId: palId,
+              consumerType: 'frame',
+              consumerId: anim.id,
+              consumerName: animName,
+              frameIndex: f,
+              bank: 'sprite',
+            });
+          } else if (!activeSpSet.has(palId)) {
+            emit({
+              id: `unassigned:frame:${anim.id}:${String(f)}:${palId}`,
+              code: 'unassigned-active-slot',
+              kind: 'unassigned-active-slot',
+              severity: 'warning',
+              paletteId: palId,
+              paletteName: paletteMap.get(palId)?.name ?? palId,
+              bank: 'sprite',
+              consumerType: 'frame',
+              consumerId: anim.id,
+              consumerName: animName,
+              frameIndex: f,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Check background maps
+  for (const map of backgroundMaps) {
+    const mapName = map.name.trim() || map.id;
+    if (typeof map.paletteId === 'string' && map.paletteId.trim() !== '') {
+      const palId = map.paletteId.trim();
+      if (!paletteMap.has(palId)) {
+        emit({
+          id: `dangling:bg-map:${map.id}:${palId}`,
+          code: 'dangling-palette-reference',
+          kind: 'dangling-palette-reference',
+          severity: 'error',
+          paletteId: palId,
+          consumerType: 'background',
+          consumerId: map.id,
+          consumerName: mapName,
+          bank: 'background',
+        });
+      } else if (!activeBgSet.has(palId)) {
+        emit({
+          id: `unassigned:bg-map:${map.id}:${palId}`,
+          code: 'unassigned-active-slot',
+          kind: 'unassigned-active-slot',
+          severity: 'warning',
+          paletteId: palId,
+          paletteName: paletteMap.get(palId)?.name ?? palId,
+          bank: 'background',
+          consumerType: 'background',
+          consumerId: map.id,
+          consumerName: mapName,
+        });
+      }
+    }
+  }
+
+  // 6. Check scene instance references in every independently modeled context.
+  for (const sceneContext of sceneContexts) {
+    for (const inst of sceneContext.instances) {
+      const instName = diagnosticDisplayName(inst.name, inst.id);
+      if (typeof inst.paletteId === 'string' && inst.paletteId.trim() !== '') {
+        const palId = inst.paletteId.trim();
+        if (!paletteMap.has(palId)) {
+          emit({
+            id: `dangling:scene:${sceneContext.id}:${inst.id}:${palId}`,
+            code: 'dangling-palette-reference',
+            kind: 'dangling-palette-reference',
+            severity: 'error',
+            paletteId: palId,
+            consumerType: 'scene',
+            consumerId: inst.id,
+            consumerName: instName,
+            bank: 'sprite',
+            contextId: sceneContext.id,
+          });
+        } else if (!activeSpSet.has(palId)) {
+          emit({
+            id: `unassigned:scene:${sceneContext.id}:${inst.id}:${palId}`,
+            code: 'unassigned-active-slot',
+            kind: 'unassigned-active-slot',
+            severity: 'warning',
+            paletteId: palId,
+            paletteName: paletteMap.get(palId)?.name ?? palId,
+            bank: 'sprite',
+            consumerType: 'scene',
+            consumerId: inst.id,
+            consumerName: instName,
+            contextId: sceneContext.id,
+          });
+        }
+      }
+    }
+  }
+
+  // 7. Check each simultaneous scene context independently. The project library
+  // and animations that are not instantiated together do not consume slots.
+  for (const sceneContext of sceneContexts) {
+    const scenePalettes = new Set<string>();
+    for (const inst of sceneContext.instances) {
+      if (inst.visible === false) continue;
+      if (typeof inst.paletteId === 'string' && inst.paletteId.trim() !== '') {
+        scenePalettes.add(inst.paletteId.trim());
+        continue;
+      }
+      if (!inst.animationName) continue;
+
+      const entityAnimations = animations.filter(
+        (animation) =>
+          !inst.entityId ||
+          (animation.entity ?? 'entity').toLowerCase() ===
+            inst.entityId.toLowerCase(),
+      );
+      const matchedAnim =
+        entityAnimations.find(
+          (animation) => animation.name === inst.animationName,
+        ) ?? entityAnimations[0];
+      if (!matchedAnim) continue;
+
+      const frameIndex =
+        Number.isInteger(inst.frameIndex) && (inst.frameIndex ?? -1) >= 0
+          ? (inst.frameIndex ?? 0)
+          : 0;
+      const effectivePaletteId =
+        matchedAnim.framePaletteIds?.[frameIndex] ?? matchedAnim.paletteId;
+      if (
+        typeof effectivePaletteId === 'string' &&
+        effectivePaletteId.trim() !== ''
+      ) {
+        scenePalettes.add(effectivePaletteId.trim());
+      }
+    }
+
+    if (scenePalettes.size > NES_PALETTE_BANK_SLOT_COUNT) {
+      const sortedPaletteIds = Array.from(scenePalettes).sort();
+      emit({
+        id: `slot-capacity-exceeded:scene:${sceneContext.id}`,
+        code: 'slot-capacity-exceeded',
+        kind: 'slot-capacity-exceeded',
+        severity: 'error',
+        bank: 'sprite',
+        contextType: 'scene',
+        contextId: sceneContext.id,
+        contextName: diagnosticDisplayName(sceneContext.name, sceneContext.id),
+        requiredCount: scenePalettes.size,
+        maxCapacity: NES_PALETTE_BANK_SLOT_COUNT,
+        distinctPaletteIds: sortedPaletteIds,
+      });
+    }
+  }
+
+  return sortPaletteDiagnosticFacts(facts);
+}
+
+/**
+ * Formats a typed PaletteDiagnosticFact into a localized human-readable string.
+ */
+export function formatPaletteDiagnosticMessage(
+  fact: PaletteDiagnosticFact,
+): string {
+  switch (fact.kind) {
+    case 'dangling-palette-reference': {
+      if (fact.consumerType === 'slot') {
+        const bankName =
+          fact.bank === 'background'
+            ? t('paletteBankBackground')
+            : t('paletteBankSprite');
+        return t('paletteDiagDanglingSlotReference', {
+          bank: bankName,
+          slotIndex: fact.slotIndex ?? 0,
+          paletteId: fact.paletteId,
+        });
+      }
+      if (fact.consumerType === 'frame') {
+        return t('paletteDiagDanglingFrameReference', {
+          consumerName: fact.consumerName,
+          frameIndex: (fact.frameIndex ?? 0) + 1,
+          paletteId: fact.paletteId,
+        });
+      }
+      return t('paletteDiagDanglingReference', {
+        consumerName: fact.consumerName,
+        consumerType: t(
+          fact.consumerType === 'animation'
+            ? 'paletteConsumerAnimation'
+            : fact.consumerType === 'scene'
+              ? 'paletteConsumerScene'
+              : 'paletteConsumerBackground',
+        ),
+        paletteId: fact.paletteId,
+      });
+    }
+
+    case 'unassigned-active-slot': {
+      const bankName =
+        fact.bank === 'background'
+          ? t('paletteBankBackground')
+          : t('paletteBankSprite');
+      if (fact.consumerType === 'frame') {
+        return t('paletteDiagUnassignedFrameSlot', {
+          consumerName: fact.consumerName,
+          frameIndex: (fact.frameIndex ?? 0) + 1,
+          paletteName: fact.paletteName,
+          bank: bankName,
+        });
+      }
+      return t('paletteDiagUnassignedSlot', {
+        consumerName: fact.consumerName,
+        paletteName: fact.paletteName,
+        bank: bankName,
+      });
+    }
+
+    case 'slot-capacity-exceeded': {
+      const bankName =
+        fact.bank === 'background'
+          ? t('paletteBankBackground')
+          : t('paletteBankSprite');
+      return t('paletteDiagSlotCapacityExceeded', {
+        contextName:
+          fact.contextId === 'preview'
+            ? t('scenePreviewTitle')
+            : fact.contextName,
+        requiredCount: fact.requiredCount,
+        maxCapacity: fact.maxCapacity,
+        bank: bankName,
+      });
+    }
+
+    case 'invalid-nes-color': {
+      const hex = Number.isFinite(fact.colorValue)
+        ? (Math.floor(fact.colorValue) & 0xff)
+            .toString(16)
+            .toUpperCase()
+            .padStart(2, '0')
+        : '??';
+      if (fact.isUniversalBackground) {
+        return t('paletteDiagInvalidUniversalColor', {
+          hex,
+          value: fact.colorValue,
+        });
+      }
+      return t('paletteDiagInvalidColor', {
+        paletteName: fact.paletteName ?? 'Palette',
+        colorIndex: fact.colorIndex ?? 0,
+        hex,
+        value: fact.colorValue,
+      });
+    }
+
+    case 'inconsistent-universal-color': {
+      const actualHex = (fact.actualColor & 0x3f)
+        .toString(16)
+        .toUpperCase()
+        .padStart(2, '0');
+      const expectedHex = (fact.expectedColor & 0x3f)
+        .toString(16)
+        .toUpperCase()
+        .padStart(2, '0');
+      return t('paletteDiagInconsistentUniversalColor', {
+        paletteName: fact.paletteName,
+        actualHex,
+        expectedHex,
+      });
+    }
+  }
 }
