@@ -53,6 +53,7 @@ import {
   TILESET_PALETTE_REGION_SIZE,
 } from './core/nes-palette';
 import {
+  createDefaultDualBankPaletteState,
   createDefaultPaletteDefinitions,
   generatePaletteId,
   duplicatePaletteDefinition,
@@ -159,6 +160,9 @@ if (appElement === null) {
   throw new Error('Application root element was not found.');
 }
 const app: HTMLElement = appElement;
+const settingsStorage =
+  typeof localStorage === 'undefined' ? null : localStorage;
+const defaultDualBank = createDefaultDualBankPaletteState();
 
 function generateAnimationId(): string {
   return `anim-${Math.random().toString(36).slice(2, 9)}`;
@@ -178,7 +182,10 @@ function createDefaultAnimationSettings(): AnimationSettings {
         name: 'idle',
         entity: 'entity',
         source: null,
-        paletteId: defaultInitialPalettes[0]?.id ?? null,
+        paletteId:
+          defaultDualBank.activeSpriteSlots[0] ??
+          defaultDualBank.palettes[0]?.id ??
+          null,
         paletteIndex: null,
         frameWidth: 16,
         frameHeight: 16,
@@ -217,9 +224,6 @@ const quantizationPreviewCache = new Map<
   string,
   readonly QuantizationPreview[]
 >();
-const settingsStorage =
-  typeof localStorage === 'undefined' ? null : localStorage;
-const defaultInitialPalettes = createDefaultPaletteDefinitions();
 
 let project: ProjectView = {
   fileName: null,
@@ -235,9 +239,12 @@ let project: ProjectView = {
   collisionCells: createEmptyCollisionMap(),
   activeCollisionType: COLLISION_TYPES.solid,
   randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+  universalBackgroundColor: defaultDualBank.universalBackgroundColor,
   paletteSet: createDefaultNesPaletteSet(),
-  palettes: defaultInitialPalettes,
-  activeSpritePaletteSlots: defaultInitialPalettes.map((p) => p.id),
+  palettes: defaultDualBank.palettes,
+  activeBackgroundSlots: defaultDualBank.activeBackgroundSlots,
+  activeSpriteSlots: defaultDualBank.activeSpriteSlots,
+  activeSpritePaletteSlots: defaultDualBank.activeSpriteSlots,
   paletteAssignments: new Uint8Array(),
   pixelOverrides: new Uint8Array(),
   activePaletteIndex: 0,
@@ -488,6 +495,32 @@ function buildCurrentStudioProject(): StudioProject {
     animations,
   };
 
+  const palettes =
+    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const univColor =
+    project.universalBackgroundColor ?? project.paletteSet[0][0];
+  const bgSlots = project.activeBackgroundSlots ?? [
+    palettes[0]?.id ?? null,
+    palettes[1]?.id ?? null,
+    palettes[2]?.id ?? null,
+    palettes[3]?.id ?? null,
+  ];
+  const spSlots =
+    project.activeSpriteSlots ??
+    (project.activeSpritePaletteSlots
+      ? [
+          project.activeSpritePaletteSlots[0] ?? null,
+          project.activeSpritePaletteSlots[1] ?? null,
+          project.activeSpritePaletteSlots[2] ?? null,
+          project.activeSpritePaletteSlots[3] ?? null,
+        ]
+      : [
+          palettes[0]?.id ?? null,
+          palettes[1]?.id ?? null,
+          palettes[2]?.id ?? null,
+          palettes[3]?.id ?? null,
+        ]);
+
   return {
     formatVersion: 1,
     name: projectName,
@@ -498,11 +531,14 @@ function buildCurrentStudioProject(): StudioProject {
       quantization: project.quantizationSettings,
     },
     palette: {
+      universalBackgroundColor: univColor,
+      palettes,
+      activeBackgroundSlots: bgSlots,
+      activeSpriteSlots: spSlots,
       paletteSet: project.paletteSet,
       activePaletteIndex: project.activePaletteIndex,
       activeColorIndex: project.activeColorIndex,
-      palettes: project.palettes,
-      activeSpritePaletteSlots: project.activeSpritePaletteSlots,
+      activeSpritePaletteSlots: spSlots,
     },
     tileset,
     playfield,
@@ -804,16 +840,12 @@ async function loadProjectFile(
         collisionCells: createEmptyCollisionMap(),
         activeCollisionType: COLLISION_TYPES.solid,
         randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+        universalBackgroundColor: loaded.palette.universalBackgroundColor,
         paletteSet: loaded.palette.paletteSet,
-        palettes:
-          loaded.palette.palettes ??
-          createDefaultPaletteDefinitions(loaded.palette.paletteSet),
-        activeSpritePaletteSlots:
-          loaded.palette.activeSpritePaletteSlots ??
-          (
-            loaded.palette.palettes ??
-            createDefaultPaletteDefinitions(loaded.palette.paletteSet)
-          ).map((p) => p.id),
+        palettes: loaded.palette.palettes,
+        activeBackgroundSlots: loaded.palette.activeBackgroundSlots,
+        activeSpriteSlots: loaded.palette.activeSpriteSlots,
+        activeSpritePaletteSlots: loaded.palette.activeSpriteSlots,
         paletteAssignments: new Uint8Array(),
         pixelOverrides: new Uint8Array(),
         activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
@@ -1015,16 +1047,12 @@ async function loadProjectFile(
       randomPlayfieldFeatures: loaded.playfield?.randomPlayfieldFeatures
         ? [...loaded.playfield.randomPlayfieldFeatures]
         : [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+      universalBackgroundColor: loaded.palette.universalBackgroundColor,
       paletteSet: loaded.palette.paletteSet,
-      palettes:
-        loaded.palette.palettes ??
-        createDefaultPaletteDefinitions(loaded.palette.paletteSet),
-      activeSpritePaletteSlots:
-        loaded.palette.activeSpritePaletteSlots ??
-        (
-          loaded.palette.palettes ??
-          createDefaultPaletteDefinitions(loaded.palette.paletteSet)
-        ).map((p) => p.id),
+      palettes: loaded.palette.palettes,
+      activeBackgroundSlots: loaded.palette.activeBackgroundSlots,
+      activeSpriteSlots: loaded.palette.activeSpriteSlots,
+      activeSpritePaletteSlots: loaded.palette.activeSpriteSlots,
       paletteAssignments,
       pixelOverrides,
       activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,

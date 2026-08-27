@@ -6,6 +6,9 @@ import {
   findMissingAssets,
   getDirectoryPath,
   normalizePath,
+  resolveProjectBackgroundPaletteSet,
+  resolveProjectPaletteState,
+  resolveProjectSpritePaletteSet,
   resolveRelativePath,
   serializeProject,
   toRelativePath,
@@ -18,6 +21,7 @@ import {
   reconcileBackgroundMaps,
   type BackgroundMapDefinition,
 } from './background-model';
+import { resolveEffectivePaletteColors } from './palette-manager';
 
 describe('StudioProject core infrastructure', () => {
   it('creates a clean default project with formatVersion 1', () => {
@@ -55,6 +59,16 @@ describe('StudioProject core infrastructure', () => {
         },
       },
       palette: {
+        universalBackgroundColor: 0x0f,
+        palettes: [
+          {
+            id: 'pal_0',
+            name: 'Palette 0',
+            colors: [0x0f, 0x00, 0x10, 0x30],
+          },
+        ],
+        activeBackgroundSlots: ['pal_0', null, null, null],
+        activeSpriteSlots: ['pal_0', null, null, null],
         paletteSet: createDefaultNesPaletteSet(),
         activePaletteIndex: 2,
         activeColorIndex: 3,
@@ -125,13 +139,13 @@ describe('StudioProject core infrastructure', () => {
               name: 'hero_walk.png',
               sourceKind: 'png',
             },
-            paletteId: original.palette.palettes?.[1]?.id ?? 'pal_1',
+            paletteId: original.palette.palettes[1]?.id ?? 'pal_1',
             paletteIndex: 1,
             framePaletteIds: [
-              original.palette.palettes?.[1]?.id ?? 'pal_1',
-              original.palette.palettes?.[1]?.id ?? 'pal_1',
-              original.palette.palettes?.[2]?.id ?? 'pal_2',
-              original.palette.palettes?.[1]?.id ?? 'pal_1',
+              original.palette.palettes[1]?.id ?? 'pal_1',
+              original.palette.palettes[1]?.id ?? 'pal_1',
+              original.palette.palettes[2]?.id ?? 'pal_2',
+              original.palette.palettes[1]?.id ?? 'pal_1',
             ],
             quantizationMode: 'median-cut',
             ditheringMode: 'none',
@@ -175,14 +189,7 @@ describe('StudioProject core infrastructure', () => {
         },
       },
       palette: {
-        paletteSet: [
-          [0x0f, 0x00, 0x10, 0x30],
-          [0x0f, 0x06, 0x16, 0x26],
-          [0x0f, 0x09, 0x19, 0x29],
-          [0x0f, 0x0c, 0x1c, 0x2c],
-        ],
-        activePaletteIndex: 1,
-        activeColorIndex: 2,
+        universalBackgroundColor: 0x0f,
         palettes: [
           {
             id: 'pal_gray',
@@ -194,6 +201,16 @@ describe('StudioProject core infrastructure', () => {
             name: 'Lava Red',
             colors: [0x0f, 0x06, 0x16, 0x26],
           },
+        ],
+        activeBackgroundSlots: ['pal_gray', 'pal_red', null, null],
+        activeSpriteSlots: ['pal_gray', 'pal_red', null, null],
+        activePaletteIndex: 1,
+        activeColorIndex: 2,
+        paletteSet: [
+          [0x0f, 0x00, 0x10, 0x30],
+          [0x0f, 0x06, 0x16, 0x26],
+          [0x0f, 0x09, 0x19, 0x29],
+          [0x0f, 0x03, 0x13, 0x23],
         ],
         activeSpritePaletteSlots: ['pal_gray', 'pal_red', null, null],
       },
@@ -280,14 +297,7 @@ describe('StudioProject core infrastructure', () => {
         },
       },
       palette: {
-        paletteSet: [
-          [0x0f, 0x01, 0x11, 0x21],
-          [0x0f, 0x05, 0x15, 0x25],
-          [0x0f, 0x18, 0x28, 0x38],
-          [0x0f, 0x0a, 0x1a, 0x2a],
-        ],
-        activePaletteIndex: 2,
-        activeColorIndex: 3,
+        universalBackgroundColor: 0x0f,
         palettes: [
           {
             id: 'pal_sky',
@@ -299,6 +309,16 @@ describe('StudioProject core infrastructure', () => {
             name: 'Grass Green',
             colors: [0x0f, 0x0a, 0x1a, 0x2a],
           },
+        ],
+        activeBackgroundSlots: ['pal_sky', 'pal_grass', null, null],
+        activeSpriteSlots: ['pal_sky', 'pal_grass', null, null],
+        activePaletteIndex: 2,
+        activeColorIndex: 3,
+        paletteSet: [
+          [0x0f, 0x01, 0x11, 0x21],
+          [0x0f, 0x0a, 0x1a, 0x2a],
+          [0x0f, 0x09, 0x19, 0x29],
+          [0x0f, 0x03, 0x13, 0x23],
         ],
         activeSpritePaletteSlots: ['pal_sky', 'pal_grass', null, null],
       },
@@ -493,6 +513,16 @@ describe('StudioProject core infrastructure', () => {
           },
         },
         palette: {
+          universalBackgroundColor: 0x0f,
+          palettes: [
+            {
+              id: 'pal_0',
+              name: 'Palette 0',
+              colors: [0x0f, 0x00, 0x10, 0x30],
+            },
+          ],
+          activeBackgroundSlots: ['pal_0', null, null, null],
+          activeSpriteSlots: ['pal_0', null, null, null],
           paletteSet: createDefaultNesPaletteSet(),
         },
         animation: {
@@ -714,9 +744,7 @@ describe('StudioProject core infrastructure', () => {
         ...defaultProj,
         name: 'Palettes Test',
         palette: {
-          paletteSet: defaultProj.palette.paletteSet,
-          activePaletteIndex: 1,
-          activeColorIndex: 2,
+          universalBackgroundColor: 0x0f,
           palettes: [
             {
               id: 'pal_soldier_blue',
@@ -729,6 +757,16 @@ describe('StudioProject core infrastructure', () => {
               colors: [0x0f, 0x03, 0x13, 0x23],
             },
           ],
+          activeBackgroundSlots: [
+            'pal_soldier_blue',
+            'pal_bat_purple',
+            null,
+            null,
+          ],
+          activeSpriteSlots: ['pal_soldier_blue', 'pal_bat_purple', null, null],
+          activePaletteIndex: 1,
+          activeColorIndex: 2,
+          paletteSet: defaultProj.palette.paletteSet,
           activeSpritePaletteSlots: [
             'pal_soldier_blue',
             'pal_bat_purple',
@@ -849,16 +887,16 @@ describe('StudioProject core infrastructure', () => {
         const palettes = deserialized.project.palette.palettes;
         expect(palettes).toBeDefined();
         expect(palettes).toHaveLength(4);
-        expect(palettes?.[0]?.colors).toEqual([0x0f, 0x01, 0x11, 0x21]);
-        expect(palettes?.[1]?.colors).toEqual([0x0f, 0x05, 0x15, 0x25]);
+        expect(palettes[0]?.colors).toEqual([0x0f, 0x01, 0x11, 0x21]);
+        expect(palettes[1]?.colors).toEqual([0x0f, 0x05, 0x15, 0x25]);
 
         const slots = deserialized.project.palette.activeSpritePaletteSlots;
         expect(slots).toBeDefined();
-        expect(slots).toEqual(palettes?.map((p) => p.id));
+        expect(slots).toEqual(palettes.map((p) => p.id));
 
         // Legacy paletteIndex 1 migrated to palettes[1].id
         const animItem = deserialized.project.animation?.animations[0];
-        expect(animItem?.paletteId).toBe(palettes?.[1]?.id);
+        expect(animItem?.paletteId).toBe(palettes[1]?.id);
       }
     });
 
@@ -1651,6 +1689,661 @@ describe('StudioProject core infrastructure', () => {
       expect(result.facts.length).toBe(1);
       expect(result.facts[0]?.kind).toBe('missing-asset');
       expect(result.facts[0]?.severity).toBe('warning');
+    });
+  });
+
+  describe('Dual-Bank Palette Persistence & Migration (Milestone 9 - Issue #123)', () => {
+    it('creates a default project directly in the canonical dual-bank state', () => {
+      const project = createDefaultProject('Dual Bank Test', 'animation');
+
+      expect(project.palette.universalBackgroundColor).toBe(0x0f);
+      expect(project.palette.palettes).toHaveLength(8); // 4 BG + 4 SP
+      expect(project.palette.activeBackgroundSlots).toEqual([
+        'pal_bg_0',
+        'pal_bg_1',
+        'pal_bg_2',
+        'pal_bg_3',
+      ]);
+      expect(project.palette.activeSpriteSlots).toEqual([
+        'pal_sp_0',
+        'pal_sp_1',
+        'pal_sp_2',
+        'pal_sp_3',
+      ]);
+      expect(project.palette.activeSpritePaletteSlots).toEqual([
+        'pal_sp_0',
+        'pal_sp_1',
+        'pal_sp_2',
+        'pal_sp_3',
+      ]);
+
+      // Subpalettes in palettes match target tags
+      const bgDefs = project.palette.palettes.filter(
+        (p) => p.target === 'background',
+      );
+      const spDefs = project.palette.palettes.filter(
+        (p) => p.target === 'sprite',
+      );
+      expect(bgDefs).toHaveLength(4);
+      expect(spDefs).toHaveLength(4);
+
+      // Default animation item references sprite slot 0
+      const defaultAnim = project.animation?.animations[0];
+      expect(defaultAnim?.paletteId).toBe('pal_sp_0');
+      expect(defaultAnim?.paletteIndex).toBeNull();
+    });
+
+    it('migrates legacy project with only paletteSet into deterministic PaletteDefinitions and dual-bank slots', () => {
+      const legacyJson = JSON.stringify({
+        formatVersion: 1,
+        name: 'Retro Quest',
+        mode: 'animation',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            colorDistanceMode: 'perceptual',
+          },
+        },
+        palette: {
+          paletteSet: [
+            [0x0f, 0x01, 0x11, 0x21],
+            [0x0f, 0x06, 0x16, 0x26],
+            [0x0f, 0x09, 0x19, 0x29],
+            [0x0f, 0x03, 0x13, 0x23],
+          ],
+          activePaletteIndex: 1,
+          activeColorIndex: 2,
+        },
+        animation: {
+          name: 'Hero',
+          symbolPrefix: 'hero',
+          defaultPaletteIndex: 1,
+          quantizationMode: 'median-cut',
+          ditheringMode: 'none',
+          flipDeduplication: true,
+          spritePalette: 1,
+          spriteColorIndex: 1,
+          patternTable: 0,
+          destinationPatternTable: 0,
+          destinationChr: null,
+          animations: [
+            {
+              id: 'walk',
+              name: 'walk',
+              entity: 'hero',
+              paletteIndex: 2,
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0, 1],
+              frameDurations: [8, 8],
+              framePalettes: [1, 3],
+            },
+          ],
+        },
+      });
+
+      const res = deserializeProject(legacyJson);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      const p = res.project;
+      expect(p.palette.universalBackgroundColor).toBe(0x0f);
+      expect(p.palette.palettes).toHaveLength(4);
+      expect(p.palette.palettes[0]?.id).toBe('pal_0');
+      expect(p.palette.palettes[1]?.id).toBe('pal_1');
+      expect(p.palette.palettes[2]?.id).toBe('pal_2');
+      expect(p.palette.palettes[3]?.id).toBe('pal_3');
+
+      expect(p.palette.palettes[1]?.colors).toEqual([0x0f, 0x06, 0x16, 0x26]);
+
+      // Both background and sprite slots initialized deterministically to the migrated palettes
+      expect(p.palette.activeBackgroundSlots).toEqual([
+        'pal_0',
+        'pal_1',
+        'pal_2',
+        'pal_3',
+      ]);
+      expect(p.palette.activeSpriteSlots).toEqual([
+        'pal_0',
+        'pal_1',
+        'pal_2',
+        'pal_3',
+      ]);
+
+      // Animation paletteIndex 2 migrated to paletteId 'pal_2'
+      const anim = p.animation?.animations[0];
+      expect(anim?.paletteId).toBe('pal_2');
+      expect(anim?.paletteIndex).toBe(2);
+
+      // Frame overrides migrated
+      expect(anim?.framePaletteIds).toEqual(['pal_1', 'pal_3']);
+      expect(anim?.framePalettes).toEqual([1, 3]);
+    });
+
+    it('ensures deterministic migration IDs: opening the same legacy JSON multiple times produces identical IDs', () => {
+      const legacyJson = JSON.stringify({
+        formatVersion: 1,
+        name: 'Deterministic Test',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'k-means',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          paletteSet: [
+            [0x0f, 0x01, 0x11, 0x21],
+            [0x0f, 0x02, 0x12, 0x22],
+            [0x0f, 0x03, 0x13, 0x23],
+            [0x0f, 0x04, 0x14, 0x24],
+          ],
+        },
+      });
+
+      const res1 = deserializeProject(legacyJson);
+      const res2 = deserializeProject(legacyJson);
+
+      expect(res1.success).toBe(true);
+      expect(res2.success).toBe(true);
+      if (!res1.success || !res2.success) return;
+
+      expect(res1.project.palette.palettes).toEqual(
+        res2.project.palette.palettes,
+      );
+      expect(res1.project.palette.activeBackgroundSlots).toEqual(
+        res2.project.palette.activeBackgroundSlots,
+      );
+      expect(res1.project.palette.activeSpriteSlots).toEqual(
+        res2.project.palette.activeSpriteSlots,
+      );
+      expect(res1.project).toEqual(res2.project);
+    });
+
+    it('ensures multiple round-trip serialization/deserialization cycles are strictly idempotent', () => {
+      const original = createDefaultProject('Idempotency Test', 'animation');
+      const json1 = serializeProject(original);
+
+      const res1 = deserializeProject(json1);
+      expect(res1.success).toBe(true);
+      if (!res1.success) return;
+      const json2 = serializeProject(res1.project);
+
+      const res2 = deserializeProject(json2);
+      expect(res2.success).toBe(true);
+      if (!res2.success) return;
+      const json3 = serializeProject(res2.project);
+
+      const res3 = deserializeProject(json3);
+      expect(res3.success).toBe(true);
+      if (!res3.success) return;
+      const json4 = serializeProject(res3.project);
+
+      expect(json2).toBe(json1);
+      expect(json3).toBe(json2);
+      expect(json4).toBe(json3);
+      expect(res2.project).toEqual(res1.project);
+      expect(res3.project).toEqual(res2.project);
+    });
+
+    it('handles paletteId vs paletteIndex precedence and conflict handling', () => {
+      const palettesJson = JSON.stringify({
+        formatVersion: 1,
+        name: 'Precedence Test',
+        mode: 'animation',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            colorDistanceMode: 'perceptual',
+          },
+        },
+        palette: {
+          universalBackgroundColor: 0x0f,
+          palettes: [
+            {
+              id: 'pal_hero_blue',
+              name: 'Hero Blue',
+              colors: [0x0f, 0x01, 0x11, 0x21],
+            },
+            {
+              id: 'pal_hero_red',
+              name: 'Hero Red',
+              colors: [0x0f, 0x06, 0x16, 0x26],
+            },
+            {
+              id: 'pal_hero_gold',
+              name: 'Hero Gold',
+              colors: [0x0f, 0x27, 0x17, 0x37],
+            },
+          ],
+          activeBackgroundSlots: [null, null, null, null],
+          activeSpriteSlots: ['pal_hero_blue', 'pal_hero_red', null, null],
+        },
+        animation: {
+          name: 'Hero',
+          symbolPrefix: 'hero',
+          defaultPaletteIndex: 0,
+          quantizationMode: 'median-cut',
+          ditheringMode: 'none',
+          flipDeduplication: true,
+          spritePalette: 0,
+          spriteColorIndex: 1,
+          patternTable: 0,
+          destinationPatternTable: 0,
+          destinationChr: null,
+          animations: [
+            // Case A: paletteId only
+            {
+              id: 'anim_a',
+              name: 'a',
+              paletteId: 'pal_hero_gold',
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0],
+              frameDurations: [8],
+            },
+            // Case B: paletteIndex only (1 -> pal_hero_red in sprite slot 1)
+            {
+              id: 'anim_b',
+              name: 'b',
+              paletteIndex: 1,
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0],
+              frameDurations: [8],
+            },
+            // Case C: both paletteId and paletteIndex conflicting (paletteId wins)
+            {
+              id: 'anim_c',
+              name: 'c',
+              paletteId: 'pal_hero_gold',
+              paletteIndex: 0, // Slot 0 is pal_hero_blue, but pal_hero_gold must win
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0],
+              frameDurations: [8],
+            },
+            // Case D: invalid paletteIndex (-1 / 99) falls back safely
+            {
+              id: 'anim_d',
+              name: 'd',
+              paletteIndex: 99,
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0],
+              frameDurations: [8],
+            },
+          ],
+        },
+      });
+
+      const res = deserializeProject(palettesJson);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      const anims = res.project.animation?.animations ?? [];
+      expect(anims[0]?.paletteId).toBe('pal_hero_gold');
+      expect(anims[1]?.paletteId).toBe('pal_hero_red');
+      expect(anims[2]?.paletteId).toBe('pal_hero_gold');
+      expect(anims[3]?.paletteId).toBe('pal_hero_blue'); // slot 0 fallback
+    });
+
+    it('migrates universalBackgroundColor consistently from legacy paletteSet[0][0]', () => {
+      const json = JSON.stringify({
+        formatVersion: 1,
+        name: 'Universal Color Test',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'nearest',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          paletteSet: [
+            [0x21, 0x01, 0x11, 0x31], // Blue universal background $21
+            [0x21, 0x02, 0x12, 0x32],
+            [0x21, 0x03, 0x13, 0x33],
+            [0x21, 0x04, 0x14, 0x34],
+          ],
+        },
+      });
+
+      const res = deserializeProject(json);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      expect(res.project.palette.universalBackgroundColor).toBe(0x21);
+      // Resolved background palette set mirrors 0x21 across entry 0 of all 4 subpalettes
+      const bgSet = resolveProjectBackgroundPaletteSet(res.project);
+      expect(bgSet[0][0]).toBe(0x21);
+      expect(bgSet[1][0]).toBe(0x21);
+      expect(bgSet[2][0]).toBe(0x21);
+      expect(bgSet[3][0]).toBe(0x21);
+    });
+
+    it('handles legacy projects with divergent subpalette color 0 values deterministically', () => {
+      const jsonDivergent = JSON.stringify({
+        formatVersion: 1,
+        name: 'Divergent Color 0 Test',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'nearest',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          paletteSet: [
+            [0x01, 0x11, 0x21, 0x31], // Slot 0 has color 0x01
+            [0x02, 0x12, 0x22, 0x32], // Divergent 0x02
+            [0x03, 0x13, 0x23, 0x33], // Divergent 0x03
+            [0x04, 0x14, 0x24, 0x34], // Divergent 0x04
+          ],
+        },
+      });
+
+      const res = deserializeProject(jsonDivergent);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      // Slot 0 color [0][0] ($01) is chosen deterministically as universalBackgroundColor
+      expect(res.project.palette.universalBackgroundColor).toBe(0x01);
+
+      // Background palette set mirrors $01 into index 0 of all 4 subpalettes, while preserving 1..3
+      const bgSet = resolveProjectBackgroundPaletteSet(res.project);
+      expect(bgSet[0]).toEqual([0x01, 0x11, 0x21, 0x31]);
+      expect(bgSet[1]).toEqual([0x01, 0x12, 0x22, 0x32]);
+      expect(bgSet[2]).toEqual([0x01, 0x13, 0x23, 0x33]);
+      expect(bgSet[3]).toEqual([0x01, 0x14, 0x24, 0x34]);
+    });
+
+    it('handles partial schemas: missing active slots auto-populated from palette library', () => {
+      const partialJson = JSON.stringify({
+        formatVersion: 1,
+        name: 'Partial Schema Test',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'nearest',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          palettes: [
+            {
+              id: 'pal_custom_a',
+              name: 'A',
+              colors: [0x0f, 0x00, 0x10, 0x20],
+            },
+            {
+              id: 'pal_custom_b',
+              name: 'B',
+              colors: [0x0f, 0x01, 0x11, 0x21],
+            },
+          ],
+          // activeBackgroundSlots and activeSpriteSlots are omitted
+        },
+      });
+
+      const res = deserializeProject(partialJson);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      expect(res.project.palette.universalBackgroundColor).toBe(0x0f);
+      expect(res.project.palette.activeBackgroundSlots).toEqual([
+        'pal_custom_a',
+        'pal_custom_b',
+        null,
+        null,
+      ]);
+      expect(res.project.palette.activeSpriteSlots).toEqual([
+        'pal_custom_a',
+        'pal_custom_b',
+        null,
+        null,
+      ]);
+    });
+
+    it('handles slot arrays with non-standard lengths by normalizing to 4-slot tuples', () => {
+      const json = JSON.stringify({
+        formatVersion: 1,
+        name: 'Non Standard Slots Test',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'nearest',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          palettes: [
+            { id: 'pal_1', name: '1', colors: [0x0f, 0x01, 0x11, 0x21] },
+            { id: 'pal_2', name: '2', colors: [0x0f, 0x02, 0x12, 0x22] },
+          ],
+          activeBackgroundSlots: ['pal_1'], // length 1
+          activeSpriteSlots: [
+            'pal_1',
+            'pal_2',
+            'pal_extra_1',
+            'pal_extra_2',
+            'pal_overflow',
+          ], // length 5
+        },
+      });
+
+      const res = deserializeProject(json);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      expect(res.project.palette.activeBackgroundSlots).toEqual([
+        'pal_1',
+        null,
+        null,
+        null,
+      ]);
+      expect(res.project.palette.activeSpriteSlots).toEqual([
+        'pal_1',
+        'pal_2',
+        'pal_extra_1',
+        'pal_extra_2',
+      ]);
+    });
+
+    it('handles palettes with invalid color numbers by masking to 6-bit NES range ($00..$3F)', () => {
+      const json = JSON.stringify({
+        formatVersion: 1,
+        name: 'Masking Test',
+        mode: 'tileset',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'nearest',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          palettes: [
+            {
+              id: 'pal_masked',
+              name: 'Masked',
+              colors: [0x4f, 0x101, -1, 0x3f], // Out of 6-bit range
+            },
+          ],
+        },
+      });
+
+      const res = deserializeProject(json);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      const p0 = res.project.palette.palettes[0];
+      expect(p0?.colors[0]).toBe(0x4f & 0x3f); // 0x0f
+      expect(p0?.colors[1]).toBe(0x101 & 0x3f); // 0x01
+      expect(p0?.colors[3]).toBe(0x3f);
+    });
+
+    it('handles dangling palette IDs in slots and animations gracefully without crashing resolvers', () => {
+      const json = JSON.stringify({
+        formatVersion: 1,
+        name: 'Dangling IDs Test',
+        mode: 'animation',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'nearest',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: {
+          palettes: [
+            {
+              id: 'pal_valid',
+              name: 'Valid',
+              colors: [0x0f, 0x01, 0x11, 0x21],
+            },
+          ],
+          activeBackgroundSlots: ['pal_valid', 'pal_deleted_bg', null, null],
+          activeSpriteSlots: ['pal_valid', 'pal_deleted_sp', null, null],
+        },
+        animation: {
+          name: 'Hero',
+          symbolPrefix: 'hero',
+          defaultPaletteIndex: 0,
+          quantizationMode: 'median-cut',
+          ditheringMode: 'none',
+          flipDeduplication: true,
+          spritePalette: 0,
+          spriteColorIndex: 1,
+          patternTable: 0,
+          destinationPatternTable: 0,
+          destinationChr: null,
+          animations: [
+            {
+              id: 'ghost',
+              name: 'ghost',
+              paletteId: 'pal_deleted_anim',
+              frameWidth: 16,
+              frameHeight: 16,
+              originX: 8,
+              originY: 16,
+              playback: 'loop',
+              allowHorizontalFlip: false,
+              allowVerticalFlip: false,
+              defaultDuration: 8,
+              frameIndices: [0],
+              frameDurations: [8],
+            },
+          ],
+        },
+      });
+
+      const res = deserializeProject(json);
+      expect(res.success).toBe(true);
+      if (!res.success) return;
+
+      // Active slots retain the IDs even if dangling
+      expect(res.project.palette.activeBackgroundSlots[1]).toBe(
+        'pal_deleted_bg',
+      );
+      expect(res.project.palette.activeSpriteSlots[1]).toBe('pal_deleted_sp');
+
+      // Resolvers do not crash on dangling IDs and fall back to default palette colors
+      const bgSet = resolveProjectBackgroundPaletteSet(res.project);
+      expect(bgSet[0]).toEqual([0x0f, 0x01, 0x11, 0x21]); // pal_valid
+      expect(bgSet[1]).toBeDefined(); // Slot 1 fallback
+
+      const spSet = resolveProjectSpritePaletteSet(res.project);
+      expect(spSet[0]).toEqual([0x0f, 0x01, 0x11, 0x21]); // pal_valid
+      expect(spSet[1]).toBeDefined(); // Slot 1 fallback
+
+      const effectiveAnimColors = resolveEffectivePaletteColors(
+        res.project.animation?.animations[0]?.paletteId,
+        res.project.palette.palettes,
+        0,
+        res.project.palette.paletteSet,
+      );
+      expect(effectiveAnimColors).toHaveLength(4);
+    });
+
+    it('verifies legacy project-level adapters: resolveProjectBackgroundPaletteSet, resolveProjectSpritePaletteSet, resolveProjectPaletteState', () => {
+      const project = createDefaultProject('Adapters Test', 'animation');
+
+      const bgSet = resolveProjectBackgroundPaletteSet(project);
+      const spSet = resolveProjectSpritePaletteSet(project);
+      const state = resolveProjectPaletteState(project);
+
+      expect(bgSet).toHaveLength(4);
+      expect(spSet).toHaveLength(4);
+      expect(state.universalBackgroundColor).toBe(0x0f);
+      expect(state.palettes).toHaveLength(8);
+      expect(state.activeBackgroundSlots).toEqual([
+        'pal_bg_0',
+        'pal_bg_1',
+        'pal_bg_2',
+        'pal_bg_3',
+      ]);
+      expect(state.activeSpriteSlots).toEqual([
+        'pal_sp_0',
+        'pal_sp_1',
+        'pal_sp_2',
+        'pal_sp_3',
+      ]);
     });
   });
 });
