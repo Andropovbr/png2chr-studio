@@ -9,6 +9,7 @@ import {
   resetPlaybackStates,
   resolveInstanceAnimation,
   resolveInstanceFrames,
+  resolveScenePaletteIds,
   type ScenePreviewInstance,
 } from './scene-preview';
 
@@ -19,11 +20,30 @@ function createMockAnimation(
   frames: number[],
   durations: number[],
 ): AnimationItemSetting {
+  const width = 64;
+  const height = 16;
   return {
     id,
     name,
     entity,
-    source: null,
+    source: {
+      assetId: `${id}-source`,
+      fileName: `${id}.png`,
+      sourceImage: {
+        data: new Uint8ClampedArray(width * height * 4),
+        width,
+        height,
+        colorSpace: 'srgb',
+      },
+      indexedImage: {
+        width,
+        height,
+        pixels: new Uint8Array(width * height),
+        colors: [],
+        transparentIndex: null,
+        colorCount: 0,
+      },
+    },
     paletteIndex: null,
     frameWidth: 16,
     frameHeight: 16,
@@ -209,6 +229,119 @@ describe('Scene Preview Domain Logic', () => {
     expect(resolved[0]?.currentFrameIndex).toBe(0);
     expect(resolved[0]?.sourceFrameIndex).toBe(2); // soldierWalk frame 0 is index 2
     expect(resolved[0]?.frameDuration).toBe(5);
+  });
+
+  it('resolves only visible scene palette IDs using the current frame override', () => {
+    const animation: AnimationItemSetting = {
+      ...soldierWalk,
+      paletteId: 'pal_default',
+      framePaletteIds: [null, 'pal_frame', 'pal_default'],
+    };
+    const instances: readonly ScenePreviewInstance[] = [
+      {
+        id: 'visible-a',
+        entityId: 'Soldier',
+        animationName: 'walk',
+        x: 0,
+        y: 0,
+        visible: true,
+      },
+      {
+        id: 'visible-b',
+        entityId: 'Soldier',
+        animationName: 'walk',
+        x: 16,
+        y: 0,
+        visible: true,
+      },
+      {
+        id: 'hidden',
+        entityId: 'Soldier',
+        animationName: 'walk',
+        x: 32,
+        y: 0,
+        visible: false,
+      },
+    ];
+    let states = initializePlaybackStates(instances);
+    states = advanceScenePlayback(instances, states, [animation], 5);
+
+    expect(resolveScenePaletteIds(instances, states, [animation])).toEqual([
+      'pal_frame',
+      'pal_frame',
+    ]);
+  });
+
+  it('isolates palette requirements to the current scene instead of all project animations', () => {
+    const sceneAAnimation: AnimationItemSetting = {
+      ...soldierIdle,
+      paletteId: 'pal_scene_a',
+    };
+    const sceneBAnimation: AnimationItemSetting = {
+      ...soldierWalk,
+      entity: 'Enemy',
+      paletteId: 'pal_scene_b',
+    };
+    const sceneA: readonly ScenePreviewInstance[] = [
+      {
+        id: 'scene-a-instance',
+        entityId: 'Soldier',
+        animationName: 'idle',
+        x: 0,
+        y: 0,
+        visible: true,
+      },
+    ];
+    const sceneB: readonly ScenePreviewInstance[] = [
+      {
+        id: 'scene-b-instance',
+        entityId: 'Enemy',
+        animationName: 'walk',
+        x: 0,
+        y: 0,
+        visible: true,
+      },
+    ];
+    const animations = [sceneAAnimation, sceneBAnimation];
+
+    expect(
+      resolveScenePaletteIds(
+        sceneA,
+        initializePlaybackStates(sceneA),
+        animations,
+      ),
+    ).toEqual(['pal_scene_a']);
+    expect(
+      resolveScenePaletteIds(
+        sceneB,
+        initializePlaybackStates(sceneB),
+        animations,
+      ),
+    ).toEqual(['pal_scene_b']);
+  });
+
+  it('does not count a visible instance whose animation cannot render sprites', () => {
+    const animation: AnimationItemSetting = {
+      ...soldierIdle,
+      source: null,
+      paletteId: 'pal_not_rendered',
+    };
+    const instances: readonly ScenePreviewInstance[] = [
+      {
+        id: 'no-source',
+        entityId: 'Soldier',
+        animationName: 'idle',
+        x: 0,
+        y: 0,
+        visible: true,
+      },
+    ];
+
+    expect(
+      resolveScenePaletteIds(instances, initializePlaybackStates(instances), [
+        animation,
+      ]),
+    ).toEqual([]);
   });
 
   it('handles hidden instances without advancing their timers', () => {

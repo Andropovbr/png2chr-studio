@@ -419,6 +419,61 @@ describe('ChrTileInspector component and utilities', () => {
       expect(badge?.textContent).toContain('Highlighted in Current Frame (#0)');
     });
 
+    it('shows logical sprite palette identity, NES codes, RGB values, and transparent index zero', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        colors: [
+          { red: 0, green: 0, blue: 0, alpha: 0 },
+          { red: 84, green: 4, blue: 0, alpha: 255 },
+          { red: 152, green: 34, blue: 32, alpha: 255 },
+          { red: 236, green: 88, blue: 180, alpha: 255 },
+        ],
+        paletteContext: {
+          bank: 'sprite',
+          slotIndex: 2,
+          paletteId: 'pal_hero',
+          paletteName: 'Hero',
+          colorCodes: [0x0f, 0x06, 0x16, 0x26],
+          status: 'assigned',
+          transparentZero: true,
+        },
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      const context = mockEl.querySelector('.chr-tile-palette-context');
+      expect(context?.textContent).toContain('SPR 2 — Hero');
+      expect(context?.textContent).toContain('pal_hero');
+      expect(context?.textContent).toContain('$06 · RGB 84, 4, 0');
+      expect(context?.textContent).toContain('Transparent');
+      expect(
+        context
+          ?.querySelector('.chr-tile-palette-color-swatch')
+          ?.classList.contains('is-transparent'),
+      ).toBe(true);
+    });
+
+    it('labels rendered codes as fallback when the selected hardware slot is empty', () => {
+      const inspector = createChrTileInspector({
+        selectedTileIndex: 5,
+        finalChrBytes: new Uint8Array(8192),
+        paletteContext: {
+          bank: 'background',
+          slotIndex: 1,
+          paletteId: null,
+          paletteName: null,
+          colorCodes: [0x0f, 0x00, 0x10, 0x30],
+          status: 'empty',
+          transparentZero: false,
+        },
+      });
+
+      const mockEl = inspector as unknown as MockElement;
+      expect(
+        mockEl.querySelector('.chr-tile-palette-fallback')?.textContent,
+      ).toBe('Deterministic preview fallback');
+    });
+
     it('renders Used by section with empty message when no references exist', () => {
       const inspector = createChrTileInspector({
         selectedTileIndex: 5,

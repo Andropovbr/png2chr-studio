@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createBackgroundWorkspace,
+  resolveBackgroundPaletteSet,
   type BackgroundWorkspaceOptions,
 } from './background-workspace';
 import {
@@ -9,6 +10,7 @@ import {
   type BackgroundMapReconciliationFact,
 } from '../core/background-model';
 import { createDefaultNesPaletteSet } from '../core/nes-palette';
+import type { PaletteDefinition } from '../core/palette-manager';
 import type { Tile } from '../core/types';
 import type { ProjectAsset } from '../core/asset-identity';
 import { setLocale } from '../i18n';
@@ -245,6 +247,14 @@ function createMockBackgroundWorkspaceOptions(
   });
 
   const paletteSet = createDefaultNesPaletteSet();
+  const palettes: readonly PaletteDefinition[] = paletteSet.map(
+    (colors, index) => ({
+      id: `pal_bg_${String(index)}`,
+      name: `Background ${String(index)}`,
+      colors,
+      target: 'background',
+    }),
+  );
 
   const mockTiles: Tile[] = Array.from({ length: 16 }, (_, i) => ({
     id: i,
@@ -308,7 +318,14 @@ function createMockBackgroundWorkspaceOptions(
   return {
     maps: [map1, map2],
     activeMapId: 'bg-overworld',
-    paletteSet,
+    palettes,
+    activeBackgroundSlots: [
+      palettes[0]?.id ?? null,
+      palettes[1]?.id ?? null,
+      palettes[2]?.id ?? null,
+      palettes[3]?.id ?? null,
+    ],
+    universalBackgroundColor: paletteSet[0][0],
     availableAssets,
     assetTilesMap,
     compiledModel,
@@ -493,6 +510,74 @@ describe('Background Workspace Component', () => {
       expect(options.onStateChange).toHaveBeenCalledWith({
         selectedPaletteIndex: 2,
       });
+    });
+
+    it('labels physical BG slots with logical palette identity and exposes empty slots', () => {
+      const base = createMockBackgroundWorkspaceOptions();
+      const options = createMockBackgroundWorkspaceOptions({
+        activeBackgroundSlots: [
+          base.palettes[2]?.id ?? null,
+          null,
+          base.palettes[0]?.id ?? null,
+          base.palettes[1]?.id ?? null,
+        ] as const,
+      });
+      const element = createBackgroundWorkspace(options);
+      const bg0 = element.querySelector<HTMLButtonElement>('#bg-subpalette-0');
+      const bg1 = element.querySelector<HTMLButtonElement>('#bg-subpalette-1');
+
+      expect(bg0?.getAttribute('aria-label')).toContain('BG 0 — Background 2');
+      expect(bg1?.getAttribute('data-palette-status')).toBe('empty');
+      expect(bg1?.classList.contains('is-unassigned')).toBe(true);
+
+      bg0?.click();
+      expect(options.onStateChange).toHaveBeenCalledWith({
+        selectedPaletteIndex: 0,
+      });
+    });
+
+    it('derives colors only from the Background bank, preserves physical assignments, and uses canonical universal color', () => {
+      const base = createMockBackgroundWorkspaceOptions();
+      const physicalAssignments = base.maps[0]?.paletteAssignments.slice();
+      const first = resolveBackgroundPaletteSet(base);
+      const reassignedOptions = {
+        ...base,
+        activeBackgroundSlots: [
+          base.palettes[3]?.id ?? null,
+          base.palettes[1]?.id ?? null,
+          base.palettes[2]?.id ?? null,
+          base.palettes[0]?.id ?? null,
+        ],
+        universalBackgroundColor: 0x30,
+        activeSpriteSlots: [null, null, null, null],
+      } satisfies BackgroundWorkspaceOptions & {
+        readonly activeSpriteSlots: readonly (string | null)[];
+      };
+      const reassigned = resolveBackgroundPaletteSet(reassignedOptions);
+
+      expect(reassigned[0][0]).toBe(0x30);
+      expect(reassigned[0][1]).toBe(base.palettes[3]?.colors[1]);
+      expect(reassigned[0]).not.toEqual(first[0]);
+      expect(base.maps[0]?.paletteAssignments).toEqual(physicalAssignments);
+
+      const emptyA = resolveBackgroundPaletteSet({
+        ...base,
+        activeBackgroundSlots: [null, null, null, null] as const,
+      });
+      const spriteBankVariant = {
+        ...base,
+        activeBackgroundSlots: [null, null, null, null],
+        activeSpriteSlots: [
+          base.palettes[0]?.id ?? null,
+          base.palettes[1]?.id ?? null,
+          base.palettes[2]?.id ?? null,
+          base.palettes[3]?.id ?? null,
+        ],
+      } satisfies BackgroundWorkspaceOptions & {
+        readonly activeSpriteSlots: readonly (string | null)[];
+      };
+      const emptyB = resolveBackgroundPaletteSet(spriteBankVariant);
+      expect(emptyB).toEqual(emptyA);
     });
   });
 

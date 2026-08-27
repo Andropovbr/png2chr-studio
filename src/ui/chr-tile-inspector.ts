@@ -35,6 +35,10 @@ export const NEUTRAL_NES_GRAYSCALE = [
   { red: 255, green: 255, blue: 255 }, // 3: NES $30
 ] as const;
 
+function hexadecimal(value: number): string {
+  return `$${value.toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
 export type TileSlotState = 'empty' | 'project' | 'base' | 'reserved';
 
 export interface TileSlotDiagnosis {
@@ -56,7 +60,17 @@ export interface ChrTileInspectorOptions {
     readonly red: number;
     readonly green: number;
     readonly blue: number;
+    readonly alpha?: number;
   }[];
+  readonly paletteContext?: {
+    readonly bank: 'grayscale' | 'background' | 'sprite';
+    readonly slotIndex: 0 | 1 | 2 | 3 | null;
+    readonly paletteId: string | null;
+    readonly paletteName: string | null;
+    readonly colorCodes: readonly number[] | null;
+    readonly status: 'neutral' | 'assigned' | 'empty' | 'dangling';
+    readonly transparentZero: boolean;
+  };
   readonly isHighlighted?: boolean;
   readonly highlightScopeLabel?: string | null;
   readonly highlightedAssetId?: string | null;
@@ -168,6 +182,7 @@ export function renderEnlargedTileCanvas(
     readonly red: number;
     readonly green: number;
     readonly blue: number;
+    readonly alpha?: number;
   }[] = NEUTRAL_NES_GRAYSCALE,
 ): void {
   const context = canvas.getContext('2d');
@@ -207,7 +222,7 @@ export function renderEnlargedTileCanvas(
           data[offset] = color.red;
           data[offset + 1] = color.green;
           data[offset + 2] = color.blue;
-          data[offset + 3] = 255;
+          data[offset + 3] = color.alpha ?? 255;
         }
       }
     }
@@ -279,6 +294,9 @@ export function createChrTileInspector(
 
     const canvas = document.createElement('canvas');
     canvas.className = 'chr-tile-inspector-canvas';
+    if (options.paletteContext?.transparentZero) {
+      canvas.classList.add('checkerboard');
+    }
     canvas.width = 128;
     canvas.height = 128;
     canvas.setAttribute('role', 'img');
@@ -397,6 +415,79 @@ export function createChrTileInspector(
 
     renderLocalEditor();
     previewSection.append(previewWrapper, gridToggle, editorContainer);
+
+    const paletteSection = document.createElement('section');
+    paletteSection.className = 'chr-tile-palette-context';
+    const paletteHeading = document.createElement('h4');
+    paletteHeading.textContent = t('chrTileInspectorPaletteContext');
+    paletteSection.append(paletteHeading);
+    const paletteContext = options.paletteContext;
+    if (paletteContext === undefined || paletteContext.bank === 'grayscale') {
+      const neutral = document.createElement('p');
+      neutral.className = 'muted';
+      neutral.textContent = t('chrWorkspacePaletteGrayscale');
+      paletteSection.append(neutral);
+    } else {
+      const identity = document.createElement('p');
+      identity.className = `chr-tile-palette-identity is-${paletteContext.status}`;
+      const bankLabel =
+        paletteContext.bank === 'background'
+          ? t('chrWorkspacePaletteBg', { index: paletteContext.slotIndex ?? 0 })
+          : t('chrWorkspacePaletteSp', {
+              index: paletteContext.slotIndex ?? 0,
+            });
+      identity.textContent = `${bankLabel} — ${
+        paletteContext.paletteName ??
+        (paletteContext.paletteId === null
+          ? t('paletteManagerSlotEmpty')
+          : t('paletteManagerMissingPalette', {
+              paletteId: paletteContext.paletteId,
+            }))
+      }`;
+      paletteSection.append(identity);
+
+      if (
+        paletteContext.status === 'empty' ||
+        paletteContext.status === 'dangling'
+      ) {
+        const fallback = document.createElement('p');
+        fallback.className = 'chr-tile-palette-fallback muted';
+        fallback.textContent = t('chrTileInspectorPaletteFallback');
+        paletteSection.append(fallback);
+      }
+
+      if (paletteContext.paletteId !== null) {
+        const id = document.createElement('code');
+        id.className = 'chr-tile-palette-id';
+        id.textContent = paletteContext.paletteId;
+        paletteSection.append(id);
+      }
+
+      if (paletteContext.colorCodes !== null) {
+        const colorList = document.createElement('ul');
+        colorList.className = 'chr-tile-palette-colors';
+        paletteContext.colorCodes.forEach((code, index) => {
+          const item = document.createElement('li');
+          const color = options.colors?.[index] ?? {
+            red: 0,
+            green: 0,
+            blue: 0,
+          };
+          const swatch = document.createElement('span');
+          swatch.className = 'chr-tile-palette-color-swatch';
+          if (paletteContext.transparentZero && index === 0) {
+            swatch.classList.add('is-transparent');
+          } else {
+            swatch.style.backgroundColor = `rgb(${String(color.red)} ${String(color.green)} ${String(color.blue)})`;
+          }
+          const value = document.createElement('span');
+          value.textContent = `${hexadecimal(code)} · RGB ${String(color.red)}, ${String(color.green)}, ${String(color.blue)}${paletteContext.transparentZero && index === 0 ? ` · ${t('paletteManagerTransparent')}` : ''}`;
+          item.append(swatch, value);
+          colorList.append(item);
+        });
+        paletteSection.append(colorList);
+      }
+    }
 
     // 2. Metadata Metrics List
     const diagnosis = resolveTileSlotDiagnosis(
@@ -1092,6 +1183,7 @@ export function createChrTileInspector(
     if (usageSection) {
       content.append(
         previewSection,
+        paletteSection,
         metricsList,
         ownershipSection,
         usedBySection,
@@ -1100,6 +1192,7 @@ export function createChrTileInspector(
     } else {
       content.append(
         previewSection,
+        paletteSection,
         metricsList,
         ownershipSection,
         usedBySection,

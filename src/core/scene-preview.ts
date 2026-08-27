@@ -225,3 +225,40 @@ export function resolveInstanceFrames(
     };
   });
 }
+
+/**
+ * Resolves the logical sprite palette required by each visible scene instance
+ * at its current playback frame. Frame overrides take precedence over the
+ * animation default; duplicate IDs are intentionally left for the palette
+ * analyzer to deduplicate.
+ */
+export function resolveScenePaletteIds(
+  instances: readonly ScenePreviewInstance[],
+  playbackStates: Map<string, InstancePlaybackState>,
+  animations: readonly AnimationItemSetting[],
+): readonly string[] {
+  const paletteIds: string[] = [];
+
+  for (const resolved of resolveInstanceFrames(
+    instances,
+    playbackStates,
+    animations,
+  )) {
+    if (!resolved.instance.visible) {
+      continue;
+    }
+    const animation = resolved.animation;
+    if (animation === null) {
+      continue;
+    }
+    if (animation.source === null || animation.frameIndices.length === 0) {
+      continue;
+    }
+    const paletteId =
+      animation.framePaletteIds?.[resolved.currentFrameIndex] ??
+      animation.paletteId;
+    if (paletteId?.trim()) paletteIds.push(paletteId);
+  }
+
+  return paletteIds;
+}
