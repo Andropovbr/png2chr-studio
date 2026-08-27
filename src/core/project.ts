@@ -1,5 +1,9 @@
 import type { CollisionType } from './collision-encoder';
-import { createDefaultNesPaletteSet, type NesPaletteSet } from './nes-palette';
+import {
+  createDefaultNesPaletteSet,
+  isValidNesColorCode,
+  type NesPaletteSet,
+} from './nes-palette';
 import {
   DEFAULT_QUANTIZATION_SETTINGS,
   normalizeQuantizationSettings,
@@ -45,6 +49,17 @@ export * from './metasprite-extraction';
 export * from './chr-spritesheet-allocation';
 export * from './background-model';
 export * from './background-exporters';
+export type {
+  ActivePaletteSlots,
+  DualBankPaletteState,
+  PaletteDefinition,
+  ProjectPaletteId,
+} from './palette-manager';
+export {
+  resolveProjectBackgroundPaletteSet,
+  resolveProjectPaletteState,
+  resolveProjectSpritePaletteSet,
+} from './palette-manager';
 
 export const CURRENT_PROJECT_FORMAT_VERSION = 1;
 export const SUPPORTED_PROJECT_FORMAT_VERSIONS = [1] as const;
@@ -64,7 +79,11 @@ export interface ProjectAssetReference {
 
 import type { TilePixelOverrides } from './pixel-overrides';
 import {
+  DEFAULT_UNIVERSAL_BACKGROUND_COLOR,
+  createDefaultDualBankPaletteState,
   createDefaultPaletteDefinitions,
+  resolveActiveBackgroundPaletteSet,
+  type ActivePaletteSlots,
   type PaletteDefinition,
 } from './palette-manager';
 
@@ -130,10 +149,21 @@ export interface ProjectBackgroundSettingsConfig {
 }
 
 export interface ProjectPaletteConfig {
-  readonly paletteSet: NesPaletteSet;
+  /** Canonical universal background color ($3F00). */
+  readonly universalBackgroundColor: number;
+  /** Canonical complete library of palette definitions. */
+  readonly palettes: readonly PaletteDefinition[];
+  /** Canonical 4-slot active subpalettes for Background ($3F00..$3F0F). */
+  readonly activeBackgroundSlots: ActivePaletteSlots;
+  /** Canonical 4-slot active subpalettes for Sprites ($3F10..$3F1F). */
+  readonly activeSpriteSlots: ActivePaletteSlots;
+  /** Active palette index in UI editor (convenience). */
   readonly activePaletteIndex?: number;
+  /** Active color index in UI editor (convenience). */
   readonly activeColorIndex?: number;
-  readonly palettes?: readonly PaletteDefinition[];
+  /** Legacy 4-subpalette matrix maintained for backward compatibility. */
+  readonly paletteSet: NesPaletteSet;
+  /** Legacy alias for activeSpriteSlots maintained for backward compatibility. */
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
 }
 
@@ -298,9 +328,12 @@ export function createDefaultProject(
   name = 'Untitled Project',
   mode: ProjectMode = 'tileset',
 ): StudioProject {
-  const defaultPaletteSet = createDefaultNesPaletteSet();
-  const defaultPalettes = createDefaultPaletteDefinitions(defaultPaletteSet);
-  const defaultActiveSlots = defaultPalettes.map((p) => p.id);
+  const dualBank = createDefaultDualBankPaletteState();
+  const defaultPaletteSet = resolveActiveBackgroundPaletteSet(
+    dualBank.palettes,
+    dualBank.activeBackgroundSlots,
+    dualBank.universalBackgroundColor,
+  );
 
   return {
     formatVersion: 1,
@@ -312,11 +345,14 @@ export function createDefaultProject(
       quantization: DEFAULT_QUANTIZATION_SETTINGS,
     },
     palette: {
-      paletteSet: defaultPaletteSet,
+      universalBackgroundColor: dualBank.universalBackgroundColor,
+      palettes: dualBank.palettes,
+      activeBackgroundSlots: dualBank.activeBackgroundSlots,
+      activeSpriteSlots: dualBank.activeSpriteSlots,
       activePaletteIndex: 0,
       activeColorIndex: 1,
-      palettes: defaultPalettes,
-      activeSpritePaletteSlots: defaultActiveSlots,
+      paletteSet: defaultPaletteSet,
+      activeSpritePaletteSlots: dualBank.activeSpriteSlots,
     },
     chrRegions: [],
     tileset: {
@@ -348,8 +384,11 @@ export function createDefaultProject(
           name: 'idle',
           entity: 'entity',
           asset: null,
-          paletteId: defaultPalettes[0]?.id ?? null,
+          paletteId:
+            dualBank.activeSpriteSlots[0] ?? dualBank.palettes[0]?.id ?? null,
           paletteIndex: null,
+          framePaletteIds: [],
+          framePalettes: [],
           quantizationMode: 'median-cut',
           ditheringMode: 'none',
           frameWidth: 16,
@@ -362,7 +401,6 @@ export function createDefaultProject(
           defaultDuration: 12,
           frameIndices: [],
           frameDurations: [],
-          framePalettes: [],
         },
       ],
     },
@@ -476,24 +514,53 @@ export function deserializeProject(
       ? (raw.palette as Record<string, unknown>)
       : {};
 
-  const paletteSet = parsePaletteSet(rawPalette.paletteSet);
+  const legacyPaletteSet = parsePaletteSet(rawPalette.paletteSet);
   const parsedPalettes = parsePaletteDefinitions(rawPalette.palettes);
-  const parsedSlots = parseActiveSlots(rawPalette.activeSpritePaletteSlots);
 
+  // 1. Resolve universal background color ($3F00)
+  let universalBackgroundColor: number;
+  if (
+    typeof rawPalette.universalBackgroundColor === 'number' &&
+    isValidNesColorCode(rawPalette.universalBackgroundColor)
+  ) {
+    universalBackgroundColor = rawPalette.universalBackgroundColor & 0x3f;
+  } else if (isValidNesColorCode(legacyPaletteSet[0][0])) {
+    universalBackgroundColor = legacyPaletteSet[0][0];
+  } else {
+    universalBackgroundColor = DEFAULT_UNIVERSAL_BACKGROUND_COLOR;
+  }
+
+  // 2. Resolve library of palettes
   const palettes: readonly PaletteDefinition[] =
-    parsedPalettes && parsedPalettes.length > 0
-      ? parsedPalettes
-      : createDefaultPaletteDefinitions(paletteSet);
+    parsedPalettes ?? createDefaultPaletteDefinitions(legacyPaletteSet);
 
-  const activeSpritePaletteSlots: readonly (string | null)[] =
-    parsedSlots?.length === 4
-      ? parsedSlots
-      : [
-          palettes[0]?.id ?? null,
-          palettes[1]?.id ?? null,
-          palettes[2]?.id ?? null,
-          palettes[3]?.id ?? null,
-        ];
+  // 3. Resolve active background slots
+  const parsedBgSlots = parseActiveSlots(rawPalette.activeBackgroundSlots);
+  const activeBackgroundSlots: ActivePaletteSlots = parsedBgSlots ?? [
+    palettes[0]?.id ?? null,
+    palettes[1]?.id ?? null,
+    palettes[2]?.id ?? null,
+    palettes[3]?.id ?? null,
+  ];
+
+  // 4. Resolve active sprite slots
+  const parsedSpSlots = parseActiveSlots(
+    rawPalette.activeSpriteSlots ?? rawPalette.activeSpritePaletteSlots,
+  );
+  const activeSpriteSlots: ActivePaletteSlots = parsedSpSlots ?? [
+    palettes[0]?.id ?? null,
+    palettes[1]?.id ?? null,
+    palettes[2]?.id ?? null,
+    palettes[3]?.id ?? null,
+  ];
+
+  // 5. Effective background paletteSet for backward compatibility
+  const paletteSet = resolveActiveBackgroundPaletteSet(
+    palettes,
+    activeBackgroundSlots,
+    universalBackgroundColor,
+    legacyPaletteSet,
+  );
 
   const activePaletteIndex =
     typeof rawPalette.activePaletteIndex === 'number'
@@ -559,13 +626,21 @@ export function deserializeProject(
         typeof rawItem.paletteIndex === 'number' ? rawItem.paletteIndex : null;
 
       // Migrate paletteIndex to paletteId if paletteId is not explicitly set
-      const resolvedPaletteId =
-        rawPaletteId ??
-        (rawPaletteIndex !== null &&
+      let resolvedPaletteId: string | null;
+      if (rawPaletteId !== undefined) {
+        resolvedPaletteId = rawPaletteId;
+      } else if (
+        rawPaletteIndex !== null &&
         rawPaletteIndex >= 0 &&
-        rawPaletteIndex < palettes.length
-          ? (palettes[rawPaletteIndex]?.id ?? null)
-          : (palettes[0]?.id ?? null));
+        rawPaletteIndex < 4
+      ) {
+        resolvedPaletteId =
+          activeSpriteSlots[rawPaletteIndex] ??
+          palettes[rawPaletteIndex]?.id ??
+          null;
+      } else {
+        resolvedPaletteId = activeSpriteSlots[0] ?? palettes[0]?.id ?? null;
+      }
 
       const rawFramePaletteIds = parseStringArray(rawItem.framePaletteIds);
       const rawFramePalettes = Array.isArray(rawItem.framePalettes)
@@ -575,11 +650,12 @@ export function deserializeProject(
       const resolvedFramePaletteIds =
         rawFramePaletteIds ??
         (rawFramePalettes
-          ? rawFramePalettes.map((pIdx) =>
-              pIdx !== null && pIdx >= 0 && pIdx < palettes.length
-                ? (palettes[pIdx]?.id ?? null)
-                : null,
-            )
+          ? rawFramePalettes.map((pIdx) => {
+              if (pIdx !== null && pIdx >= 0 && pIdx < 4) {
+                return activeSpriteSlots[pIdx] ?? palettes[pIdx]?.id ?? null;
+              }
+              return null;
+            })
           : undefined);
 
       items.push({
@@ -692,18 +768,21 @@ export function deserializeProject(
       quantization,
     },
     palette: {
-      paletteSet,
-      activePaletteIndex,
-      activeColorIndex,
+      universalBackgroundColor,
       palettes,
-      activeSpritePaletteSlots,
+      activeBackgroundSlots,
+      activeSpriteSlots,
+      ...(activePaletteIndex !== undefined ? { activePaletteIndex } : {}),
+      ...(activeColorIndex !== undefined ? { activeColorIndex } : {}),
+      paletteSet,
+      activeSpritePaletteSlots: activeSpriteSlots,
     },
     ...(chrRegions !== undefined ? { chrRegions } : {}),
-    tileset,
-    playfield,
+    ...(tileset !== undefined ? { tileset } : {}),
+    ...(playfield !== undefined ? { playfield } : {}),
     ...(backgrounds !== undefined ? { backgrounds } : {}),
-    animation,
-    scenePreview,
+    ...(animation !== undefined ? { animation } : {}),
+    ...(scenePreview !== undefined ? { scenePreview } : {}),
   };
 
   return {
@@ -744,7 +823,7 @@ function parsePaletteSet(value: unknown): NesPaletteSet {
 
 function parsePaletteDefinitions(
   value: unknown,
-): PaletteDefinition[] | undefined {
+): readonly PaletteDefinition[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const result: PaletteDefinition[] = [];
   for (const item of value) {
@@ -756,25 +835,66 @@ function parsePaletteDefinitions(
       typeof rawDef.name === 'string' && rawDef.name.trim() !== ''
         ? rawDef.name.trim()
         : 'Palette';
+
+    let target: 'sprite' | 'background' | 'shared' | undefined;
+    if (
+      rawDef.target === 'sprite' ||
+      rawDef.target === 'background' ||
+      rawDef.target === 'shared'
+    ) {
+      target = rawDef.target;
+    }
+
     let colors: [number, number, number, number] = [0x0f, 0x00, 0x10, 0x30];
     if (Array.isArray(rawDef.colors) && rawDef.colors.length === 4) {
       colors = [
-        typeof rawDef.colors[0] === 'number' ? rawDef.colors[0] & 0x3f : 0x0f,
-        typeof rawDef.colors[1] === 'number' ? rawDef.colors[1] & 0x3f : 0x00,
-        typeof rawDef.colors[2] === 'number' ? rawDef.colors[2] & 0x3f : 0x10,
-        typeof rawDef.colors[3] === 'number' ? rawDef.colors[3] & 0x3f : 0x30,
+        typeof rawDef.colors[0] === 'number' &&
+        Number.isFinite(rawDef.colors[0])
+          ? rawDef.colors[0] & 0x3f
+          : 0x0f,
+        typeof rawDef.colors[1] === 'number' &&
+        Number.isFinite(rawDef.colors[1])
+          ? rawDef.colors[1] & 0x3f
+          : 0x00,
+        typeof rawDef.colors[2] === 'number' &&
+        Number.isFinite(rawDef.colors[2])
+          ? rawDef.colors[2] & 0x3f
+          : 0x10,
+        typeof rawDef.colors[3] === 'number' &&
+        Number.isFinite(rawDef.colors[3])
+          ? rawDef.colors[3] & 0x3f
+          : 0x30,
       ];
     }
-    result.push({ id, name, colors });
+    result.push({
+      id,
+      name,
+      colors,
+      ...(target !== undefined ? { target } : {}),
+    });
   }
   return result.length > 0 ? result : undefined;
 }
 
-function parseActiveSlots(value: unknown): (string | null)[] | undefined {
-  if (!Array.isArray(value) || value.length !== 4) return undefined;
-  return value.map((slot) =>
-    typeof slot === 'string' && slot.trim() !== '' ? slot.trim() : null,
-  );
+function parseActiveSlots(value: unknown): ActivePaletteSlots | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const s0 =
+    typeof value[0] === 'string' && value[0].trim() !== ''
+      ? value[0].trim()
+      : null;
+  const s1 =
+    typeof value[1] === 'string' && value[1].trim() !== ''
+      ? value[1].trim()
+      : null;
+  const s2 =
+    typeof value[2] === 'string' && value[2].trim() !== ''
+      ? value[2].trim()
+      : null;
+  const s3 =
+    typeof value[3] === 'string' && value[3].trim() !== ''
+      ? value[3].trim()
+      : null;
+  return [s0, s1, s2, s3];
 }
 
 function parseStringArray(value: unknown): (string | null)[] | undefined {

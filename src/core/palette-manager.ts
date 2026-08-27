@@ -192,7 +192,7 @@ export function createDefaultPaletteDefinitions(
       assertNesColorCode(c);
     }
     return {
-      id: generatePaletteId(`pal_${String(index)}`),
+      id: `pal_${String(index)}`,
       name: defaultNames[index] ?? `Palette ${String(index)}`,
       colors: [colors[0], colors[1], colors[2], colors[3]],
     };
@@ -233,7 +233,7 @@ export function createDefaultDualBankPaletteState(
   const bgPalettes: PaletteDefinition[] = [0, 1, 2, 3].map((i) => {
     const basePalette = baseSet[i] ?? DEFAULT_FALLBACK_SUBPALETTE;
     return {
-      id: generatePaletteId(`pal_bg${String(i)}`),
+      id: `pal_bg_${String(i)}`,
       name: `Background Palette ${String(i)}`,
       colors: [
         universalBackgroundColor,
@@ -248,7 +248,7 @@ export function createDefaultDualBankPaletteState(
   const spPalettes: PaletteDefinition[] = [0, 1, 2, 3].map((i) => {
     const basePalette = baseSet[i] ?? DEFAULT_FALLBACK_SUBPALETTE;
     return {
-      id: generatePaletteId(`pal_sp${String(i)}`),
+      id: `pal_sp_${String(i)}`,
       name: `Sprite Palette ${String(i)}`,
       colors: [
         universalBackgroundColor,
@@ -470,6 +470,136 @@ export function resolveActiveSpritePaletteSet(
     );
   }
   return rawSet;
+}
+
+/**
+ * Resolves the 4 active Background subpalettes for a StudioProject-like object.
+ */
+export function resolveProjectBackgroundPaletteSet(
+  projectOrPalette: {
+    readonly palette?: {
+      readonly universalBackgroundColor?: number;
+      readonly palettes?: readonly PaletteDefinition[];
+      readonly activeBackgroundSlots?: ActivePaletteSlots;
+      readonly paletteSet?: NesPaletteSet;
+    };
+    readonly universalBackgroundColor?: number;
+    readonly palettes?: readonly PaletteDefinition[];
+    readonly activeBackgroundSlots?: ActivePaletteSlots;
+    readonly paletteSet?: NesPaletteSet;
+  },
+  fallbackSet?: NesPaletteSet,
+): NesPaletteSet {
+  const palConfig =
+    'palette' in projectOrPalette && projectOrPalette.palette
+      ? projectOrPalette.palette
+      : projectOrPalette;
+  const palettes = palConfig.palettes;
+  const bgSlots = palConfig.activeBackgroundSlots;
+  const univColor =
+    palConfig.universalBackgroundColor ?? DEFAULT_UNIVERSAL_BACKGROUND_COLOR;
+  return resolveActiveBackgroundPaletteSet(
+    palettes,
+    bgSlots,
+    univColor,
+    fallbackSet ?? palConfig.paletteSet,
+  );
+}
+
+/**
+ * Resolves the 4 active Sprite subpalettes for a StudioProject-like object.
+ */
+export function resolveProjectSpritePaletteSet(
+  projectOrPalette: {
+    readonly palette?: {
+      readonly universalBackgroundColor?: number;
+      readonly palettes?: readonly PaletteDefinition[];
+      readonly activeSpriteSlots?: ActivePaletteSlots;
+      readonly activeSpritePaletteSlots?: readonly (string | null)[];
+      readonly paletteSet?: NesPaletteSet;
+    };
+    readonly universalBackgroundColor?: number;
+    readonly palettes?: readonly PaletteDefinition[];
+    readonly activeSpriteSlots?: ActivePaletteSlots;
+    readonly activeSpritePaletteSlots?: readonly (string | null)[];
+    readonly paletteSet?: NesPaletteSet;
+  },
+  fallbackSet?: NesPaletteSet,
+): NesPaletteSet {
+  const palConfig =
+    'palette' in projectOrPalette && projectOrPalette.palette
+      ? projectOrPalette.palette
+      : projectOrPalette;
+  const palettes = palConfig.palettes;
+  const spSlots =
+    palConfig.activeSpriteSlots ??
+    ('activeSpritePaletteSlots' in palConfig
+      ? palConfig.activeSpritePaletteSlots
+      : undefined);
+  const univColor =
+    palConfig.universalBackgroundColor ?? DEFAULT_UNIVERSAL_BACKGROUND_COLOR;
+  return resolveActiveSpritePaletteSet(
+    palettes,
+    spSlots,
+    fallbackSet ?? palConfig.paletteSet,
+    univColor,
+  );
+}
+
+/**
+ * Extracts the canonical DualBankPaletteState from a StudioProject-like object.
+ */
+export function resolveProjectPaletteState(projectOrPalette: {
+  readonly palette?: {
+    readonly universalBackgroundColor?: number;
+    readonly palettes?: readonly PaletteDefinition[];
+    readonly activeBackgroundSlots?: ActivePaletteSlots;
+    readonly activeSpriteSlots?: ActivePaletteSlots;
+    readonly activeSpritePaletteSlots?: readonly (string | null)[];
+    readonly paletteSet?: NesPaletteSet;
+  };
+  readonly universalBackgroundColor?: number;
+  readonly palettes?: readonly PaletteDefinition[];
+  readonly activeBackgroundSlots?: ActivePaletteSlots;
+  readonly activeSpriteSlots?: ActivePaletteSlots;
+  readonly activeSpritePaletteSlots?: readonly (string | null)[];
+  readonly paletteSet?: NesPaletteSet;
+}): DualBankPaletteState {
+  const palConfig =
+    'palette' in projectOrPalette && projectOrPalette.palette
+      ? projectOrPalette.palette
+      : projectOrPalette;
+  const fallbackSet = palConfig.paletteSet;
+  const palettes =
+    palConfig.palettes ?? createDefaultPaletteDefinitions(fallbackSet);
+  const univColor =
+    palConfig.universalBackgroundColor ??
+    fallbackSet?.[0]?.[0] ??
+    DEFAULT_UNIVERSAL_BACKGROUND_COLOR;
+  const activeBg =
+    palConfig.activeBackgroundSlots ??
+    createDefaultActivePaletteSlots(palettes);
+  const spSource =
+    palConfig.activeSpriteSlots ??
+    ('activeSpritePaletteSlots' in palConfig
+      ? palConfig.activeSpritePaletteSlots
+      : undefined);
+  const activeSp: ActivePaletteSlots =
+    spSource?.length === 4
+      ? [
+          spSource[0] ?? null,
+          spSource[1] ?? null,
+          spSource[2] ?? null,
+          spSource[3] ?? null,
+        ]
+      : createDefaultActivePaletteSlots(palettes);
+
+  return {
+    universalBackgroundColor: univColor,
+    palettes,
+    activeBackgroundSlots: activeBg,
+    activeSpriteSlots: activeSp,
+  };
 }
 
 /**

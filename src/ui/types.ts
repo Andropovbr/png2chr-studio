@@ -4,7 +4,10 @@ import type { ChrRegion } from '../core/chr-pattern-table';
 import type { CollisionType } from '../core/collision-encoder';
 import type { InesRomError } from '../core/ines-rom';
 import type { NesPaletteSet } from '../core/nes-palette';
-import type { PaletteDefinition } from '../core/palette-manager';
+import type {
+  ActivePaletteSlots,
+  PaletteDefinition,
+} from '../core/palette-manager';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { ProjectMode } from '../core/project-mode';
 import type { FrameDetectionResult } from '../core/frame-detection';
@@ -109,7 +112,10 @@ export interface ProjectView {
   readonly activeCollisionType: CollisionType;
   readonly randomPlayfieldFeatures: readonly RandomPlayfieldFeature[];
   readonly paletteSet: NesPaletteSet;
+  readonly universalBackgroundColor?: number;
   readonly palettes?: readonly PaletteDefinition[];
+  readonly activeBackgroundSlots?: ActivePaletteSlots;
+  readonly activeSpriteSlots?: ActivePaletteSlots;
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
   readonly paletteAssignments: Uint8Array;
   readonly pixelOverrides: Uint8Array;

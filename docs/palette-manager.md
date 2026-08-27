@@ -269,9 +269,17 @@ Seguindo o invariante fundamental do Studio ($Logical \neq Physical$):
 
 ## 10. Persistência, Schema e Compatibilidade
 
-### 10.1 Schema `.p2c.json` (Retrocompatível)
+### 10.1 Decisão sobre `formatVersion: 1`
 
-O formato persistido permanece em `formatVersion: 1`, acomodando as novas propriedades de forma transparente:
+A persistência do novo modelo dual-bank permanece em `formatVersion: 1`.
+
+**Por que isso é seguro e retrocompatível:**
+
+1. **Compatibilidade para frente:** Deserializadores mais novos leem arquivos legados que contenham apenas `paletteSet` e realizam migração determinística e transparente.
+2. **Compatibilidade para trás:** Deserializadores mais antigos ignoram chaves JSON adicionais desconhecidas (`universalBackgroundColor`, `activeBackgroundSlots`, `activeSpriteSlots`) e continuam lendo os campos preservados `paletteSet` e `activeSpritePaletteSlots`.
+3. **Padrão do repositório:** Segue o mesmo padrão estabelecido nas Milestones anteriores para `chrRegions`, `asset` IDs e `backgrounds`.
+
+### 10.2 Schema `.p2c.json` Canônico
 
 ```json
 {
@@ -297,18 +305,46 @@ O formato persistido permanece em `formatVersion: 1`, acomodando as novas propri
     "activeBackgroundSlots": ["pal_bg_stage1", null, null, null],
     "activeSpriteSlots": ["pal_hero_main", null, null, null],
     "activePaletteIndex": 0,
-    "activeColorIndex": 1
+    "activeColorIndex": 1,
+    "paletteSet": [
+      [15, 6, 22, 38],
+      [15, 0, 16, 48],
+      [15, 9, 25, 41],
+      [15, 3, 19, 35]
+    ],
+    "activeSpritePaletteSlots": ["pal_hero_main", null, null, null]
   }
 }
 ```
 
-### 10.2 Normalização e Migração Automática (`deserializeProject`)
+### 10.3 Regras de Migração e Precedência Determinística (`deserializeProject`)
 
-1. Se `rawPalette.palettes` não existir, deriva a partir de `paletteSet` legado (`createDefaultPaletteDefinitions`).
-2. Se `rawPalette.activeSpriteSlots` não existir, migra a partir de `activeSpritePaletteSlots` legado ou dos primeiros 4 IDs.
-3. Se `rawPalette.activeBackgroundSlots` não existir, cria slots apontando para as primeiras 4 paletas de fundo.
-4. Se `rawPalette.universalBackgroundColor` não existir, adota `paletteSet[0][0]` ou `$0F` (preto padrão).
-5. Animações com `paletteIndex` numérico são automaticamente convertidas para `paletteId` estável.
+A normalização de projetos legados ou parciais segue as seguintes regras estritas e puras:
+
+1. **Biblioteca de Paletas (`palettes`):**
+   - Se `rawPalette.palettes` existir e contiver definições válidas, é preservado e sanitizado (IDs normalizados, cores mascaradas com `& 0x3f`).
+   - Se ausente ou vazio, migra a partir de `paletteSet` gerando definições com IDs determinísticos (`pal_0`, `pal_1`, `pal_2`, `pal_3`), preservando exatamente as 4 cores de cada subpaleta legada.
+2. **Cor Universal de Background (`universalBackgroundColor`):**
+   - Se `rawPalette.universalBackgroundColor` for um código NES válido ($00..$3F), utiliza o valor.
+   - Caso contrário, extrai a cor `$3F00` a partir da primeira cor da primeira subpaleta legada (`paletteSet[0][0]`).
+   - Em projetos legados inconsistentes com cores 0 divergentes entre subpaletas (`paletteSet[0..3][0]`), o slot 0 (`paletteSet[0][0]`) tem precedência determinística. As 4 subpaletas de background resolvidas espelham essa cor 0 em todos os 4 slots, mantendo as cores 1..3 intactas.
+   - Se nenhuma cor válida for encontrada, adota o padrão `$0F` (preto NES).
+3. **Slots Ativos de Background (`activeBackgroundSlots`):**
+   - Se `rawPalette.activeBackgroundSlots` existir, é validado e normalizado como tupla de 4 elementos `[string | null, ...]`.
+   - Se ausente, preenche com os IDs das 4 primeiras paletas da biblioteca `palettes`.
+4. **Slots Ativos de Sprites (`activeSpriteSlots`):**
+   - Se `rawPalette.activeSpriteSlots` ou `rawPalette.activeSpritePaletteSlots` existir, é normalizado como tupla de 4 elementos.
+   - Se ausente, preenche com os IDs das 4 primeiras paletas da biblioteca `palettes`.
+5. **Migração e Precedência de Animações (`paletteId` vs `paletteIndex`):**
+   - **Caso A (apenas `paletteId`):** O ID estável é preservado como identidade canônica.
+   - **Caso B (apenas `paletteIndex`):** O índice numérico (0..3) é mapeado através do banco de sprites: `activeSpriteSlots[paletteIndex] ?? palettes[paletteIndex]?.id ?? null`.
+   - **Caso C (`paletteId` e `paletteIndex` conflitantes):** `paletteId` tem precedência canônica sobre `paletteIndex`.
+   - **Overrides de Frame (`framePaletteIds` vs `framePalettes`):** Valores numéricos em `framePalettes` são mapeados para `framePaletteIds` via banco de sprites.
+6. **Background Maps e Atribuição de Tiles:**
+   - Mapas de background mantêm `paletteAssignments: number[]` com índices de slots de hardware `0..3` (quadrantes da Attribute Table NES). O banco de Background ativo (`activeBackgroundSlots`) define dinamicamente qual paleta ocupa cada slot físico.
+7. **Idempotência Garantida:**
+   - Abrir o mesmo projeto legado múltiplas vezes gera exatamente os mesmos IDs determinísticos.
+   - Ciclos repetidos de `deserializeProject -> serializeProject` produzem strings JSON estritamente idênticas.
 
 ---
 
