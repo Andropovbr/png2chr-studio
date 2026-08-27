@@ -752,9 +752,9 @@ describe('palette-manager domain module', () => {
         activeSlots,
       );
       expect(flashRefs).toHaveLength(1);
-      expect(flashRefs[0]?.type).toBe('animation');
+      expect(flashRefs[0]?.type).toBe('frame');
       expect(flashRefs[0]?.name).toBe('Boss_phase2');
-      expect(flashRefs[0]?.detail).toBe('Frame palette override');
+      expect(flashRefs[0]?.detail).toBe('Frame 2 palette override');
     });
 
     it('tracks usage across rich PaletteUsageSearchContext (dual slots, maps, scene instances)', () => {

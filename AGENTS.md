@@ -14,18 +14,18 @@ The application runs locally in the browser and should remain lightweight, under
 
 When working on this repository:
 
-* Prefer simple and explicit solutions over clever abstractions.
-* Preserve existing behavior unless the task intentionally changes it.
-* Avoid large unrelated refactors while implementing a focused change.
-* Reuse existing project patterns before introducing new architectural concepts.
-* Keep NES hardware constraints visible in the domain model instead of hiding them behind UI assumptions.
-* Treat persisted project files, exported files, and exported metadata as interfaces consumed by external projects.
-* Maintain backward compatibility where practical, especially for persisted project data and exported formats.
-* Do not silently change file formats, indexes, ownership semantics, or hardware interpretation.
-* Avoid adding dependencies when the existing stack or browser APIs can reasonably solve the problem.
-* Keep the application usable without a backend or external runtime service.
-* Read seu-camilo.md
-* Read professor-carvalho.md
+- Prefer simple and explicit solutions over clever abstractions.
+- Preserve existing behavior unless the task intentionally changes it.
+- Avoid large unrelated refactors while implementing a focused change.
+- Reuse existing project patterns before introducing new architectural concepts.
+- Keep NES hardware constraints visible in the domain model instead of hiding them behind UI assumptions.
+- Treat persisted project files, exported files, and exported metadata as interfaces consumed by external projects.
+- Maintain backward compatibility where practical, especially for persisted project data and exported formats.
+- Do not silently change file formats, indexes, ownership semantics, or hardware interpretation.
+- Avoid adding dependencies when the existing stack or browser APIs can reasonably solve the problem.
+- Keep the application usable without a backend or external runtime service.
+- Read seu-camilo.md
+- Read professor-carvalho.md
 
 The goal is not architectural perfection. The goal is reliable software that remains understandable as the project grows.
 
@@ -57,12 +57,12 @@ PNG2CHR Studio has multiple representations of project information. They must no
 
 As a general rule:
 
-* persisted project data defines the durable project representation;
-* domain/core models define canonical runtime semantics;
-* workspace and UI models are projections or editing state;
-* diagnostics derive facts from canonical state;
-* exporters derive output from canonical state;
-* caches and previews are disposable projections.
+- persisted project data defines the durable project representation;
+- domain/core models define canonical runtime semantics;
+- workspace and UI models are projections or editing state;
+- diagnostics derive facts from canonical state;
+- exporters derive output from canonical state;
+- caches and previews are disposable projections.
 
 Do not introduce a second interpretation of the same domain concept merely because it is convenient for a UI component.
 
@@ -78,15 +78,15 @@ Shared domain rules should live in shared domain/core logic whenever reasonably 
 
 Do not accidentally conflate:
 
-* asset identity;
-* animation/frame identity;
-* logical tile identity;
-* physical CHR slot;
-* pattern-table-relative tile index;
-* NES-visible tile index;
-* palette definition identity;
-* hardware palette slot;
-* reservation/region identity.
+- asset identity;
+- animation/frame identity;
+- logical tile identity;
+- physical CHR slot;
+- pattern-table-relative tile index;
+- NES-visible tile index;
+- palette definition identity;
+- hardware palette slot;
+- reservation/region identity.
 
 Numeric equality between two values does not imply that they represent the same domain concept.
 
@@ -102,19 +102,19 @@ NES hardware limitations are part of the application's domain and should be trea
 
 Relevant constraints include, when applicable:
 
-* 8×8 tiles;
-* 2 bits per pixel;
-* four entries per hardware subpalette;
-* background and sprite palette banks;
-* universal background color behavior;
-* 256 tile indexes per pattern table;
-* two 4 KiB pattern tables in an 8 KiB CHR address space;
-* sprite/background pattern-table selection;
-* 8×8 and 8×16 sprite addressing differences;
-* nametable and Attribute Table limitations;
-* sprite-per-scanline limitations where spatial information is sufficient to evaluate them;
-* CHR capacity, occupancy, ownership, regions, and reservations;
-* mapper-specific limitations when mapper behavior is explicitly modeled.
+- 8×8 tiles;
+- 2 bits per pixel;
+- four entries per hardware subpalette;
+- background and sprite palette banks;
+- universal background color behavior;
+- 256 tile indexes per pattern table;
+- two 4 KiB pattern tables in an 8 KiB CHR address space;
+- sprite/background pattern-table selection;
+- 8×8 and 8×16 sprite addressing differences;
+- nametable and Attribute Table limitations;
+- sprite-per-scanline limitations where spatial information is sufficient to evaluate them;
+- CHR capacity, occupancy, ownership, regions, and reservations;
+- mapper-specific limitations when mapper behavior is explicitly modeled.
 
 Do not remove or bypass hardware validation simply to make an operation succeed.
 
@@ -138,11 +138,11 @@ For example, a project may reserve a region of CHR for a particular purpose. Tha
 
 Diagnostics should identify the actual source of a constraint whenever practical:
 
-* NES hardware;
-* project configuration;
-* allocation/ownership rule;
-* persistence/schema integrity;
-* exporter limitation.
+- NES hardware;
+- project configuration;
+- allocation/ownership rule;
+- persistence/schema integrity;
+- exporter limitation.
 
 This distinction prevents project conventions from being incorrectly presented as hardware laws.
 
@@ -154,14 +154,14 @@ Physical CHR state must remain internally consistent.
 
 When working in this area:
 
-* distinguish occupied, available, reserved, and conflicting slots;
-* do not treat reservation as ownership;
-* do not treat logical asset existence as proof of physical allocation;
-* do not infer allocation solely from matching indexes;
-* ensure allocation respects Pattern Table boundaries and reservations;
-* ensure capacity calculations do not double-count unavailable slots;
-* ensure diagnostics and CHR Memory views derive from the same underlying facts;
-* preserve the distinction between Base CHR and project-generated content where relevant.
+- distinguish occupied, available, reserved, and conflicting slots;
+- do not treat reservation as ownership;
+- do not treat logical asset existence as proof of physical allocation;
+- do not infer allocation solely from matching indexes;
+- ensure allocation respects Pattern Table boundaries and reservations;
+- ensure capacity calculations do not double-count unavailable slots;
+- ensure diagnostics and CHR Memory views derive from the same underlying facts;
+- preserve the distinction between Base CHR and project-generated content where relevant.
 
 Changes to allocation or ownership semantics require regression tests.
 
@@ -173,11 +173,11 @@ Palette definitions and NES hardware palette slots are distinct concepts.
 
 Do not conflate:
 
-* reusable/declarative palette definitions;
-* assignment of those definitions to hardware slots;
-* background and sprite palette banks;
-* the universal background color;
-* palette references stored by assets or animations.
+- reusable/declarative palette definitions;
+- assignment of those definitions to hardware slots;
+- background and sprite palette banks;
+- the universal background color;
+- palette references stored by assets or animations.
 
 Changes to palette semantics must be traced through persistence, migration, previews/rendering, diagnostics, and exporters.
 
@@ -191,14 +191,14 @@ Treat project files and exported data carefully.
 
 When modifying persistence or exporters:
 
-* preserve existing project data whenever possible;
-* provide migration/default behavior for older project versions when necessary;
-* keep format versions explicit;
-* do not silently reinterpret existing fields;
-* validate indexes, offsets, sizes, and CHR boundaries;
-* ensure exported C/ca65 data remains consistent with the canonical project representation;
-* ensure physical CHR positions and NES-visible indexes are not accidentally confused;
-* ensure diagnostics do not claim an export is valid when required information is missing or contradictory.
+- preserve existing project data whenever possible;
+- provide migration/default behavior for older project versions when necessary;
+- keep format versions explicit;
+- do not silently reinterpret existing fields;
+- validate indexes, offsets, sizes, and CHR boundaries;
+- ensure exported C/ca65 data remains consistent with the canonical project representation;
+- ensure physical CHR positions and NES-visible indexes are not accidentally confused;
+- ensure diagnostics do not claim an export is valid when required information is missing or contradictory.
 
 Changes affecting persisted or exported formats require regression tests.
 
@@ -221,11 +221,11 @@ Avoid embedding independent domain interpretation inside diagnostic UI component
 
 A diagnostic should distinguish, where applicable:
 
-* invalid;
-* conflicting;
-* suspicious;
-* capacity-limited;
-* unknown/not determinable.
+- invalid;
+- conflicting;
+- suspicious;
+- capacity-limited;
+- unknown/not determinable.
 
 Warnings should not be promoted to errors merely because a configuration is unusual.
 
@@ -241,20 +241,20 @@ Bug fixes should preferably include a regression test demonstrating the failure 
 
 Prioritize tests around:
 
-* CHR encoding and decoding;
-* tile allocation and reuse;
-* ownership and asset mapping;
-* regions and reservations;
-* Pattern Table boundaries;
-* Base CHR handling;
-* deduplication;
-* palette behavior and hardware-slot assignment;
-* project persistence and migrations;
-* animation metadata;
-* exporters;
-* NES validation rules;
-* diagnostics;
-* previously reported regressions.
+- CHR encoding and decoding;
+- tile allocation and reuse;
+- ownership and asset mapping;
+- regions and reservations;
+- Pattern Table boundaries;
+- Base CHR handling;
+- deduplication;
+- palette behavior and hardware-slot assignment;
+- project persistence and migrations;
+- animation metadata;
+- exporters;
+- NES validation rules;
+- diagnostics;
+- previously reported regressions.
 
 When fixing a disagreement between two representations of the same project, test the boundary between those representations rather than only the final UI symptom.
 
@@ -286,10 +286,10 @@ When implementing or removing a user-visible capability, check whether the READM
 
 Avoid leaving:
 
-* future plans described as implemented behavior;
-* obsolete limitations;
-* outdated architecture descriptions;
-* obsolete workflows or commands.
+- future plans described as implemented behavior;
+- obsolete limitations;
+- outdated architecture descriptions;
+- obsolete workflows or commands.
 
 If detailed technical information becomes too large for the README, move it into an appropriate document under `docs/` and link to it.
 
@@ -299,16 +299,16 @@ Important behavior that would be difficult to reconstruct from code should be do
 
 Good candidates include:
 
-* CHR allocation and ownership rules;
-* Pattern Table behavior;
-* CHR regions and reservations;
-* project file formats;
-* exporter formats;
-* persistence/version migrations;
-* palette model;
-* animation and asset identity;
-* NES validation rules;
-* architectural decisions that affect future development.
+- CHR allocation and ownership rules;
+- Pattern Table behavior;
+- CHR regions and reservations;
+- project file formats;
+- exporter formats;
+- persistence/version migrations;
+- palette model;
+- animation and asset identity;
+- NES validation rules;
+- architectural decisions that affect future development.
 
 Prefer documenting why a rule exists, especially when it comes from NES hardware behavior or an architectural invariant.
 
@@ -320,9 +320,9 @@ Do not document intended behavior as if it already exists.
 
 Documentation should clearly distinguish between:
 
-* implemented behavior;
-* known limitations;
-* planned work.
+- implemented behavior;
+- known limitations;
+- planned work.
 
 Do not reopen a documented architectural decision casually.
 
@@ -344,23 +344,23 @@ Follow the existing TypeScript style and project conventions.
 
 Prefer:
 
-* small focused functions;
-* explicit domain types;
-* pure functions for conversion, fact extraction, and validation logic;
-* deterministic processing;
-* descriptive names;
-* separation between persisted state, canonical domain state, workspace state, and UI projections;
-* reusable domain rules when multiple consumers need the same semantics.
+- small focused functions;
+- explicit domain types;
+- pure functions for conversion, fact extraction, and validation logic;
+- deterministic processing;
+- descriptive names;
+- separation between persisted state, canonical domain state, workspace state, and UI projections;
+- reusable domain rules when multiple consumers need the same semantics.
 
 Avoid:
 
-* unexplained magic numbers;
-* duplicated NES rules in multiple UI components;
-* hidden mutations;
-* unnecessary global state;
-* parallel sources of truth;
-* identity inferred from accidental numeric equality;
-* mixing file parsing, domain logic, rendering, diagnostics, and exporting when they can reasonably remain separate.
+- unexplained magic numbers;
+- duplicated NES rules in multiple UI components;
+- hidden mutations;
+- unnecessary global state;
+- parallel sources of truth;
+- identity inferred from accidental numeric equality;
+- mixing file parsing, domain logic, rendering, diagnostics, and exporting when they can reasonably remain separate.
 
 NES constants should have names or comments when their meaning is not immediately obvious.
 
@@ -393,9 +393,9 @@ Implement the requested task completely, but avoid expanding its scope unnecessa
 
 Small adjacent fixes are acceptable when they are:
 
-* directly related;
-* low risk;
-* necessary to keep behavior consistent.
+- directly related;
+- low risk;
+- necessary to keep behavior consistent.
 
 Larger discoveries should be documented or proposed separately rather than quietly folded into the current change.
 
@@ -419,12 +419,12 @@ They may inspect code, documentation, tests, diffs, and repository state, and ma
 
 Use him for questions such as:
 
-* Is this architecture consistent with the project model?
-* Did this change introduce competing sources of truth?
-* Are persistence, runtime models, diagnostics, and exporters still aligned?
-* Is identity/ownership being interpreted correctly?
-* Does this abstraction belong in the layer where it was introduced?
-* Is a documented architectural decision being violated?
+- Is this architecture consistent with the project model?
+- Did this change introduce competing sources of truth?
+- Are persistence, runtime models, diagnostics, and exporters still aligned?
+- Is identity/ownership being interpreted correctly?
+- Does this abstraction belong in the layer where it was introduced?
+- Is a documented architectural decision being violated?
 
 His authority is project architecture and integrity, not NES hardware truth by itself.
 
@@ -434,11 +434,11 @@ His authority is project architecture and integrity, not NES hardware truth by i
 
 Use him for questions such as:
 
-* Is this configuration actually representable on NES hardware?
-* Is this diagnostic based on a real hardware restriction?
-* Are Pattern Table, palette, Attribute Table, sprite, or CHR rules modeled correctly?
-* Does the application have enough information to make this hardware claim?
-* Is project policy being incorrectly presented as an NES limitation?
+- Is this configuration actually representable on NES hardware?
+- Is this diagnostic based on a real hardware restriction?
+- Are Pattern Table, palette, Attribute Table, sprite, or CHR rules modeled correctly?
+- Does the application have enough information to make this hardware claim?
+- Is project policy being incorrectly presented as an NES limitation?
 
 His authority is NES hardware semantics and validation, not application architecture.
 
@@ -452,28 +452,28 @@ Neither reviewer overrides tests, documentation, or explicit project decisions w
 
 Before finishing a task, verify:
 
-* the requested behavior is implemented;
-* existing behavior was not unintentionally broken;
-* canonical state and projections remain consistent;
-* relevant regression tests were added or updated;
-* relevant tests pass;
-* lint passes;
-* the production build succeeds when appropriate;
-* persisted/exported formats remain valid;
-* NES hardware constraints are still respected;
-* project policy has not been confused with hardware constraints;
-* `README.md` was reviewed for impact;
-* relevant `docs/` files were reviewed for impact;
-* documentation was updated when necessary;
-* obsolete documentation introduced or exposed by the change was removed or corrected.
+- the requested behavior is implemented;
+- existing behavior was not unintentionally broken;
+- canonical state and projections remain consistent;
+- relevant regression tests were added or updated;
+- relevant tests pass;
+- lint passes;
+- the production build succeeds when appropriate;
+- persisted/exported formats remain valid;
+- NES hardware constraints are still respected;
+- project policy has not been confused with hardware constraints;
+- `README.md` was reviewed for impact;
+- relevant `docs/` files were reviewed for impact;
+- documentation was updated when necessary;
+- obsolete documentation introduced or exposed by the change was removed or corrected.
 
 When reporting completion, summarize:
 
-* what changed;
-* important implementation decisions;
-* tests performed;
-* documentation updated;
-* any remaining limitations or follow-up work.
+- what changed;
+- important implementation decisions;
+- tests performed;
+- documentation updated;
+- any remaining limitations or follow-up work.
 
 ---
 

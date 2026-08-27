@@ -374,7 +374,7 @@ Não há diagnóstico de overflow de Background nesta etapa: `BackgroundMapDefin
 
 A chave `id` de cada fato representa a referência corrigível (consumer, frame, banco/slot ou contexto). Repetições estruturais idênticas são removidas, mas consumers diferentes continuam gerando fatos independentes. A saída ordena primeiro severidade, depois tipo e chave estável; ela não depende da ordem de iteração de objetos ou do locale ativo.
 
-O analyzer compartilha os mesmos tipos de consumer de `findPaletteUsageReferences`, mas mantém traversal próprio para os fatos: o helper de uso consolida animações por entidade e não preserva índice de frame, banco nem contexto simultâneo suficientes para uma correção diagnóstica precisa. Assim, não se altera a semântica retrocompatível desse helper nem se perde localização nos novos fatos.
+O analyzer compartilha os mesmos tipos de consumer de `findPaletteUsageReferences`, mas mantém traversal próprio para os fatos. O helper de uso fornece a apresentação detalhada do inspector — entidade, animação e cada índice de frame afetado — enquanto o analyzer preserva banco, contexto simultâneo e identidade corrigível de cada fato. Assim, a UI não precisa reconstruir referências ou regras diagnósticas por conta própria.
 
 ---
 
@@ -424,7 +424,7 @@ A exportação de paletas contemplará:
 
 ## 13. Arquitetura de UX do Palette Manager
 
-O **Palette Workspace** será organizado em quatro seções principais:
+O **Palette Workspace** é organizado em quatro seções principais:
 
 1. **Barra de Ferramentas Superior:**
    - Indicador e seletor da **Cor Universal de Background ($3F00)**;
@@ -438,6 +438,23 @@ O **Palette Workspace** será organizado em quatro seções principais:
 4. **Painel Lateral / Inspetor de Uso:**
    - Exibe a lista detalhada de assets que consomem a paleta selecionada e lista eventuais diagnósticos de integridade.
 
+A biblioteca lógica e os bancos físicos permanecem visual e semanticamente separados. Criar ou duplicar uma definição não ocupa slots automaticamente. Nos cards do banco de Background, a entrada 0 mostra a cor efetiva `universalBackgroundColor`; nos cards de Sprite, a mesma posição é apresentada como transparência; na biblioteca, os quatro valores armazenados na definição continuam visíveis e editáveis.
+
+O filtro **Em Uso** consulta `findPaletteUsageReferences` com slots dos dois bancos, animações, overrides de frames, backgrounds e instâncias de cena disponíveis. O inspetor reutiliza os fatos de `analyzeProjectPaletteDiagnostics`; não replica as regras de diagnóstico no DOM.
+
+### 13.1 Exclusão segura
+
+- Uma paleta sem referências abre confirmação simples e pode ser removida.
+- Uma paleta referenciada abre o mesmo diálogo com a lista estruturada de usos, mas a ação destrutiva fica indisponível.
+- O dispatcher repete a verificação antes da mutação. Não há cascade delete de animações, frames ou slots e não são criadas referências dangling voluntariamente.
+
+### 13.2 Teclado e foco
+
+- Todos os controles usam elementos nativos (`button`, `input`, `select` e `dialog`).
+- Rename confirma por `Enter` ou blur e cancela por `Escape`, sem regenerar o ID nem reatribuir slots.
+- O seletor mestre e o diálogo de exclusão iniciam em um alvo seguro e devolvem foco ao controle que os abriu.
+- Criação e duplicação selecionam a nova definição e movem o foco para seu nome; seleção e filtros são preservados em `WorkspaceState` e não entram no `.p2c.json`.
+
 ---
 
 ## 14. Estado Canônico vs. Estado Transitório
@@ -449,15 +466,16 @@ O **Palette Workspace** será organizado em quatro seções principais:
   - `activeSpriteSlots`: 4 IDs ou `null`.
 - **Estado Transitório de UI (`WorkspaceState` / DOM):**
   - Paleta selecionada para foco no inspetor (`selectedPaletteId`);
-  - Slot ativo em edição rápida;
   - Filtro ativo na biblioteca (`all | sprite | background | in-use`);
   - Estado aberto/fechado do modal mestre de cores.
+
+As mutações do workspace passam por callbacks do dispatcher e alteram apenas os campos canônicos correspondentes. `paletteSet` e `activeSpritePaletteSlots` continuam sendo aceitos como compatibilidade de leitura/migração, mas não recebem dual writes da UI. Previews ainda legados devem consumir resolvers derivados do estado canônico.
 
 ---
 
 ## 15. Roadmap de Implementação e Fatiamento de Issues
 
-Para transformar esta especificação em incrementos executáveis, a Milestone 9 foi dividida em **8 issues sequenciais**. As Issues #121 a #124 já estão implementadas; as etapas seguintes permanecem no roadmap:
+Para transformar esta especificação em incrementos executáveis, a Milestone 9 foi dividida em **8 issues sequenciais**. As Issues #121 a #125 já estão implementadas; as etapas seguintes permanecem no roadmap:
 
 ```mermaid
 flowchart TD

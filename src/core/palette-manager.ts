@@ -892,15 +892,22 @@ export function findPaletteUsageReferences(
             detail: `Animation: ${anim.name}`,
           });
         }
-      }
-
-      if (anim.framePaletteIds?.includes(paletteId)) {
         references.push({
           type: 'animation',
-          name: `${anim.entity ?? 'entity'}_${anim.name}`,
-          detail: 'Frame palette override',
+          name: `${entityName}_${anim.name}`,
+          detail: 'Default animation palette',
         });
       }
+
+      anim.framePaletteIds?.forEach((framePaletteId, frameIndex) => {
+        if (framePaletteId === paletteId) {
+          references.push({
+            type: 'frame',
+            name: `${anim.entity ?? 'entity'}_${anim.name}`,
+            detail: `Frame ${String(frameIndex + 1)} palette override`,
+          });
+        }
+      });
     });
   }
 

@@ -231,10 +231,15 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 ### 6.4 Workspace de Paletas do Projeto (`src/ui/palette-workspace.ts`)
 
 - Espaço dedicado para o gerenciamento de alto nível das definições de paleta do projeto e configuração dos slots ativos de hardware:
-  - **Definições de Paleta Reutilizáveis:** Criação, renomeação, ajuste individual das 4 cores NES via seletor mestre, duplicação e exclusão segura com checagem de referências ativas em entidades/animações.
-  - **Slots Ativos de Sprite (0..3):** Associação direta de qualquer paleta definida aos 4 slots de hardware da PPU com pré-visualização ao vivo.
+  - **Toolbar Canônica:** Edição isolada da cor universal de Background (`$3F00`), criação de recursos lógicos e filtros transitórios (`Todas`, `Sprites`, `Backgrounds`, `Em Uso`).
+  - **Bancos Físicos Independentes:** Quatro slots de Background (`$3F00..$3F0F`) e quatro slots de Sprite (`$3F10..$3F1F`), cada um com selector e preview resolvido. Background mostra a cor universal efetiva no índice 0; Sprite mostra transparência.
+  - **Biblioteca de Paletas Reutilizáveis:** Grade responsiva sem limite artificial de quatro itens, com criação, renomeação por Enter/blur, cancelamento por Escape, edição das quatro cores armazenadas via seletor mestre, classificação de target, duplicação sem copiar slots e exclusão segura.
+  - **Inspetor de Uso e Diagnósticos:** A seleção transitória exibe ID estável, target, posições nos bancos, referências de uso estruturadas e fatos filtrados de `analyzeProjectPaletteDiagnostics`, com scroll próprio para listas extensas.
+  - **Política de Exclusão:** Definições sem uso podem ser confirmadas e removidas; definições referenciadas são bloqueadas com a lista de impactos. O dispatcher revalida os usos e nunca executa cascade delete silencioso.
   - **Atribuições Contextuais Preservadas:** A seleção de paletas por frame ou animação, o pincel de subpaletas em tiles/metatiles e a edição de pixel overrides permanecem estritamente contextuais nos seus respectivos editores (Tileset, Playfield e Animação).
-  - **Exportação de Paleta:** Painel de resumo de métricas e exportação de binário `.pal` (16 bytes).
+  - **Estado e Callbacks:** `selectedPaletteId` e filtro vivem em `WorkspaceState`; mutações passam por callbacks do dispatcher e escrevem somente em `palettes`, `universalBackgroundColor`, `activeBackgroundSlots` ou `activeSpriteSlots`. O `paletteSet` legado não é source of truth nem recebe dual write.
+  - **Acessibilidade e Foco:** Controles nativos, labels e estados ARIA descrevem slots, filtros, targets e códigos NES; dialogs restauram foco ao trigger e criação/duplicação focam o nome da nova definição.
+  - **Exportação de Paleta:** O painel de resumo mantém o binário `.pal` de Background de 16 bytes, agora derivado do banco canônico. Novos formatos continuam reservados à Issue #127.
 
 ### 6.5 Workspace de Memória CHR e Tabelas de Padrões (`src/ui/chr-workspace.ts`)
 
@@ -373,7 +378,7 @@ O gerenciamento de paletas no Studio replica com fidelidade a arquitetura de cor
 - **Paleta Master do NES:** Matriz fixa de 64 cores do NES (`$00` a `$3F`).
 - **Paletas de Background vs Sprites:** Quatro subpaletas de 4 cores para background e quatro para sprites.
 - **Cor Universal de Fundo:** O índice 0 de todas as paletas é compartilhado globalmente (espelhado na PPU em `$3F00`), preenchendo o fundo de telas e previews.
-- **Gerenciador de Paletas do Projeto (`src/core/palette-manager.ts`):** Permite criar paletas nomeadas independentes e associá-las aos 4 slots ativos de sprites (`activeSpritePaletteSlots`).
+- **Gerenciador de Paletas do Projeto (`src/core/palette-manager.ts`):** Mantém definições nomeadas independentes e resolve os quatro slots canônicos de Background (`activeBackgroundSlots`) e Sprite (`activeSpriteSlots`) sem confundir ID lógico com posição física.
 - **Pré-visualização Dinâmica no CHR Viewer:** O visualizador de Pattern Tables mapeia dinamicamente os valores de 2bpp `0..3` das tabelas PT0 e PT1 para as 4 cores de qualquer subpaleta de cenário ou sprite selecionada pelo usuário, com fallback seguro para escala de cinza neutra.
 - **Hierarquia de Resolução:** A paleta de um sprite é determinada na seguinte ordem de precedência:
   `frame.paletteId` ➔ `animation.paletteId` ➔ `asset.defaultPaletteId` (Slot 0).

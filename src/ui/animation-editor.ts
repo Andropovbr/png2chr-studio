@@ -52,7 +52,6 @@ import {
   hasTileOverride,
 } from '../core/pixel-overrides';
 import { createTilePixelEditor } from './tile-pixel-editor';
-import { createPaletteManagerPanel } from './palette-manager-panel';
 
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
   nearest: 'quantizationNearest',
@@ -332,34 +331,6 @@ function createSpriteMasterPaletteDialog(options: AnimationEditorOptions): {
 function createSpritePaletteEditor(
   options: AnimationEditorOptions,
 ): HTMLElement {
-  if (
-    options.onCreatePalette &&
-    options.palettes &&
-    options.palettes.length > 0
-  ) {
-    const noop = (): void => {
-      // Default no-op callback when optional handler is omitted
-    };
-    const managerPanel = createPaletteManagerPanel({
-      palettes: options.palettes,
-      activeSpritePaletteSlots: options.activeSpritePaletteSlots ?? [],
-      animations: options.settings.animations,
-      onCreatePalette: options.onCreatePalette,
-      onUpdatePaletteName: options.onUpdatePaletteName ?? noop,
-      onUpdatePaletteColor: options.onUpdatePaletteColorDef ?? noop,
-      onDuplicatePalette: options.onDuplicatePalette ?? noop,
-      onDeletePalette: options.onDeletePalette ?? noop,
-      onUpdateActiveSlot: options.onUpdateActiveSlot ?? noop,
-    });
-
-    return createCollapsiblePanel({
-      title: t('paletteManagerTitle'),
-      isCollapsed: options.settings.paletteCollapsed ?? false,
-      onToggle: options.onTogglePaletteCollapse,
-      children: [managerPanel],
-    });
-  }
-
   const hint = document.createElement('p');
   hint.className = 'muted';
   hint.textContent = t('animationSpritePalettesHint');

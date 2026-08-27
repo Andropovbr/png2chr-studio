@@ -656,20 +656,85 @@ const en = {
     'Entity "{name}" was not found in project animations.',
   paletteManagerTitle: 'Project Palettes',
   paletteManagerHint:
-    'Manage reusable NES palette definitions and configure active sprite palette slots.',
+    'Manage a logical palette library and assign definitions to independent Background and Sprite hardware banks.',
   paletteManagerNewPalette: '+ New Palette',
+  paletteManagerToolbarLabel: 'Palette workspace tools',
+  paletteManagerUniversalTitle: 'Universal Background Color',
+  paletteManagerUniversalHint:
+    'PPU $3F00, shared by every background subpalette.',
+  paletteManagerEditUniversalAriaLabel:
+    'Edit universal background color, currently NES {code}',
+  paletteManagerUniversalSwatchLabel: 'Universal background color — NES {code}',
+  paletteManagerUniversalBadge: 'Universal $3F00',
+  paletteManagerTransparent: 'Transparent',
+  paletteManagerTransparentAriaLabel: 'Color index 0 — Transparent',
+  paletteManagerFilterLabel: 'Filter palette library',
+  paletteManagerFilterAll: 'All',
+  paletteManagerFilterSprites: 'Sprites',
+  paletteManagerFilterBackgrounds: 'Backgrounds',
+  paletteManagerFilterInUse: 'In Use',
+  paletteManagerBackgroundBankTitle: 'Background Palettes — PPU $3F00..$3F0F',
+  paletteManagerBackgroundBankHint:
+    'Four physical slots. Color 0 resolves to the universal $3F00 color.',
+  paletteManagerSpriteBankTitle: 'Sprite Palettes — PPU $3F10..$3F1F',
+  paletteManagerSpriteBankHint:
+    'Four independent physical slots. Color index 0 is transparent for sprites.',
   paletteManagerActiveSlotsTitle: 'Active Sprite Palette Slots (0..3)',
   paletteManagerActiveSlotsHint:
     'Hardware slots used by the NES PPU to render sprites on screen.',
   paletteManagerSlotLabel: 'Slot {index}:',
   paletteManagerSlotEmpty: '(None)',
+  paletteManagerMissingPalette: 'Missing palette: {paletteId}',
   paletteManagerSlotInactive: 'No active slot',
-  paletteManagerListTitle: 'Palette Definitions',
+  paletteManagerListTitle: 'Palette Library',
+  paletteManagerListHint:
+    'Logical resources can exist without occupying a hardware slot.',
+  paletteManagerFilterEmpty: 'No palettes match this filter.',
+  paletteManagerUsageCount: '{count} uses',
+  paletteManagerTargetSprite: 'Sprite',
+  paletteManagerTargetBackground: 'Background',
+  paletteManagerTargetShared: 'Shared',
+  paletteManagerNameLabel: 'Name for {name}',
   paletteManagerNamePlaceholder: 'Palette Name',
+  paletteManagerColorsLabel: 'Stored palette colors',
+  paletteManagerColorIndex: 'Color {index}',
+  paletteManagerColorAriaLabel: 'Color {index} — NES {code}',
+  paletteManagerSelect: 'Inspect',
+  paletteManagerSelected: 'Selected',
   paletteManagerDuplicate: 'Duplicate',
   paletteManagerDelete: 'Delete',
+  paletteManagerCancel: 'Cancel',
+  paletteManagerClose: 'Close',
+  paletteManagerDeleteDialogTitle: 'Delete “{name}”?',
+  paletteManagerDeleteUnusedDescription:
+    'This palette has no references and can be safely removed from the library.',
+  paletteManagerDeleteBlockedDescription:
+    'Deletion is blocked because this palette has {count} references. Reassign or remove them first.',
   paletteManagerDeleteConfirmUsed:
     'The palette "{name}" is currently referenced by other entities/animations or slots. Are you sure you want to delete it?',
+  paletteManagerInspectorTitle: 'Usage & Diagnostics',
+  paletteManagerInspectorEmpty:
+    'Select a palette from the library to inspect its identity, hardware slots, usages, and diagnostics.',
+  paletteManagerInspectorTarget: 'Target',
+  paletteManagerInspectorBanks: 'Hardware banks',
+  paletteManagerInspectorNoSlots: 'Not assigned to a hardware slot.',
+  paletteManagerInspectorUsage: 'Usage references',
+  paletteManagerInspectorNoUsage: 'No usage references.',
+  paletteManagerInspectorDiagnostics: 'Related diagnostics',
+  paletteManagerInspectorNoDiagnostics: 'No related diagnostics.',
+  paletteManagerSeverityError: 'Error',
+  paletteManagerSeverityWarning: 'Warning',
+  paletteManagerWarningBadge: 'Warning',
+  paletteManagerSuggestionDangling:
+    'Choose an existing palette for this consumer or hardware slot.',
+  paletteManagerSuggestionUnassigned:
+    'Assign this palette to a free slot in the indicated hardware bank.',
+  paletteManagerSuggestionCapacity:
+    'Reduce simultaneous palette use to the four physical slots available.',
+  paletteManagerSuggestionInvalidColor:
+    'Choose a valid six-bit NES color code from $00 through $3F.',
+  paletteManagerSuggestionUniversal:
+    'Update the stored color 0 if this definition should match the universal background color.',
   animationPaletteDefaultOption: 'Default (inherit)',
   tilePixelEditorTitle: 'Tile Pixel Editor',
   tilePixelEditorHint:
@@ -1637,20 +1702,86 @@ const ptBr = {
     'A entidade "{name}" não foi encontrada nas animações do projeto.',
   paletteManagerTitle: 'Paletas do Projeto',
   paletteManagerHint:
-    'Gerencie definições reutilizáveis de paletas NES e configure os slots de sprite ativos.',
+    'Gerencie uma biblioteca lógica e atribua definições aos bancos de hardware independentes de Background e Sprite.',
   paletteManagerNewPalette: '+ Nova Paleta',
+  paletteManagerToolbarLabel: 'Ferramentas do workspace de paletas',
+  paletteManagerUniversalTitle: 'Cor Universal de Background',
+  paletteManagerUniversalHint:
+    'PPU $3F00, compartilhada por todas as subpaletas de background.',
+  paletteManagerEditUniversalAriaLabel:
+    'Editar cor universal de background, atualmente NES {code}',
+  paletteManagerUniversalSwatchLabel:
+    'Cor universal de background — NES {code}',
+  paletteManagerUniversalBadge: 'Universal $3F00',
+  paletteManagerTransparent: 'Transparente',
+  paletteManagerTransparentAriaLabel: 'Índice de cor 0 — Transparente',
+  paletteManagerFilterLabel: 'Filtrar biblioteca de paletas',
+  paletteManagerFilterAll: 'Todas',
+  paletteManagerFilterSprites: 'Sprites',
+  paletteManagerFilterBackgrounds: 'Backgrounds',
+  paletteManagerFilterInUse: 'Em Uso',
+  paletteManagerBackgroundBankTitle: 'Paletas de Background — PPU $3F00..$3F0F',
+  paletteManagerBackgroundBankHint:
+    'Quatro slots físicos. A cor 0 resolve para a cor universal $3F00.',
+  paletteManagerSpriteBankTitle: 'Paletas de Sprite — PPU $3F10..$3F1F',
+  paletteManagerSpriteBankHint:
+    'Quatro slots físicos independentes. O índice de cor 0 é transparente para sprites.',
   paletteManagerActiveSlotsTitle: 'Slots Ativos de Paleta de Sprite (0..3)',
   paletteManagerActiveSlotsHint:
     'Slots de hardware usados pela PPU do NES para desenhar sprites na tela.',
   paletteManagerSlotLabel: 'Slot {index}:',
   paletteManagerSlotEmpty: '(Nenhum)',
+  paletteManagerMissingPalette: 'Paleta ausente: {paletteId}',
   paletteManagerSlotInactive: 'Sem slot ativo',
-  paletteManagerListTitle: 'Definições de Paleta',
+  paletteManagerListTitle: 'Biblioteca de Paletas',
+  paletteManagerListHint:
+    'Recursos lógicos podem existir sem ocupar um slot de hardware.',
+  paletteManagerFilterEmpty: 'Nenhuma paleta corresponde a este filtro.',
+  paletteManagerUsageCount: '{count} usos',
+  paletteManagerTargetSprite: 'Sprite',
+  paletteManagerTargetBackground: 'Background',
+  paletteManagerTargetShared: 'Compartilhada',
+  paletteManagerNameLabel: 'Nome de {name}',
   paletteManagerNamePlaceholder: 'Nome da paleta',
+  paletteManagerColorsLabel: 'Cores armazenadas da paleta',
+  paletteManagerColorIndex: 'Cor {index}',
+  paletteManagerColorAriaLabel: 'Cor {index} — NES {code}',
+  paletteManagerSelect: 'Inspecionar',
+  paletteManagerSelected: 'Selecionada',
   paletteManagerDuplicate: 'Duplicar',
   paletteManagerDelete: 'Excluir',
+  paletteManagerCancel: 'Cancelar',
+  paletteManagerClose: 'Fechar',
+  paletteManagerDeleteDialogTitle: 'Excluir “{name}”?',
+  paletteManagerDeleteUnusedDescription:
+    'Esta paleta não possui referências e pode ser removida da biblioteca com segurança.',
+  paletteManagerDeleteBlockedDescription:
+    'A exclusão está bloqueada porque esta paleta possui {count} referências. Reatribua ou remova-as primeiro.',
   paletteManagerDeleteConfirmUsed:
     'A paleta "{name}" está sendo referenciada por entidades/animações ou slots ativos. Deseja realmente excluí-la?',
+  paletteManagerInspectorTitle: 'Usos e Diagnósticos',
+  paletteManagerInspectorEmpty:
+    'Selecione uma paleta da biblioteca para inspecionar identidade, slots de hardware, usos e diagnósticos.',
+  paletteManagerInspectorTarget: 'Destino',
+  paletteManagerInspectorBanks: 'Bancos de hardware',
+  paletteManagerInspectorNoSlots: 'Não atribuída a um slot de hardware.',
+  paletteManagerInspectorUsage: 'Referências de uso',
+  paletteManagerInspectorNoUsage: 'Nenhuma referência de uso.',
+  paletteManagerInspectorDiagnostics: 'Diagnósticos relacionados',
+  paletteManagerInspectorNoDiagnostics: 'Nenhum diagnóstico relacionado.',
+  paletteManagerSeverityError: 'Erro',
+  paletteManagerSeverityWarning: 'Aviso',
+  paletteManagerWarningBadge: 'Aviso',
+  paletteManagerSuggestionDangling:
+    'Escolha uma paleta existente para este consumidor ou slot de hardware.',
+  paletteManagerSuggestionUnassigned:
+    'Atribua esta paleta a um slot livre no banco de hardware indicado.',
+  paletteManagerSuggestionCapacity:
+    'Reduza o uso simultâneo para os quatro slots físicos disponíveis.',
+  paletteManagerSuggestionInvalidColor:
+    'Escolha um código NES válido de seis bits entre $00 e $3F.',
+  paletteManagerSuggestionUniversal:
+    'Atualize a cor 0 armazenada se esta definição deve acompanhar a cor universal de background.',
   animationPaletteDefaultOption: 'Padrão (herdar)',
   tilePixelEditorTitle: 'Editor de Pixels do Tile',
   tilePixelEditorHint:
