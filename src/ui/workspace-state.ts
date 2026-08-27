@@ -1,5 +1,6 @@
 import type { DisplayError, PreviewTool } from './types';
 import type { ChrDrawingTool } from './chr-tile-editor';
+import type { PaletteLibraryFilter } from './palette-manager-panel';
 
 export type AnimationWorkspaceTab = 'frames' | 'pixels' | 'mapping' | 'scene';
 
@@ -57,6 +58,11 @@ export interface ChrWorkspaceState {
   readonly editorShiftWrap: boolean;
 }
 
+export interface PaletteWorkspaceState {
+  readonly selectedPaletteId: string | null;
+  readonly filter: PaletteLibraryFilter;
+}
+
 export interface WorkspaceState {
   /** Transient interaction and navigation state. It is intentionally absent from ProjectView. */
   readonly activeWorkspace: WorkspaceView;
@@ -70,6 +76,7 @@ export interface WorkspaceState {
   readonly quantizationCollapsed: boolean;
   readonly animation: AnimationWorkspaceState;
   readonly background: BackgroundWorkspaceState;
+  readonly palette: PaletteWorkspaceState;
   readonly chr: ChrWorkspaceState;
 }
 
@@ -110,6 +117,10 @@ export function createWorkspaceState(
       zoom: 2,
       showGrid: true,
       showAttributeOverlay: true,
+    },
+    palette: {
+      selectedPaletteId: null,
+      filter: 'all',
     },
     chr: {
       zoom: 2,

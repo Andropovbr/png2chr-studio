@@ -53,12 +53,20 @@ import {
   TILESET_PALETTE_REGION_SIZE,
 } from './core/nes-palette';
 import {
+  analyzeProjectPaletteDiagnostics,
+  assignPaletteToSlot,
+  createPaletteDefinition,
   createDefaultDualBankPaletteState,
   createDefaultPaletteDefinitions,
-  generatePaletteId,
   duplicatePaletteDefinition,
-  resolveActivePaletteSet,
-  type PaletteDefinition,
+  findPaletteUsageReferences,
+  resolveProjectBackgroundPaletteSet,
+  resolveProjectPaletteState,
+  updatePaletteColor,
+  updatePaletteName,
+  updatePaletteTarget,
+  type PaletteTarget,
+  type PaletteUsageSearchContext,
 } from './core/palette-manager';
 import {
   DEFAULT_RANDOM_PLAYFIELD_FEATURES,
@@ -2379,31 +2387,69 @@ async function loadAnimationDestination(file: File): Promise<void> {
   render();
 }
 
-function createNewProjectPalette(name?: string): void {
-  const currentPalettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const newDef: PaletteDefinition = {
-    id: generatePaletteId(),
-    name: name ?? `Palette ${String(currentPalettes.length + 1)}`,
-    colors: [0x0f, 0x00, 0x10, 0x30],
+function createPaletteWorkspaceUsageContext(
+  paletteState = resolveProjectPaletteState(project),
+): PaletteUsageSearchContext {
+  const sceneInstances = (project.scenePreview?.instances ?? []).map(
+    (instance) => {
+      const animation = project.animation.animations.find(
+        (candidate) =>
+          (candidate.entity ?? 'entity').toLowerCase() ===
+            instance.entityId.toLowerCase() &&
+          candidate.name === instance.animationName,
+      );
+      return {
+        id: instance.id,
+        name: instance.name,
+        entityId: instance.entityId,
+        animationName: instance.animationName,
+        paletteId: animation?.paletteId ?? null,
+      };
+    },
+  );
+
+  return {
+    animations: project.animation.animations,
+    activeBackgroundSlots: paletteState.activeBackgroundSlots,
+    activeSpriteSlots: paletteState.activeSpriteSlots,
+    backgroundMaps: project.backgrounds?.maps,
+    sceneInstances,
   };
+}
+
+function createNewProjectPalette(name?: string): void {
+  const paletteState = resolveProjectPaletteState(project);
+  const newDef = createPaletteDefinition({
+    name: name ?? `Palette ${String(paletteState.palettes.length + 1)}`,
+    colors: [0x0f, 0x00, 0x10, 0x30],
+    target: 'shared',
+  });
   updateProject({
     ...project,
-    palettes: [...currentPalettes, newDef],
+    palettes: [...paletteState.palettes, newDef],
+  });
+  updateWorkspace({
+    ...workspace,
+    palette: {
+      ...workspace.palette,
+      selectedPaletteId: newDef.id,
+      filter: 'all',
+    },
   });
   render();
+  document
+    .querySelector<HTMLInputElement>(`[data-palette-name="${newDef.id}"]`)
+    ?.focus();
 }
 
 function updateProjectPaletteName(paletteId: string, name: string): void {
-  const currentPalettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
+  const paletteState = resolveProjectPaletteState(project);
   updateProject({
     ...project,
-    palettes: currentPalettes.map((p) =>
-      p.id === paletteId ? { ...p, name } : p,
+    palettes: paletteState.palettes.map((palette) =>
+      palette.id === paletteId ? updatePaletteName(palette, name) : palette,
     ),
   });
-  render();
 }
 
 function updateProjectPaletteColor(
@@ -2411,100 +2457,150 @@ function updateProjectPaletteColor(
   colorSlotIndex: number,
   nesColor: number,
 ): void {
-  const currentPalettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const updatedPalettes = currentPalettes.map((p) => {
-    if (p.id !== paletteId) return p;
-    const newColors: [number, number, number, number] = [...p.colors];
-    newColors[colorSlotIndex] = nesColor & 0x3f;
-    return { ...p, colors: newColors };
-  });
-  const slots =
-    project.activeSpritePaletteSlots ??
-    updatedPalettes.slice(0, 4).map((p) => p.id);
+  const paletteState = resolveProjectPaletteState(project);
   updateProject({
     ...project,
-    palettes: updatedPalettes,
-    paletteSet: resolveActivePaletteSet(
-      updatedPalettes,
-      slots,
-      project.paletteSet,
+    palettes: paletteState.palettes.map((palette) =>
+      palette.id === paletteId
+        ? updatePaletteColor(palette, colorSlotIndex, nesColor)
+        : palette,
     ),
   });
   render();
+  document
+    .querySelector<HTMLButtonElement>(
+      `[data-palette-color="${paletteId}:${String(colorSlotIndex)}"]`,
+    )
+    ?.focus();
+}
+
+function updateProjectPaletteTarget(
+  paletteId: string,
+  target: PaletteTarget,
+): void {
+  const paletteState = resolveProjectPaletteState(project);
+  updateProject({
+    ...project,
+    palettes: paletteState.palettes.map((palette) =>
+      palette.id === paletteId ? updatePaletteTarget(palette, target) : palette,
+    ),
+  });
+  render();
+  document
+    .querySelector<HTMLSelectElement>('#palette-inspector-target')
+    ?.focus();
 }
 
 function duplicateProjectPalette(paletteId: string): void {
-  const currentPalettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const source = currentPalettes.find((p) => p.id === paletteId);
+  const paletteState = resolveProjectPaletteState(project);
+  const source = paletteState.palettes.find(
+    (palette) => palette.id === paletteId,
+  );
   if (source) {
     const dup = duplicatePaletteDefinition(source);
     updateProject({
       ...project,
-      palettes: [...currentPalettes, dup],
+      palettes: [...paletteState.palettes, dup],
+    });
+    updateWorkspace({
+      ...workspace,
+      palette: {
+        ...workspace.palette,
+        selectedPaletteId: dup.id,
+        filter: 'all',
+      },
     });
     render();
+    document
+      .querySelector<HTMLInputElement>(`[data-palette-name="${dup.id}"]`)
+      ?.focus();
   }
 }
 
 function deleteProjectPalette(paletteId: string): void {
-  const currentPalettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const currentSlots =
-    project.activeSpritePaletteSlots ??
-    currentPalettes.slice(0, 4).map((p) => p.id);
-  const newSlots = currentSlots.map((id) => (id === paletteId ? null : id));
-  const updatedPalettes = currentPalettes.filter((p) => p.id !== paletteId);
-  const updatedAnimations = project.animation.animations.map((anim) => {
-    const nextPaletteId = anim.paletteId === paletteId ? null : anim.paletteId;
-    const nextFramePaletteIds = anim.framePaletteIds?.map((id) =>
-      id === paletteId ? null : id,
-    );
-    return {
-      ...anim,
-      paletteId: nextPaletteId,
-      ...(nextFramePaletteIds ? { framePaletteIds: nextFramePaletteIds } : {}),
-    };
-  });
+  const paletteState = resolveProjectPaletteState(project);
+  const usageContext = createPaletteWorkspaceUsageContext(paletteState);
+  if (findPaletteUsageReferences(paletteId, usageContext).length > 0) {
+    return;
+  }
+  const updatedPalettes = paletteState.palettes.filter(
+    (palette) => palette.id !== paletteId,
+  );
   updateProject({
     ...project,
     palettes: updatedPalettes,
-    activeSpritePaletteSlots: newSlots,
-    paletteSet: resolveActivePaletteSet(
-      updatedPalettes,
-      newSlots,
-      project.paletteSet,
-    ),
-    animation: {
-      ...project.animation,
-      animations: updatedAnimations,
-    },
+  });
+  const selectedPaletteId =
+    workspace.palette.selectedPaletteId === paletteId
+      ? (updatedPalettes[0]?.id ?? null)
+      : workspace.palette.selectedPaletteId;
+  updateWorkspace({
+    ...workspace,
+    palette: { ...workspace.palette, selectedPaletteId },
   });
   render();
+  if (selectedPaletteId !== null) {
+    document
+      .querySelector<HTMLButtonElement>(
+        `[data-select-palette="${selectedPaletteId}"]`,
+      )
+      ?.focus();
+  } else {
+    document.querySelector<HTMLButtonElement>('.palette-new-button')?.focus();
+  }
 }
 
 function updateActiveSpritePaletteSlot(
   slotIndex: 0 | 1 | 2 | 3,
   paletteId: string | null,
 ): void {
-  const currentPalettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const currentSlots = [
-    ...(project.activeSpritePaletteSlots ??
-      currentPalettes.slice(0, 4).map((p) => p.id)),
-  ];
-  currentSlots[slotIndex] = paletteId;
+  const paletteState = resolveProjectPaletteState(project);
   updateProject({
     ...project,
-    activeSpritePaletteSlots: currentSlots,
-    paletteSet: resolveActivePaletteSet(
-      currentPalettes,
-      currentSlots,
-      project.paletteSet,
+    activeSpriteSlots: assignPaletteToSlot(
+      paletteState.activeSpriteSlots,
+      slotIndex,
+      paletteId,
     ),
   });
   render();
+  document
+    .querySelector<HTMLSelectElement>(
+      `#palette-sprite-slot-${String(slotIndex)}`,
+    )
+    ?.focus();
+}
+
+function updateActiveBackgroundPaletteSlot(
+  slotIndex: 0 | 1 | 2 | 3,
+  paletteId: string | null,
+): void {
+  const paletteState = resolveProjectPaletteState(project);
+  updateProject({
+    ...project,
+    activeBackgroundSlots: assignPaletteToSlot(
+      paletteState.activeBackgroundSlots,
+      slotIndex,
+      paletteId,
+    ),
+  });
+  render();
+  document
+    .querySelector<HTMLSelectElement>(
+      `#palette-background-slot-${String(slotIndex)}`,
+    )
+    ?.focus();
+}
+
+function updateUniversalBackgroundColor(colorCode: number): void {
+  updateProject({
+    ...project,
+    universalBackgroundColor: colorCode,
+  });
+  render();
+  document
+    .querySelector<HTMLButtonElement>('.palette-universal-button')
+    ?.focus();
 }
 
 function resolveAnimationProjectModel(prj: ProjectView): {
@@ -2619,7 +2715,8 @@ function renderAnimationWorkspace(): void {
     modelError,
     paletteSet: project.paletteSet,
     palettes: project.palettes,
-    activeSpritePaletteSlots: project.activeSpritePaletteSlots,
+    activeSpritePaletteSlots:
+      project.activeSpriteSlots ?? project.activeSpritePaletteSlots,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     scenePreview: project.scenePreview,
     onSelectAnimation: selectAnimation,
@@ -3100,24 +3197,67 @@ function renderPlayfieldWorkspace(): void {
 }
 
 function renderPaletteWorkspace(): void {
-  const palettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const activeSpritePaletteSlots =
-    project.activeSpritePaletteSlots ?? palettes.slice(0, 4).map((p) => p.id);
+  const paletteState = resolveProjectPaletteState(project);
+  const usageContext = createPaletteWorkspaceUsageContext(paletteState);
+  const paletteDiagnostics = analyzeProjectPaletteDiagnostics({
+    universalBackgroundColor: paletteState.universalBackgroundColor,
+    palettes: paletteState.palettes,
+    activeBackgroundSlots: paletteState.activeBackgroundSlots,
+    activeSpriteSlots: paletteState.activeSpriteSlots,
+    animations: project.animation.animations,
+    backgrounds: project.backgrounds,
+    scenePreview: project.scenePreview,
+  });
+  const selectedPaletteId = paletteState.palettes.some(
+    (palette) => palette.id === workspace.palette.selectedPaletteId,
+  )
+    ? workspace.palette.selectedPaletteId
+    : null;
 
   const workspaceElement = createPaletteWorkspace({
-    palettes,
-    activeSpritePaletteSlots,
-    animations: project.animation.animations,
-    paletteSet: project.paletteSet,
+    palettes: paletteState.palettes,
+    universalBackgroundColor: paletteState.universalBackgroundColor,
+    activeBackgroundSlots: paletteState.activeBackgroundSlots,
+    activeSpriteSlots: paletteState.activeSpriteSlots,
+    usageContext,
+    diagnostics: paletteDiagnostics,
+    selectedPaletteId,
+    filter: workspace.palette.filter,
     loading: derivedStatus.loading,
     error: derivedStatus.error,
     onCreatePalette: createNewProjectPalette,
     onUpdatePaletteName: updateProjectPaletteName,
     onUpdatePaletteColor: updateProjectPaletteColor,
+    onUpdatePaletteTarget: updateProjectPaletteTarget,
+    onUpdateUniversalBackgroundColor: updateUniversalBackgroundColor,
     onDuplicatePalette: duplicateProjectPalette,
     onDeletePalette: deleteProjectPalette,
-    onUpdateActiveSlot: updateActiveSpritePaletteSlot,
+    onAssignBackgroundSlot: updateActiveBackgroundPaletteSlot,
+    onAssignSpriteSlot: updateActiveSpritePaletteSlot,
+    onSelectPalette: (paletteId) => {
+      updateWorkspace({
+        ...workspace,
+        palette: { ...workspace.palette, selectedPaletteId: paletteId },
+      });
+      render();
+      if (paletteId !== null) {
+        document
+          .querySelector<HTMLButtonElement>(
+            `[data-select-palette="${paletteId}"]`,
+          )
+          ?.focus();
+      }
+    },
+    onFilterChange: (filter) => {
+      updateWorkspace({
+        ...workspace,
+        palette: { ...workspace.palette, filter },
+      });
+      render();
+      document
+        .querySelector<HTMLButtonElement>(`[data-filter="${filter}"]`)
+        ?.focus();
+    },
     onDownloadBytes: downloadBytes,
   });
 
@@ -3389,7 +3529,8 @@ function renderChrWorkspace(): void {
     },
     paletteSet: project.paletteSet,
     palettes: project.palettes,
-    activeSpritePaletteSlots: project.activeSpritePaletteSlots,
+    activeSpritePaletteSlots:
+      project.activeSpriteSlots ?? project.activeSpritePaletteSlots,
     loading: derivedStatus.loading,
     error: derivedStatus.error,
     onNavigateToWorkspace: (view) => {
@@ -3596,10 +3737,9 @@ function renderDeliveryWorkspace(): void {
     }
   }
 
-  const palettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const activeSpritePaletteSlots =
-    project.activeSpritePaletteSlots ?? palettes.slice(0, 4).map((p) => p.id);
+  const paletteState = resolveProjectPaletteState(project);
+  const palettes = paletteState.palettes;
+  const activeSpritePaletteSlots = paletteState.activeSpriteSlots;
 
   const classifications = classifyChrSlots({
     finalChrBytes: animModel?.finalChr ?? chr ?? new Uint8Array(8192),
@@ -3652,10 +3792,10 @@ function renderDeliveryWorkspace(): void {
     attributeTable,
     collisionMap,
     paletteSet: project.paletteSet,
-    universalBackgroundColor: project.universalBackgroundColor,
+    universalBackgroundColor: paletteState.universalBackgroundColor,
     palettes,
-    activeBackgroundSlots: project.activeBackgroundSlots,
-    activeSpriteSlots: project.activeSpriteSlots,
+    activeBackgroundSlots: paletteState.activeBackgroundSlots,
+    activeSpriteSlots: paletteState.activeSpriteSlots,
     activeSpritePaletteSlots,
     paletteAnimations: project.animation.animations,
     scenePreview: project.scenePreview,
@@ -3740,7 +3880,7 @@ function renderBackgroundWorkspace(): void {
   const workspaceElement = createBackgroundWorkspace({
     maps: backgrounds.maps,
     activeMapId,
-    paletteSet: project.paletteSet,
+    paletteSet: resolveProjectBackgroundPaletteSet(project),
     availableAssets: projectAssets,
     assetTilesMap,
     compiledModel,

@@ -1,20 +1,29 @@
-import {
-  encodeNesBackgroundPalettes,
-  type NesPaletteSet,
-} from '../core/nes-palette';
+import { encodeNesBackgroundPalettes } from '../core/nes-palette';
 import {
   findPaletteUsageReferences,
+  resolveActiveBackgroundPaletteSet,
+  type ActivePaletteSlots,
   type PaletteDefinition,
+  type PaletteDiagnosticFact,
+  type PaletteTarget,
+  type PaletteUsageSearchContext,
 } from '../core/palette-manager';
 import { t } from '../i18n';
-import { createPaletteManagerPanel } from './palette-manager-panel';
-import type { AnimationItemSetting, DisplayError } from './types';
+import {
+  createPaletteManagerPanel,
+  type PaletteLibraryFilter,
+} from './palette-manager-panel';
+import type { DisplayError } from './types';
 
 export interface PaletteWorkspaceOptions {
   readonly palettes: readonly PaletteDefinition[];
-  readonly activeSpritePaletteSlots: readonly (string | null)[];
-  readonly animations: readonly AnimationItemSetting[];
-  readonly paletteSet: NesPaletteSet;
+  readonly universalBackgroundColor: number;
+  readonly activeBackgroundSlots: ActivePaletteSlots;
+  readonly activeSpriteSlots: ActivePaletteSlots;
+  readonly usageContext: PaletteUsageSearchContext;
+  readonly diagnostics: readonly PaletteDiagnosticFact[];
+  readonly selectedPaletteId: string | null;
+  readonly filter: PaletteLibraryFilter;
   readonly loading?: boolean;
   readonly error?: DisplayError | null;
   readonly onCreatePalette: (name?: string) => void;
@@ -24,12 +33,23 @@ export interface PaletteWorkspaceOptions {
     colorSlotIndex: number,
     colorCode: number,
   ) => void;
+  readonly onUpdatePaletteTarget: (
+    paletteId: string,
+    target: PaletteTarget,
+  ) => void;
+  readonly onUpdateUniversalBackgroundColor: (colorCode: number) => void;
   readonly onDuplicatePalette: (paletteId: string) => void;
   readonly onDeletePalette: (paletteId: string) => void;
-  readonly onUpdateActiveSlot: (
+  readonly onAssignBackgroundSlot: (
     slotIndex: 0 | 1 | 2 | 3,
     paletteId: string | null,
   ) => void;
+  readonly onAssignSpriteSlot: (
+    slotIndex: 0 | 1 | 2 | 3,
+    paletteId: string | null,
+  ) => void;
+  readonly onSelectPalette: (paletteId: string | null) => void;
+  readonly onFilterChange: (filter: PaletteLibraryFilter) => void;
   readonly onDownloadBytes?: (bytes: Uint8Array, fileName: string) => void;
 }
 
@@ -43,7 +63,7 @@ export function createPaletteWorkspace(
   const workspace = document.createElement('div');
   workspace.className = 'workspace palette-workspace';
 
-  let diagnostics: HTMLElement | null = null;
+  let diagnosticsElement: HTMLElement | null = null;
   if (options.error !== null && options.error !== undefined) {
     const errorSection = document.createElement('section');
     errorSection.className = 'panel error-panel palette-error-panel';
@@ -52,40 +72,35 @@ export function createPaletteWorkspace(
     const message = document.createElement('p');
     message.textContent = t(options.error.key, options.error.variables);
     errorSection.append(heading, message);
-    diagnostics = errorSection;
+    diagnosticsElement = errorSection;
   }
 
-  // 1. Palettes Manager Panel (includes Header, Active Slots, and Palette Definitions)
   const managerPanel = createPaletteManagerPanel({
     palettes: options.palettes,
-    activeSpritePaletteSlots: options.activeSpritePaletteSlots,
-    animations: options.animations,
+    universalBackgroundColor: options.universalBackgroundColor,
+    activeBackgroundSlots: options.activeBackgroundSlots,
+    activeSpriteSlots: options.activeSpriteSlots,
+    usageContext: options.usageContext,
+    diagnostics: options.diagnostics,
+    selectedPaletteId: options.selectedPaletteId,
+    filter: options.filter,
     onCreatePalette: options.onCreatePalette,
     onUpdatePaletteName: options.onUpdatePaletteName,
     onUpdatePaletteColor: options.onUpdatePaletteColor,
+    onUpdatePaletteTarget: options.onUpdatePaletteTarget,
+    onUpdateUniversalBackgroundColor: options.onUpdateUniversalBackgroundColor,
     onDuplicatePalette: options.onDuplicatePalette,
     onDeletePalette: options.onDeletePalette,
-    onUpdateActiveSlot: options.onUpdateActiveSlot,
+    onAssignBackgroundSlot: options.onAssignBackgroundSlot,
+    onAssignSpriteSlot: options.onAssignSpriteSlot,
+    onSelectPalette: options.onSelectPalette,
+    onFilterChange: options.onFilterChange,
   });
   managerPanel.id = 'section-palettes-intro';
 
-  // Mark internal sections with anchors for navigation
-  const slotsSection = managerPanel.querySelector('.active-slots-section');
-  if (slotsSection) {
-    slotsSection.id = 'section-active-slots';
-  }
-  const definitionsSection = managerPanel.querySelector(
-    '.palette-definitions-section',
-  );
-  if (definitionsSection) {
-    definitionsSection.id = 'section-palette-definitions';
-  }
-
-  // 2. Export / Statistics Panel
   const exportSection = document.createElement('section');
   exportSection.className = 'panel palette-export-panel';
   exportSection.id = 'section-palette-export';
-
   const exportHeader = document.createElement('div');
   exportHeader.className = 'palette-export-header';
   const exportTitle = document.createElement('h3');
@@ -96,19 +111,16 @@ export function createPaletteWorkspace(
   exportHeader.append(exportTitle, exportHint);
 
   let totalReferences = 0;
-  options.palettes.forEach((palette) => {
-    const refs = findPaletteUsageReferences(
+  for (const palette of options.palettes) {
+    totalReferences += findPaletteUsageReferences(
       palette.id,
-      options.animations,
-      options.activeSpritePaletteSlots,
-    );
-    totalReferences += refs.length;
-  });
-
-  const activeCount = options.activeSpritePaletteSlots.filter(
-    (slot): slot is string => typeof slot === 'string' && slot.trim() !== '',
-  ).length;
-
+      options.usageContext,
+    ).length;
+  }
+  const activeCount = [
+    ...options.activeBackgroundSlots,
+    ...options.activeSpriteSlots,
+  ].filter((slot): slot is string => slot !== null).length;
   const statsText = document.createElement('p');
   statsText.className = 'palette-export-stats';
   statsText.textContent = t('paletteWorkspaceStats', {
@@ -119,30 +131,26 @@ export function createPaletteWorkspace(
 
   const exportActions = document.createElement('div');
   exportActions.className = 'export-actions';
-
   if (options.onDownloadBytes) {
-    const onDownload = options.onDownloadBytes;
-    const downloadPalBtn = document.createElement('button');
-    downloadPalBtn.type = 'button';
-    downloadPalBtn.className = 'button secondary-button';
-    downloadPalBtn.textContent = t('paletteWorkspaceDownloadPal');
-    downloadPalBtn.addEventListener('click', () => {
-      onDownload(
-        encodeNesBackgroundPalettes(options.paletteSet),
+    const downloadButton = document.createElement('button');
+    downloadButton.type = 'button';
+    downloadButton.className = 'button secondary-button';
+    downloadButton.textContent = t('paletteWorkspaceDownloadPal');
+    downloadButton.addEventListener('click', () => {
+      const resolvedBackgroundBank = resolveActiveBackgroundPaletteSet(
+        options.palettes,
+        options.activeBackgroundSlots,
+        options.universalBackgroundColor,
+      );
+      options.onDownloadBytes?.(
+        encodeNesBackgroundPalettes(resolvedBackgroundBank),
         'project.pal',
       );
     });
-    exportActions.append(downloadPalBtn);
+    exportActions.append(downloadButton);
   }
-
   exportSection.append(exportHeader, statsText, exportActions);
-
   workspace.append(managerPanel, exportSection);
 
-  const result = workspace as unknown as PaletteWorkspaceElement;
-  Object.defineProperty(result, 'diagnosticsElement', {
-    value: diagnostics,
-    enumerable: true,
-  });
-  return result;
+  return Object.assign(workspace, { diagnosticsElement });
 }
