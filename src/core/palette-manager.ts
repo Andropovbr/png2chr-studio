@@ -1373,8 +1373,8 @@ export function analyzeProjectPaletteDiagnostics(
 
   for (const palette of palettes) {
     for (let c = 0; c < NES_COLORS_PER_PALETTE; c++) {
-      const color = palette.colors[c];
-      if (!isValidNesColorCode(color)) {
+      const colorValue = palette.colors[c] ?? Number.NaN;
+      if (!isValidNesColorCode(colorValue)) {
         emit({
           id: `invalid-nes-color:${palette.id}:${String(c)}`,
           code: 'invalid-nes-color',
@@ -1383,7 +1383,7 @@ export function analyzeProjectPaletteDiagnostics(
           paletteId: palette.id,
           paletteName: palette.name,
           colorIndex: c,
-          colorValue: color ?? Number.NaN,
+          colorValue,
           isUniversalBackground: false,
         });
       }
