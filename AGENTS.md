@@ -1,579 +1,333 @@
 # AGENTS.md
 
-## Project overview
+## Purpose
 
 PNG2CHR Studio is a browser-based tool for creating, converting, inspecting, validating, and managing graphics and related data for Nintendo Entertainment System projects.
 
-The project should favor practical NES development workflows over unnecessary abstraction. Features should make it easier to move assets from source artwork into a real NES project while respecting the limitations of the hardware.
+Favor practical NES development workflows over unnecessary abstraction.
 
-The application runs locally in the browser and should remain lightweight, understandable, deterministic, and easy to maintain.
+The application should remain lightweight, deterministic, understandable, maintainable, and usable without a backend.
+
+This file is a map and a set of project-wide invariants. It is not the complete project documentation.
 
 ---
 
-## General principles
+## Repository knowledge
 
-When working on this repository:
+Before changing code, locate the documentation relevant to the task.
+
+Start with:
+
+* `README.md` for project overview, capabilities, setup, and user-facing behavior.
+* `docs/` for detailed architecture, domain behavior, formats, workflows, and NES-specific rules.
+* `.codex/agents/` only when a specialist reviewer is actually needed.
+* `.codex/skills/` contains reusable workflow skills. Load one only when relevant to the current task.
+
+Do not read every document before every task.
+
+Use progressive discovery: inspect the task, identify affected concepts, then read the relevant code, tests, and documentation.
+
+Repository code, tests, and versioned documentation are the source of truth. Do not rely on assumptions from previous tasks when the current repository can answer the question.
+
+---
+
+## Core engineering principles
 
 * Prefer simple and explicit solutions over clever abstractions.
 * Preserve existing behavior unless the task intentionally changes it.
-* Avoid large unrelated refactors while implementing a focused change.
-* Reuse existing project patterns before introducing new architectural concepts.
-* Keep NES hardware constraints visible in the domain model instead of hiding them behind UI assumptions.
-* Treat persisted project files, exported files, and exported metadata as interfaces consumed by external projects.
-* Maintain backward compatibility where practical, especially for persisted project data and exported formats.
-* Do not silently change file formats, indexes, ownership semantics, or hardware interpretation.
-* Avoid adding dependencies when the existing stack or browser APIs can reasonably solve the problem.
-* Keep the application usable without a backend or external runtime service.
-* Treat specialist reviewer definitions as reference material, not mandatory reading for every task.
-* Read `seu-camilo.md` only when invoking or explicitly consulting the `seu-camilo` reviewer.
-* Read `professor-carvalho.md` only when invoking or explicitly consulting the `professor-carvalho` reviewer.
+* Reuse existing patterns before introducing new architecture.
+* Avoid unrelated refactors.
+* Avoid unnecessary dependencies.
+* Do not silently change persisted formats, indexes, ownership semantics, or NES interpretation.
+* Treat project files and exported formats as external interfaces.
+* Maintain backward compatibility where practical.
+* Fix underlying semantics rather than only a UI, diagnostic, or exporter symptom.
+* Expand task scope only when required for correctness.
 
-The goal is not architectural perfection. The goal is reliable software that remains understandable as the project grows.
-
----
-
-## Efficient agent workflow
-
-Use repository context, tools, reasoning, and specialist agents deliberately.
-
-Efficiency must not come at the cost of correctness, but repeated investigation and unnecessary agent work are also defects in the workflow.
-
-During normal implementation:
-
-* inspect only the repository areas necessary to understand the task and its affected consumers;
-* expand the investigation when evidence indicates broader impact, not merely because broader impact is theoretically possible;
-* do not repeatedly reread unchanged files unless new evidence requires it;
-* prefer targeted searches and tests before repository-wide investigation;
-* avoid narrating routine tool calls or repeating information already established;
-* keep intermediate status updates concise;
-* quote only the relevant part of large logs or test output unless the full output is necessary;
-* do not invoke specialist reviewers as a substitute for understanding the code, tests, and documentation yourself;
-* do not invoke additional agents merely to confirm a conclusion already well supported by repository evidence.
-
-For well-specified implementation work, the main agent is expected to apply the architecture, integrity, and NES-domain rules documented in this file directly.
-
-Use deeper investigation, broader validation, or specialist review when uncertainty, risk, or task scope justifies the additional work.
+The goal is reliable software, not architectural perfection.
 
 ---
 
 ## Understand before changing
 
-Before implementing a task:
+Before implementation:
 
-1. Inspect the relevant existing code.
-2. Identify the current data flow and affected modules.
-3. Identify the canonical representation of the data being changed.
-4. Check existing tests covering the behavior.
-5. Check whether documentation describes the affected behavior.
-6. Consider whether the change affects persisted projects, migrations, CHR layout, ownership, reservations, exported metadata, palettes, animations, diagnostics, or other NES-specific behavior.
-7. Inspect adjacent consumers before changing a shared type or invariant.
+1. Inspect the relevant code and existing tests.
+2. Identify the affected data flow and canonical representation.
+3. Check relevant documentation.
+4. Inspect adjacent consumers when changing shared state, types, or invariants.
+5. Determine whether persistence, exports, diagnostics, CHR layout, ownership, palettes, animations, or other NES-domain behavior are affected.
 
 Do not assume the issue description completely represents the implementation.
 
-Do not fix a symptom in a projection, UI component, diagnostic, or exporter before understanding where the underlying state originates.
+If code and documentation disagree, investigate the intended behavior before preserving either one.
 
-If the current implementation contradicts documentation, determine which represents the intended behavior before blindly preserving either one.
+Do not perform repository-wide investigation when targeted inspection is sufficient.
 
 ---
 
-## Canonical state and projections
+## Canonical state and identity
 
-PNG2CHR Studio has multiple representations of project information. They must not become competing sources of truth.
+Multiple representations may exist, but they must not become competing sources of truth.
 
-As a general rule:
+General model:
 
-* persisted project data defines the durable project representation;
-* domain/core models define canonical runtime semantics;
-* workspace and UI models are projections or editing state;
+* persisted project data is durable state;
+* domain/core defines canonical runtime semantics;
+* workspace/UI state is a projection or editing state;
 * diagnostics derive facts from canonical state;
 * exporters derive output from canonical state;
-* caches and previews are disposable projections.
+* caches and previews are disposable.
 
-Do not introduce a second interpretation of the same domain concept merely because it is convenient for a UI component.
+Never infer semantic identity from accidental numeric equality.
 
-When similar information exists in persisted and in-memory representations, explicitly understand how identity and semantics map between them.
+Keep these concepts distinct when relevant:
 
-A fix that makes one view correct while leaving another consumer with different semantics is incomplete.
-
-Shared domain rules should live in shared domain/core logic whenever reasonably possible rather than being independently reconstructed by UI components, diagnostics, and exporters.
-
----
-
-## Domain identity is explicit
-
-Do not accidentally conflate:
-
-* asset identity;
-* animation/frame identity;
+* asset, animation, and frame identity;
 * logical tile identity;
 * physical CHR slot;
-* pattern-table-relative tile index;
+* Pattern Table tile index;
 * NES-visible tile index;
-* palette definition identity;
+* palette definition;
 * hardware palette slot;
-* reservation/region identity.
+* region and reservation identity.
 
-Numeric equality between two values does not imply that they represent the same domain concept.
-
-Conversions between logical identity and physical NES layout should be explicit, testable, and documented when non-trivial.
-
-Avoid fallback behavior that infers ownership or identity solely because unrelated numeric indexes happen to match.
+Conversions between different identities must be explicit when non-trivial.
 
 ---
 
-## NES constraints are product requirements
+## NES hardware and project policy
 
-NES hardware limitations are part of the application's domain and should be treated as first-class requirements.
+NES hardware constraints are product requirements.
 
-Relevant constraints include, when applicable:
+Do not bypass hardware validation merely to make an operation succeed.
 
-* 8×8 tiles;
-* 2 bits per pixel;
-* four entries per hardware subpalette;
-* background and sprite palette banks;
-* universal background color behavior;
-* 256 tile indexes per pattern table;
-* two 4 KiB pattern tables in an 8 KiB CHR address space;
-* sprite/background pattern-table selection;
-* 8×8 and 8×16 sprite addressing differences;
-* nametable and Attribute Table limitations;
-* sprite-per-scanline limitations where spatial information is sufficient to evaluate them;
-* CHR capacity, occupancy, ownership, regions, and reservations;
-* mapper-specific limitations when mapper behavior is explicitly modeled.
+Do not claim a hardware violation unless the Studio contains enough information to establish it.
 
-Do not remove or bypass hardware validation simply to make an operation succeed.
+When the result cannot be determined from available data, represent it as unknown/not determinable rather than guessing.
 
-Do not report a hardware violation unless the application has enough information to establish it.
+Always distinguish:
 
-When a hardware property cannot be determined from the current model, represent it as unknown/not determinable rather than guessing.
-
-When the application can detect an invalid or suspicious NES configuration, prefer giving the user a clear diagnostic explaining the limitation and possible resolution.
-
----
-
-## Separate hardware facts from project policy
-
-A hardware fact describes what the NES can represent.
-
-Project policy describes how PNG2CHR Studio chooses to organize or constrain valid NES data.
-
-Keep these concepts distinct.
-
-For example, a project may reserve a region of CHR for a particular purpose. That reservation is project policy built on top of physical CHR limits; it is not itself an NES hardware restriction.
-
-Diagnostics should identify the actual source of a constraint whenever practical:
-
-* NES hardware;
-* project configuration;
+* NES hardware constraint;
+* mapper/configuration behavior;
+* project policy;
 * allocation/ownership rule;
-* persistence/schema integrity;
-* exporter limitation.
+* persistence/schema rule;
+* current Studio limitation.
 
-This distinction prevents project conventions from being incorrectly presented as hardware laws.
+A PNG2CHR Studio convention is not automatically an NES hardware limitation.
 
----
-
-## CHR ownership, allocation, regions, and reservations
-
-Physical CHR state must remain internally consistent.
-
-When working in this area:
-
-* distinguish occupied, available, reserved, and conflicting slots;
-* do not treat reservation as ownership;
-* do not treat logical asset existence as proof of physical allocation;
-* do not infer allocation solely from matching indexes;
-* ensure allocation respects Pattern Table boundaries and reservations;
-* ensure capacity calculations do not double-count unavailable slots;
-* ensure diagnostics and CHR Memory views derive from the same underlying facts;
-* preserve the distinction between Base CHR and project-generated content where relevant.
-
-Changes to allocation or ownership semantics require regression tests.
+Detailed NES rules belong in the relevant documentation under `docs/`, not in this file.
 
 ---
 
-## Palette semantics
+## CHR, ownership, palettes, and diagnostics
 
-Palette definitions and NES hardware palette slots are distinct concepts.
+When working with CHR:
 
-Do not conflate:
+* distinguish occupied, available, reserved, and conflicting physical slots;
+* reservation is not ownership;
+* logical asset existence is not proof of physical allocation;
+* do not infer allocation from matching numeric indexes;
+* respect Pattern Table boundaries and reservations;
+* avoid double-counting capacity;
+* keep Base CHR distinct from project-generated content where relevant.
 
-* reusable/declarative palette definitions;
-* assignment of those definitions to hardware slots;
-* background and sprite palette banks;
-* the universal background color;
-* palette references stored by assets or animations.
+When working with palettes, distinguish palette definitions from hardware palette slots, Background/Sprite banks, and universal background color semantics.
 
-Changes to palette semantics must be traced through persistence, migration, previews/rendering, diagnostics, and exporters.
+Diagnostics must derive from canonical project facts rather than reconstructing independent domain semantics in the UI.
 
-Do not independently reconstruct palette state in UI components when a canonical representation exists.
-
----
-
-## Data integrity and exports
-
-Treat project files and exported data carefully.
-
-When modifying persistence or exporters:
-
-* preserve existing project data whenever possible;
-* provide migration/default behavior for older project versions when necessary;
-* keep format versions explicit;
-* do not silently reinterpret existing fields;
-* validate indexes, offsets, sizes, and CHR boundaries;
-* ensure exported C/ca65 data remains consistent with the canonical project representation;
-* ensure physical CHR positions and NES-visible indexes are not accidentally confused;
-* ensure diagnostics do not claim an export is valid when required information is missing or contradictory.
-
-Changes affecting persisted or exported formats require regression tests.
-
-If a format intentionally changes, update its documentation in the same work.
+Changes to these invariants require appropriate regression coverage.
 
 ---
 
-## Diagnostics are derived facts
+## Scope and implementation discipline
 
-Diagnostics must be based on explicit facts derived from canonical project state.
+Implement the requested task completely.
 
-Prefer separating:
+Small adjacent fixes are acceptable only when directly related, low risk, and necessary for consistency.
 
-1. fact extraction;
-2. rule evaluation;
-3. severity classification;
-4. user-facing presentation.
+Do not:
 
-Avoid embedding independent domain interpretation inside diagnostic UI components.
+* perform broad cleanup because nearby code could be improved;
+* introduce abstractions for hypothetical future requirements;
+* reopen documented architectural decisions without new evidence;
+* repeatedly inspect unchanged files without reason;
+* repeatedly run expensive validation when focused checks can validate the current iteration;
+* invoke extra agents merely to increase confidence in an already well-supported conclusion.
 
-A diagnostic should distinguish, where applicable:
-
-* invalid;
-* conflicting;
-* suspicious;
-* capacity-limited;
-* unknown/not determinable.
-
-Warnings should not be promoted to errors merely because a configuration is unusual.
-
-Errors should correspond to conditions that are actually invalid under the applicable hardware or project contract.
+Substantial independent discoveries should become focused follow-up work rather than silently expanding the current task.
 
 ---
 
-## Testing
+## Testing and validation
 
-Every behavioral change should be accompanied by appropriate tests when reasonably possible.
+Behavior changes should receive appropriate tests when reasonably possible.
 
-Bug fixes should preferably include a regression test demonstrating the failure that was fixed.
+Bug fixes should preferably include a regression test.
 
-Prioritize tests around:
+During implementation, prefer focused tests for fast feedback.
 
-* CHR encoding and decoding;
-* tile allocation and reuse;
-* ownership and asset mapping;
-* regions and reservations;
-* Pattern Table boundaries;
-* Base CHR handling;
-* deduplication;
-* palette behavior and hardware-slot assignment;
-* project persistence and migrations;
-* animation metadata;
-* exporters;
-* NES validation rules;
-* diagnostics;
-* previously reported regressions.
+Before completion:
 
-When fixing a disagreement between two representations of the same project, test the boundary between those representations rather than only the final UI symptom.
+* run relevant tests;
+* run the complete test suite for broad-impact changes;
+* run lint;
+* run the production build when appropriate.
 
-Before considering a task complete, run the relevant tests.
+Do not weaken tests, validation rules, lint, or TypeScript constraints merely to make checks pass unless the task establishes that the rule itself is wrong.
 
-For changes with broad impact, run the complete test suite, lint, and production build using the repository's existing commands.
-
-Do not repeatedly run the complete test suite during implementation when a focused test can validate the current iteration. Use focused tests while developing, then run the broader required validation before completion.
-
-Do not weaken tests, lint rules, validation rules, or TypeScript constraints merely to make CI pass unless the task explicitly establishes that the rule itself is wrong.
-
-A change is not complete merely because it works manually in the browser.
+A task is not complete merely because it works manually.
 
 ---
 
-## Documentation is part of the implementation
-
-Documentation must evolve together with the code.
-
-> **Fundamental rule:** Changes that alter behavior, architecture, formats, workflows, development commands, domain invariants, or documented functionality must update the corresponding documentation in the same work/PR.
+## Documentation
 
 Code, tests, and documentation form one delivery.
 
-A task or PR is incomplete when it knowingly leaves relevant documentation describing obsolete behavior.
+Update relevant documentation when changing:
 
-### README responsibility
+* behavior;
+* architecture;
+* persisted or exported formats;
+* domain invariants;
+* development workflows or commands;
+* user-visible capabilities.
 
-`README.md` must accurately represent the current project and act as the entry point for someone discovering the repository today.
+Do not duplicate detailed domain documentation into `AGENTS.md`.
 
-When implementing or removing a user-visible capability, check whether the README needs to change.
+Prefer one authoritative document under `docs/` and link or discover it from related documentation.
 
-Avoid leaving:
-
-* future plans described as implemented behavior;
-* obsolete limitations;
-* outdated architecture descriptions;
-* obsolete workflows or commands.
-
-If detailed technical information becomes too large for the README, move it into an appropriate document under `docs/` and link to it.
-
-### Technical documentation
-
-Important behavior that would be difficult to reconstruct from code should be documented in `docs/`.
-
-Good candidates include:
-
-* CHR allocation and ownership rules;
-* Pattern Table behavior;
-* CHR regions and reservations;
-* project file formats;
-* exporter formats;
-* persistence/version migrations;
-* palette model;
-* animation and asset identity;
-* NES validation rules;
-* architectural decisions that affect future development.
-
-Prefer documenting why a rule exists, especially when it comes from NES hardware behavior or an architectural invariant.
+Do not document planned behavior as already implemented.
 
 ---
 
-## Keep documentation trustworthy
+## Specialist reviewers
 
-Do not document intended behavior as if it already exists.
+Specialist reviewers are optional, read-only critics.
 
-Documentation should clearly distinguish between:
+They are **not part of the default implementation workflow**.
 
-* implemented behavior;
-* known limitations;
-* planned work.
+Do not invoke a specialist merely because a task touches their domain.
 
-Do not reopen a documented architectural decision casually.
+Invoke one only when:
 
-If new evidence shows that an existing documented decision is wrong, identify:
+* the user explicitly requests the review;
+* the task explicitly requires independent review;
+* material ambiguity remains after inspecting code, tests, and documentation;
+* conflicting evidence requires specialist judgment;
+* a high-risk decision materially benefits from independent review;
+* the task is explicitly a quality pass or audit where specialist review is useful.
 
-1. the existing decision;
-2. which assumption no longer holds;
-3. the replacement behavior;
-4. the code/tests affected;
-5. the documentation that must change.
+Give specialists a focused question. Do not request unrestricted repository-wide audits unless the task actually requires one.
 
-Avoid duplicating detailed documentation across several files. Prefer one authoritative explanation and links from other documents.
+Do not invoke both specialists when one is sufficient.
 
----
-
-## Code quality
-
-Follow the existing TypeScript style and project conventions.
-
-Prefer:
-
-* small focused functions;
-* explicit domain types;
-* pure functions for conversion, fact extraction, and validation logic;
-* deterministic processing;
-* descriptive names;
-* separation between persisted state, canonical domain state, workspace state, and UI projections;
-* reusable domain rules when multiple consumers need the same semantics.
-
-Avoid:
-
-* unexplained magic numbers;
-* duplicated NES rules in multiple UI components;
-* hidden mutations;
-* unnecessary global state;
-* parallel sources of truth;
-* identity inferred from accidental numeric equality;
-* mixing file parsing, domain logic, rendering, diagnostics, and exporting when they can reasonably remain separate.
-
-NES constants should have names or comments when their meaning is not immediately obvious.
-
----
-
-## UI and diagnostics
-
-PNG2CHR Studio is a technical tool, but the user should not need to understand the source code to understand an error.
-
-Validation messages should explain:
-
-1. what is wrong;
-2. whether the constraint comes from NES hardware or project configuration;
-3. which resource/asset/slot is involved when known;
-4. what the user can do about it, when practical.
-
-Avoid silently correcting ambiguous input when that could produce unexpected exported data.
-
-Warnings are preferable to hard failures when the result remains technically valid and the user may intentionally be doing something unusual.
-
-Do not claim certainty when the project does not contain enough information to determine a hardware property.
-
-Do not redesign unrelated UI while implementing a functional task.
-
----
-
-## Scope discipline
-
-Implement the requested task completely, but avoid expanding its scope unnecessarily.
-
-Small adjacent fixes are acceptable when they are:
-
-* directly related;
-* low risk;
-* necessary to keep behavior consistent.
-
-Larger discoveries should be documented or proposed separately rather than quietly folded into the current change.
-
-Do not perform broad cleanup merely because nearby code could be improved.
-
-When an investigation uncovers a substantial independent problem, prefer creating or proposing a focused follow-up issue.
-
----
-
-## Specialized reviewers
-
-The repository defines read-only specialist agents for independent review.
-
-They are **specialists available on demand, not part of the default implementation workflow**.
-
-Do not automatically invoke a specialist:
-
-* for every issue;
-* merely because the task touches the specialist's domain;
-* as a routine completion step;
-* to reconfirm conclusions already supported by code, tests, and documentation;
-* because using additional agents might theoretically improve confidence.
-
-The main agent is responsible for applying the rules documented in this `AGENTS.md` during ordinary implementation.
-
-Invoke a specialist only when at least one of these conditions applies:
-
-1. the user explicitly requests that specialist or asks for an independent specialist review;
-2. the issue or task explicitly requires an architecture/integrity or NES-hardware review;
-3. a material ambiguity remains after inspecting the relevant code, tests, and documentation;
-4. conflicting evidence exists and the specialist's domain expertise is needed to resolve it;
-5. a high-risk architectural, persistence, ownership, hardware-validation, or exporter decision would materially benefit from independent review;
-6. the task is explicitly a final quality pass, audit, or milestone review where independent specialist review is part of the requested scope.
-
-Specialist invocation must be **purposeful and scoped**. Give the reviewer the concrete question or area requiring judgment rather than asking for an unrestricted repository-wide audit unless the task itself requires one.
-
-Do not invoke both specialists by default. If one specialist can resolve the uncertainty, use only that specialist.
-
-If both architecture and NES hardware genuinely require independent validation, both reviewers may be invoked, but each should receive a question scoped to their own authority.
-
-Specialist definitions are reference material. Read the corresponding specialist file when that specialist is actually needed.
+Do not automatically re-invoke a specialist after implementing feedback.
 
 ### Seu Camilo
 
-`seu-camilo` is the architecture and domain-integrity reviewer.
+`seu-camilo` is the architecture and domain-integrity reviewer defined under `.codex/agents/`.
 
-Consult Seu Camilo when unresolved questions involve:
+Use him for unresolved questions involving:
 
-* consistency with the project model;
+* canonical state;
 * competing sources of truth;
-* persisted state versus runtime/domain state;
-* alignment among workspace, diagnostics, and exporters;
-* identity or ownership semantics;
-* architectural layer boundaries;
-* migration or persistence integrity;
-* violation or reconsideration of a documented architectural decision.
+* persistence/runtime divergence;
+* ownership or identity semantics;
+* domain boundaries;
+* diagnostics/exporter consistency;
+* architectural integrity.
 
-Do **not** invoke Seu Camilo merely because a change modifies domain/core code. The main agent should apply the architectural rules in this file directly when the implementation is straightforward and evidence is sufficient.
-
-His authority is project architecture and integrity, not NES hardware truth by itself.
-
-When invoking him, read `seu-camilo.md` and follow its review contract.
+Do not use him for routine implementation that the main agent can resolve directly from repository evidence.
 
 ### Professor Carvalho
 
-`professor-carvalho` is the NES hardware and validation reviewer.
+`professor-carvalho` is the NES hardware and validation reviewer defined under `.codex/agents/`.
 
-Consult Professor Carvalho when unresolved questions involve:
+Use him for unresolved questions involving:
 
-* whether a configuration is actually representable on NES hardware;
-* whether a diagnostic reflects a real hardware restriction;
-* Pattern Table, CHR, palette, Attribute Table, sprite, OAM, or addressing semantics;
-* whether the current project model contains enough information to assert a hardware violation;
-* whether project policy is being incorrectly presented as an NES limitation;
-* obscure or configuration-dependent NES behavior that materially affects correctness.
+* NES hardware correctness;
+* CHR and Pattern Table behavior;
+* palettes;
+* sprites/OAM;
+* nametables and Attribute Tables;
+* hardware-dependent diagnostics;
+* whether available project data is sufficient to assert a hardware violation.
 
-Do **not** invoke Professor Carvalho merely because the task involves NES graphics. Apply well-established hardware constraints documented in this file and the repository directly when they are sufficient.
-
-His authority is NES hardware semantics and validation, not application architecture.
-
-When invoking him, read `professor-carvalho.md` and follow its review contract.
-
-### Reviewer findings
-
-Specialist findings are evidence for the main agent to evaluate, not automatic implementation instructions.
-
-When a reviewer reports a problem:
-
-1. verify the finding against the relevant repository state;
-2. determine whether it belongs to the current task;
-3. implement it when required for correctness or task completion;
-4. otherwise document or propose focused follow-up work.
-
-Do not repeatedly re-invoke a reviewer after every correction. Re-review only when:
-
-* the reviewer explicitly identified a blocking condition whose correction needs validation;
-* the correction materially changes the premise of the original review;
-* the task explicitly requires final specialist approval.
-
-Neither reviewer overrides tests, documentation, repository evidence, or explicit project decisions without evidence.
+Do not use him merely because a feature involves NES graphics.
 
 ---
 
-## Completion checklist
+## Agent efficiency
 
-Before finishing a task, verify:
+Correctness comes first, but computation should be purposeful.
 
-* the requested behavior is implemented;
-* existing behavior was not unintentionally broken;
-* canonical state and projections remain consistent;
-* relevant regression tests were added or updated;
+* Prefer targeted search over broad exploration.
+* Prefer focused tests during iteration.
+* Avoid repeating established analysis.
+* Keep intermediate reports concise.
+* Do not dump large logs when the decisive portion is sufficient.
+* Do not narrate routine tool calls.
+* Use specialist agents only when their independent judgment adds material value.
+* Spend additional reasoning and context when uncertainty or risk warrants it, not merely because more analysis is possible.
+
+### Output efficiency
+
+Use the `caveman` skill for agent communication.
+
+Its purpose is to reduce unnecessary output tokens without reducing technical
+correctness or completeness.
+
+Apply it to:
+- intermediate reasoning reports;
+- tool-call narration;
+- progress updates;
+- routine completion summaries.
+
+Do not let compression reduce clarity, omit important findings, or alter
+persistent project artifacts such as code, comments, documentation, commits,
+issues, or Pull Requests.
+
+---
+
+## Completion
+
+Before considering implementation complete, verify that:
+
+* requested behavior works;
+* relevant regressions are covered;
+* canonical representations remain consistent;
 * relevant tests pass;
 * lint passes;
-* the production build succeeds when appropriate;
+* production build succeeds when appropriate;
 * persisted/exported formats remain valid;
-* NES hardware constraints are still respected;
-* project policy has not been confused with hardware constraints;
-* `README.md` was reviewed for impact;
-* relevant `docs/` files were reviewed for impact;
-* documentation was updated when necessary;
-* obsolete documentation introduced or exposed by the change was removed or corrected.
+* NES hardware and project policy remain correctly distinguished;
+* relevant documentation is current.
 
-Specialist review is **not** a default completion requirement.
-
-When reporting completion, summarize:
+Report concisely:
 
 * what changed;
-* important implementation decisions;
-* tests performed;
-* documentation updated;
-* specialist review performed, if any;
-* any remaining limitations or follow-up work.
-
-Keep the final report concise. Do not reproduce large test logs or narrate routine implementation steps unless they are relevant to understanding the result.
+* important decisions;
+* validation performed;
+* documentation changed;
+* specialist review, if any;
+* remaining limitations or follow-up work.
 
 ---
 
 ## Pull requests
 
-For implementation work, finish by opening a Pull Request against the appropriate target branch unless the user explicitly requests otherwise.
+For implementation work, open a Pull Request against the appropriate target branch unless explicitly instructed otherwise.
 
 Do not merge the Pull Request.
 
-The final report should include the branch, relevant commit(s), validation performed, and Pull Request link.
+Report the branch, relevant commit(s), validation performed, and Pull Request link.
 
 ---
 
-## Final rule
+## Final invariant
 
 Code, tests, documentation, diagnostics, persisted state, and exported output must describe the same product.
 
-Whenever one changes, verify whether the others must change with it.
-
-Correctness comes first. Spend additional computation when it materially increases confidence or is required to resolve uncertainty, not merely because more analysis is possible.
+When one changes, determine which others must change with it.
