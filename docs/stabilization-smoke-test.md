@@ -158,6 +158,23 @@ Validate the end-to-end dual-bank palette lifecycle, universal background color,
 
 ## Automated counterpart
 
+### Scene & Multi-Entity Preview
+
+1. Abra um projeto legado com duas instâncias Scene e confirme a resolução única para `animationId`; referências ausentes ou ambíguas devem permanecer explícitas.
+2. Arraste uma instância, mova-a com as setas e altere a camada com `Ctrl+Up/Down`; cada ação deve preservar foco, âncora e ordem canônica.
+3. Duplique uma instância com origem não zero; cópia deve aparecer deslocada sem sobrepor a original.
+4. Saia da aba Scene e retorne; playback transitório deve continuar sem painel, listener ou loop RAF duplicado.
+5. Abra Animation, Palette e CHR Memory pelos controles de recurso e retorne; seleção de navegação não deve sujar nem alterar o `.p2c`.
+6. Salve e reabra; instâncias, IDs, âncoras, visibilidade e ordem devem permanecer idênticos, enquanto seleção e playback podem reiniciar.
+
+Teste automatizado correspondente:
+
+```bash
+npm test -- src/core/scene-preview.test.ts src/core/project.test.ts src/ui/animation-editor.test.ts src/core/palette-manager.test.ts src/ui/state-update.test.ts
+```
+
+Scene não possui export standalone; validação de export nesta milestone significa round-trip do bloco `scenePreview` em `.p2c` e não criação de novo formato.
+
 Run these checks before or alongside the manual flow:
 
 ```bash

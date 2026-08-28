@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildAnimationProjectModel } from '../core/animation-model';
 import { buildChrAssetMappingIndex } from '../core/chr-asset-mapping';
+import {
+  createDefaultProject,
+  deserializeProject,
+  serializeProject,
+  type StudioProject,
+} from '../core/project';
+import {
+  reorderSceneInstances,
+  type ScenePreviewInstance,
+} from '../core/scene-preview';
 import { createDefaultNesPaletteSet } from '../core/nes-palette';
 import {
   resolveEffectivePaletteColors,
@@ -45,6 +55,7 @@ class MockElement {
   height = 0;
   style: Record<string, string> = {};
   capturedPointerIds = new Set<number>();
+  canvasCalls: { method: string; args: readonly number[] }[] = [];
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
@@ -220,6 +231,11 @@ class MockElement {
       const noop = (): void => {
         /* no-op */
       };
+      const record =
+        (method: string) =>
+        (...args: number[]): void => {
+          this.canvasCalls.push({ method, args });
+        };
       return {
         createImageData: (w: number, h: number) => ({
           data: new Uint8ClampedArray(w * h * 4),
@@ -227,7 +243,14 @@ class MockElement {
           height: h,
         }),
         putImageData: noop,
-        drawImage: noop,
+        drawImage: (...args: unknown[]) => {
+          this.canvasCalls.push({
+            method: 'drawImage',
+            args: args
+              .slice(1)
+              .filter((value): value is number => typeof value === 'number'),
+          });
+        },
         fillRect: noop,
         strokeRect: noop,
         clearRect: noop,
@@ -241,8 +264,8 @@ class MockElement {
         lineTo: noop,
         save: noop,
         restore: noop,
-        scale: noop,
-        translate: noop,
+        scale: record('scale'),
+        translate: record('translate'),
         fillStyle: '',
         strokeStyle: '',
         lineWidth: 1,
@@ -1011,6 +1034,282 @@ describe('Animation Editor Split Architecture', () => {
     expect(
       secondEditor.querySelector('.scene-preview-toolbar button')?.textContent,
     ).toBe('Play');
+  });
+
+  it('renders combined flips around the anchor-aware frame projection', () => {
+    const base = createOptions();
+    const baseAnimation = base.settings.animations[0];
+    expect(baseAnimation).toBeDefined();
+    if (baseAnimation === undefined) return;
+    const animation: AnimationItemSetting = {
+      ...baseAnimation,
+      originX: 3,
+      originY: 5,
+      flipH: true,
+      flipV: true,
+    };
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        settings: { ...base.settings, animations: [animation] },
+        scenePreview: {
+          instances: [
+            {
+              id: 'combined-flip',
+              animationId: animation.id,
+              entityId: 'hero',
+              animationName: animation.name,
+              x: 20,
+              y: 30,
+              anchorX: 23,
+              anchorY: 35,
+              visible: true,
+            },
+          ],
+        },
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const canvas = editor.querySelector('.scene-preview-canvas');
+
+    expect(canvas?.canvasCalls).toContainEqual({
+      method: 'translate',
+      args: [28, 38],
+    });
+    expect(canvas?.canvasCalls).toContainEqual({
+      method: 'scale',
+      args: [-1, -1],
+    });
+  });
+
+  it('runs migrated multi-instance Scene state through UI edits and save/reload', () => {
+    const defaults = createDefaultProject('Scene Pipeline', 'animation');
+    const defaultAnimation = defaults.animation?.animations[0];
+    expect(defaultAnimation).toBeDefined();
+    if (defaultAnimation === undefined || defaults.animation === undefined) {
+      return;
+    }
+    const legacyJson = JSON.stringify({
+      ...defaults,
+      animation: {
+        ...defaults.animation,
+        animations: [
+          {
+            ...defaultAnimation,
+            id: 'anim-1',
+            entity: 'hero',
+            name: 'idle',
+            originX: 4,
+            originY: 6,
+          },
+          {
+            ...defaultAnimation,
+            id: 'anim-2',
+            entity: 'enemy',
+            name: 'walk',
+          },
+        ],
+      },
+      scenePreview: {
+        instances: [
+          {
+            id: 'hero-instance',
+            entityId: 'hero',
+            animationName: 'idle',
+            x: 10,
+            y: 20,
+            visible: true,
+          },
+          {
+            id: 'enemy-instance',
+            entityId: 'enemy',
+            animationName: 'walk',
+            x: 40,
+            y: 50,
+            visible: true,
+          },
+        ],
+      },
+    });
+    const loaded = deserializeProject(legacyJson);
+    expect(loaded.success).toBe(true);
+    if (!loaded.success) return;
+    let project: StudioProject = loaded.project;
+    expect(
+      project.scenePreview?.instances.map((item) => item.animationId),
+    ).toEqual(['anim-1', 'anim-2']);
+
+    const base = createOptions();
+    const runtimeAnimations: readonly AnimationItemSetting[] = [
+      {
+        ...createSampleAnimation('anim-1', 'idle', 'hero'),
+        originX: 4,
+        originY: 6,
+        paletteId: 'pal_1',
+      },
+      {
+        ...createSampleAnimation('anim-2', 'walk', 'enemy'),
+        paletteId: 'pal_2',
+      },
+    ];
+    const model = buildAnimationProjectModel({
+      name: 'scene-pipeline',
+      animations: runtimeAnimations.map((animation) => ({
+        id: animation.id,
+        name: animation.name,
+        image: animation.source?.indexedImage ?? singleTileImage(),
+        frameWidth: animation.frameWidth,
+        frameHeight: animation.frameHeight,
+        frameIndices: animation.frameIndices,
+        frameDuration: animation.defaultDuration,
+      })),
+    });
+    const mappingIndex = buildChrAssetMappingIndex({
+      animationModel: model,
+      animations: runtimeAnimations,
+    });
+    const playbackSession = createScenePreviewPlaybackSession();
+    let selectedInstanceId = 'hero-instance';
+
+    const updateInstance = (
+      instanceId: string,
+      instancePatch: Partial<ScenePreviewInstance>,
+    ): void => {
+      project = {
+        ...project,
+        scenePreview: {
+          instances: (project.scenePreview?.instances ?? []).map((instance) =>
+            instance.id === instanceId
+              ? { ...instance, ...instancePatch }
+              : instance,
+          ),
+        },
+      };
+    };
+    const render = (activeTab: 'frames' | 'scene'): MockElement => {
+      const panels = createAnimationEditor(
+        createOptions({
+          activeTab,
+          settings: { ...base.settings, animations: runtimeAnimations },
+          model,
+          chrAssetMappingIndex: mappingIndex,
+          selectedSceneInstanceId: selectedInstanceId,
+          scenePreview: project.scenePreview,
+          scenePreviewPlaybackSession: playbackSession,
+          onSelectSceneInstance: (instanceId) => {
+            selectedInstanceId = instanceId ?? selectedInstanceId;
+          },
+          onUpdateSceneInstance: updateInstance,
+          onReorderSceneInstance: (instanceId, direction) => {
+            project = {
+              ...project,
+              scenePreview: {
+                instances: reorderSceneInstances(
+                  project.scenePreview?.instances ?? [],
+                  instanceId,
+                  direction,
+                ),
+              },
+            };
+          },
+        }),
+      );
+      return panels.find(
+        (panel) => panel.id === 'section-animation-editor',
+      ) as unknown as MockElement;
+    };
+
+    let editor = render('scene');
+    expect(
+      editor.querySelectorAll('.scene-preview-instance-card'),
+    ).toHaveLength(2);
+    expect(
+      editor.querySelector('.scene-preview-resource-summary')?.textContent,
+    ).toContain('Current frame 1 of 1');
+
+    const canvas = editor.querySelector('.scene-preview-canvas');
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      clientX: 11,
+      clientY: 21,
+      button: 0,
+      pointerId: 9,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+    canvas?.dispatchEvent({
+      type: 'pointermove',
+      clientX: 15,
+      clientY: 25,
+      pointerId: 9,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 9,
+    } as unknown as { type: string });
+    expect(project.scenePreview?.instances[0]).toMatchObject({
+      x: 14,
+      y: 24,
+      anchorX: 18,
+      anchorY: 30,
+    });
+
+    editor = render('scene');
+    editor
+      .querySelector('.scene-preview-instance-focus-target')
+      ?.dispatchEvent({
+        type: 'keydown',
+        key: 'ArrowRight',
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false,
+        target: editor.querySelector('.scene-preview-instance-focus-target'),
+        preventDefault: vi.fn(),
+      } as unknown as { type: string });
+    expect(project.scenePreview?.instances[0]).toMatchObject({
+      x: 15,
+      anchorX: 19,
+    });
+
+    editor = render('scene');
+    editor
+      .querySelector('.scene-preview-instance-focus-target')
+      ?.dispatchEvent({
+        type: 'keydown',
+        key: 'ArrowUp',
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        target: editor.querySelector('.scene-preview-instance-focus-target'),
+        preventDefault: vi.fn(),
+      } as unknown as { type: string });
+    expect(project.scenePreview?.instances.map((item) => item.id)).toEqual([
+      'enemy-instance',
+      'hero-instance',
+    ]);
+
+    playbackSession.advance(
+      project.scenePreview?.instances ?? [],
+      runtimeAnimations,
+      1,
+    );
+    expect(render('frames').querySelector('.scene-preview-panel')).toBeNull();
+    expect(
+      render('scene').querySelector('.scene-preview-panel'),
+    ).not.toBeNull();
+    expect(playbackSession.playbackStates.size).toBe(2);
+
+    const reloaded = deserializeProject(serializeProject(project));
+    expect(reloaded.success).toBe(true);
+    if (!reloaded.success) return;
+    expect(reloaded.project.scenePreview?.instances).toEqual(
+      project.scenePreview?.instances,
+    );
+    expect(
+      reloaded.project.scenePreview?.instances.map((item) => item.id),
+    ).toEqual(['enemy-instance', 'hero-instance']);
   });
 
   it('cancels Scene RAF and removes pointer listeners during explicit teardown', () => {

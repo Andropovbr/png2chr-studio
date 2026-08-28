@@ -89,6 +89,7 @@ import {
   type StudioProject,
 } from './core/project';
 import {
+  createDuplicatedSceneInstance,
   generateInstanceId,
   reorderSceneInstances,
   resolveInstanceAnimation,
@@ -1721,13 +1722,7 @@ function duplicateSceneInstance(instanceId: string): void {
   const currentInstances = project.scenePreview?.instances ?? [];
   const target = currentInstances.find((inst) => inst.id === instanceId);
   if (!target) return;
-  const clone: ScenePreviewInstance = {
-    ...target,
-    id: generateInstanceId(),
-    name: target.name ? `${target.name} (Copy)` : undefined,
-    x: Math.min(256, target.x + 8),
-    y: Math.min(240, target.y + 8),
-  };
+  const clone = createDuplicatedSceneInstance(target, generateInstanceId());
   updateProject({
     ...project,
     scenePreview: {
