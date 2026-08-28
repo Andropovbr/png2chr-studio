@@ -39,6 +39,10 @@ export interface ScenePreviewPanelOptions {
   readonly onAddInstance: (instance: ScenePreviewInstance) => void;
   readonly onRemoveInstance: (instanceId: string) => void;
   readonly onDuplicateInstance?: (instanceId: string) => void;
+  readonly onReorderInstance: (
+    instanceId: string,
+    direction: 'forward' | 'backward',
+  ) => void;
   readonly onUpdateInstance: (
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
@@ -122,6 +126,97 @@ export function createScenePreviewPlaybackSession(): ScenePreviewPlaybackSession
 
 const scenePreviewDisposers = new WeakMap<HTMLElement, () => void>();
 
+type SceneKeyboardCommand =
+  | { readonly type: 'move'; readonly deltaX: number; readonly deltaY: number }
+  | { readonly type: 'remove' }
+  | {
+      readonly type: 'reorder';
+      readonly direction: 'forward' | 'backward';
+    };
+
+let pendingSceneFocusInstanceId: string | null = null;
+let pendingSceneAnnouncement: string | null = null;
+
+export function getSceneKeyboardCommand(
+  event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'metaKey'>,
+): SceneKeyboardCommand | null {
+  if (event.altKey || event.metaKey) return null;
+  if (event.ctrlKey) {
+    if (event.key === 'ArrowUp') {
+      return { type: 'reorder', direction: 'forward' };
+    }
+    if (event.key === 'ArrowDown') {
+      return { type: 'reorder', direction: 'backward' };
+    }
+    return null;
+  }
+  switch (event.key) {
+    case 'ArrowLeft':
+      return { type: 'move', deltaX: -1, deltaY: 0 };
+    case 'ArrowRight':
+      return { type: 'move', deltaX: 1, deltaY: 0 };
+    case 'ArrowUp':
+      return { type: 'move', deltaX: 0, deltaY: -1 };
+    case 'ArrowDown':
+      return { type: 'move', deltaX: 0, deltaY: 1 };
+    case 'Delete':
+      return { type: 'remove' };
+    default:
+      return null;
+  }
+}
+
+function requestSceneFocus(
+  instanceId: string | null,
+  announcement?: string,
+): void {
+  pendingSceneFocusInstanceId = instanceId;
+  pendingSceneAnnouncement = announcement ?? null;
+  queueMicrotask(() => {
+    if (pendingSceneFocusInstanceId === instanceId) {
+      pendingSceneFocusInstanceId = null;
+      pendingSceneAnnouncement = null;
+    }
+  });
+}
+
+function isEditableSceneShortcutTarget(target: EventTarget | null): boolean {
+  const tagName = (
+    target as { tagName?: string } | null
+  )?.tagName?.toLowerCase();
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+    return true;
+  }
+  return (
+    (target as { isContentEditable?: boolean } | null)?.isContentEditable ===
+    true
+  );
+}
+
+function createScenePositionPatch(
+  instance: ScenePreviewInstance,
+  animation: AnimationItemSetting | null,
+  posX: number,
+  posY: number,
+): Pick<ScenePreviewInstance, 'x' | 'y' | 'anchorX' | 'anchorY'> | null {
+  if (
+    animation === null &&
+    (instance.anchorX === undefined || instance.anchorY === undefined)
+  ) {
+    return null;
+  }
+  const clampedX = Math.max(0, Math.min(NES_SCREEN_WIDTH, posX));
+  const clampedY = Math.max(0, Math.min(NES_SCREEN_HEIGHT, posY));
+  const originX = animation?.originX ?? 0;
+  const originY = animation?.originY ?? 0;
+  return {
+    anchorX: clampedX + originX,
+    anchorY: clampedY + originY,
+    x: clampedX,
+    y: clampedY,
+  };
+}
+
 export function disposeScenePreviewPanels(root: ParentNode): void {
   root
     .querySelectorAll<HTMLElement>('.scene-preview-panel')
@@ -170,6 +265,10 @@ export function createScenePreviewPanel(
     options.selectedInstanceId !== undefined
       ? options.selectedInstanceId
       : (options.instances[0]?.id ?? null);
+  const focusInstanceId = pendingSceneFocusInstanceId;
+  const initialAnnouncement = pendingSceneAnnouncement;
+  pendingSceneFocusInstanceId = null;
+  pendingSceneAnnouncement = null;
   const playbackStates = (): Map<string, InstancePlaybackState> =>
     playbackSession.playbackStates;
 
@@ -335,12 +434,25 @@ export function createScenePreviewPanel(
   canvas.height = NES_SCREEN_HEIGHT;
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', t('scenePreviewTitle'));
+  canvas.setAttribute('aria-describedby', 'scene-preview-keyboard-hint');
+
+  const keyboardHint = document.createElement('p');
+  keyboardHint.id = 'scene-preview-keyboard-hint';
+  keyboardHint.className = 'visually-hidden';
+  keyboardHint.textContent = t('scenePreviewKeyboardHint');
+
+  const liveStatus = document.createElement('p');
+  liveStatus.className = 'visually-hidden scene-preview-live-status';
+  liveStatus.setAttribute('role', 'status');
+  liveStatus.setAttribute('aria-live', 'polite');
+  liveStatus.setAttribute('aria-atomic', 'true');
+  liveStatus.textContent = initialAnnouncement ?? '';
 
   const canvasOverlay = document.createElement('div');
   canvasOverlay.className = 'scene-preview-canvas-overlay';
   canvasOverlay.textContent = 'NES 256 × 240';
 
-  canvasWrapper.append(canvas, canvasOverlay);
+  canvasWrapper.append(canvas, canvasOverlay, keyboardHint, liveStatus);
 
   // Side column container (Instances list + Contextual Inspector)
   const sideCol = document.createElement('div');
@@ -351,9 +463,11 @@ export function createScenePreviewPanel(
   listWrapper.className = 'scene-preview-instances-wrapper';
 
   const listTitle = document.createElement('h3');
+  listTitle.id = 'scene-preview-instances-title';
   listTitle.className = 'scene-preview-instances-title';
   listTitle.textContent = `${t('scenePreviewInstanceLabel')} (${String(options.instances.length)})`;
   listWrapper.append(listTitle);
+  const cardByInstanceId = new Map<string, HTMLElement>();
 
   if (options.instances.length === 0) {
     const emptyMsg = document.createElement('p');
@@ -363,19 +477,43 @@ export function createScenePreviewPanel(
   } else {
     const list = document.createElement('div');
     list.className = 'scene-preview-instances-list';
-
+    list.setAttribute('role', 'list');
+    list.setAttribute('aria-labelledby', listTitle.id);
+    list.setAttribute('aria-describedby', keyboardHint.id);
     options.instances.forEach((inst, index) => {
       const isSelected = currentSelectedInstanceId === inst.id;
       const card = document.createElement('div');
       card.className = `scene-preview-instance-card${isSelected ? ' is-selected' : ''}`;
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('aria-posinset', String(index + 1));
+      card.setAttribute('aria-setsize', String(options.instances.length));
+      card.setAttribute('data-scene-instance-id', inst.id);
 
+      const instanceName =
+        inst.name ?? `${inst.entityId} #${String(index + 1)}`;
+      const animation = resolveInstanceAnimation(inst, options.animations);
+      const projection = computeInstanceProjection(inst, animation);
       const cardHeader = document.createElement('div');
       cardHeader.className = 'scene-preview-card-header';
 
-      const cardTitle = document.createElement('strong');
-      cardTitle.className = 'scene-preview-card-title';
-      cardTitle.textContent =
-        inst.name ?? `${inst.entityId} #${String(index + 1)}`;
+      const cardTitle = document.createElement('button');
+      cardTitle.type = 'button';
+      cardTitle.className =
+        'scene-preview-card-title scene-preview-instance-focus-target';
+      cardTitle.textContent = instanceName;
+      cardTitle.setAttribute('aria-pressed', String(isSelected));
+      cardTitle.setAttribute('data-scene-instance-id', inst.id);
+      cardTitle.setAttribute(
+        'aria-label',
+        t('scenePreviewInstanceAriaLabel', {
+          name: instanceName,
+          x: projection.posX,
+          y: projection.posY,
+          position: index + 1,
+          total: options.instances.length,
+        }),
+      );
+      cardByInstanceId.set(inst.id, cardTitle);
 
       const cardActions = document.createElement('div');
       cardActions.className = 'scene-preview-card-actions';
@@ -386,8 +524,13 @@ export function createScenePreviewPanel(
       btnVisible.className = `button secondary-button scene-preview-vis-btn${inst.visible ? ' is-visible' : ' is-hidden'}`;
       btnVisible.textContent = inst.visible ? '👁' : '🚫';
       btnVisible.title = t('scenePreviewVisible');
+      btnVisible.setAttribute(
+        'aria-label',
+        t('scenePreviewVisibilityAriaLabel', { name: instanceName }),
+      );
       btnVisible.addEventListener('click', (e) => {
         e.stopPropagation();
+        requestSceneFocus(inst.id);
         options.onUpdateInstance(inst.id, { visible: !inst.visible });
       });
 
@@ -397,8 +540,17 @@ export function createScenePreviewPanel(
       btnRemove.className = 'button secondary-button button-danger';
       btnRemove.textContent = '✕';
       btnRemove.title = t('scenePreviewRemove');
+      btnRemove.setAttribute(
+        'aria-label',
+        t('scenePreviewRemoveAriaLabel', { name: instanceName }),
+      );
       btnRemove.addEventListener('click', (e) => {
         e.stopPropagation();
+        requestSceneFocus(
+          options.instances[index + 1]?.id ??
+            options.instances[index - 1]?.id ??
+            null,
+        );
         options.onRemoveInstance(inst.id);
       });
 
@@ -451,17 +603,76 @@ export function createScenePreviewPanel(
         section
           .querySelectorAll('.scene-preview-instance-card')
           .forEach((c) => {
-            c.classList.remove('is-selected');
+            const selected = c === card;
+            c.classList.toggle('is-selected', selected);
+            c.querySelector(
+              '.scene-preview-instance-focus-target',
+            )?.setAttribute('aria-pressed', String(selected));
           });
         card.classList.add('is-selected');
+        cardTitle.focus({ preventScroll: true });
         renderInspector();
         drawScene();
+      });
+
+      cardTitle.addEventListener('keydown', (event) => {
+        if (
+          isEditableSceneShortcutTarget(event.target) ||
+          (event.target !== null && event.target !== cardTitle)
+        ) {
+          return;
+        }
+        const command = getSceneKeyboardCommand(event);
+        if (command === null) return;
+        event.preventDefault();
+
+        if (command.type === 'remove') {
+          requestSceneFocus(
+            options.instances[index + 1]?.id ??
+              options.instances[index - 1]?.id ??
+              null,
+          );
+          options.onRemoveInstance(inst.id);
+          return;
+        }
+
+        if (command.type === 'reorder') {
+          requestSceneFocus(
+            inst.id,
+            t('scenePreviewOrderAnnouncement', { name: instanceName }),
+          );
+          options.onReorderInstance(inst.id, command.direction);
+          return;
+        }
+
+        const currentProjection = computeInstanceProjection(inst, animation);
+        const patch = createScenePositionPatch(
+          inst,
+          animation,
+          currentProjection.posX + command.deltaX,
+          currentProjection.posY + command.deltaY,
+        );
+        if (patch === null) return;
+        requestSceneFocus(
+          inst.id,
+          t('scenePreviewMovedAnnouncement', {
+            name: instanceName,
+            x: patch.x,
+            y: patch.y,
+          }),
+        );
+        options.onUpdateInstance(inst.id, patch);
       });
 
       list.append(card);
     });
 
     listWrapper.append(list);
+
+    if (focusInstanceId !== null) {
+      const focusCard = cardByInstanceId.get(focusInstanceId);
+      queueMicrotask(() => focusCard?.focus({ preventScroll: true }));
+    }
   }
 
   // 2. Contextual Inspector Container
@@ -684,6 +895,29 @@ export function createScenePreviewPanel(
     // Inspector Action Buttons (Duplicate / Remove)
     const inspectorActions = document.createElement('div');
     inspectorActions.className = 'scene-preview-inspector-actions';
+    const selectedIndex = options.instances.findIndex(
+      (instance) => instance.id === selectedInst.id,
+    );
+
+    const btnMoveBackward = document.createElement('button');
+    btnMoveBackward.type = 'button';
+    btnMoveBackward.className = 'button secondary-button';
+    btnMoveBackward.textContent = t('scenePreviewMoveBackward');
+    btnMoveBackward.disabled = selectedIndex <= 0;
+    btnMoveBackward.addEventListener('click', () => {
+      requestSceneFocus(selectedInst.id);
+      options.onReorderInstance(selectedInst.id, 'backward');
+    });
+
+    const btnMoveForward = document.createElement('button');
+    btnMoveForward.type = 'button';
+    btnMoveForward.className = 'button secondary-button';
+    btnMoveForward.textContent = t('scenePreviewMoveForward');
+    btnMoveForward.disabled = selectedIndex >= options.instances.length - 1;
+    btnMoveForward.addEventListener('click', () => {
+      requestSceneFocus(selectedInst.id);
+      options.onReorderInstance(selectedInst.id, 'forward');
+    });
 
     if (options.onDuplicateInstance) {
       const onDuplicate = options.onDuplicateInstance;
@@ -697,11 +931,18 @@ export function createScenePreviewPanel(
       inspectorActions.append(btnDuplicate);
     }
 
+    inspectorActions.append(btnMoveBackward, btnMoveForward);
+
     const btnDelete = document.createElement('button');
     btnDelete.type = 'button';
     btnDelete.className = 'button secondary-button button-danger';
     btnDelete.textContent = t('scenePreviewRemove');
     btnDelete.addEventListener('click', () => {
+      requestSceneFocus(
+        options.instances[selectedIndex + 1]?.id ??
+          options.instances[selectedIndex - 1]?.id ??
+          null,
+      );
       options.onRemoveInstance(selectedInst.id);
     });
     inspectorActions.append(btnDelete);
@@ -893,9 +1134,10 @@ export function createScenePreviewPanel(
   let disposed = false;
   animationFrameHandle = requestAnimationFrame(animationLoop);
 
-  // Drag & Drop on Canvas
+  // Pointer drag on canvas. Preview stays local; pointerup commits once.
   let dragging = false;
   let dragInstanceId: string | null = null;
+  let activePointerId: number | null = null;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
   let pendingDragPatch:
@@ -911,7 +1153,9 @@ export function createScenePreviewPanel(
       ? { ...instance, ...pendingDragPatch }
       : instance;
 
-  const getCanvasLogicalCoords = (e: MouseEvent): { x: number; y: number } => {
+  const getCanvasLogicalCoords = (
+    e: Pick<PointerEvent, 'clientX' | 'clientY'>,
+  ): { x: number; y: number } => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = NES_SCREEN_WIDTH / rect.width;
     const scaleY = NES_SCREEN_HEIGHT / rect.height;
@@ -921,7 +1165,8 @@ export function createScenePreviewPanel(
     };
   };
 
-  const handleMouseDown = (e: MouseEvent): void => {
+  const handlePointerDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
     const { x, y } = getCanvasLogicalCoords(e);
 
     // Find clicked instance in reverse order (topmost on screen).
@@ -943,6 +1188,8 @@ export function createScenePreviewPanel(
       if (x >= posX && x < posX + w && y >= posY && y < posY + h) {
         dragging = true;
         dragInstanceId = inst.id;
+        activePointerId = e.pointerId;
+        canvas.setPointerCapture(e.pointerId);
         currentSelectedInstanceId = inst.id;
         if (options.onSelectInstance) {
           options.onSelectInstance(inst.id);
@@ -952,20 +1199,29 @@ export function createScenePreviewPanel(
 
         section
           .querySelectorAll('.scene-preview-instance-card')
-          .forEach((c, cIdx) => {
-            c.classList.toggle('is-selected', cIdx === i);
+          .forEach((c) => {
+            const selected =
+              c.getAttribute('data-scene-instance-id') === inst.id;
+            c.classList.toggle('is-selected', selected);
+            c.querySelector(
+              '.scene-preview-instance-focus-target',
+            )?.setAttribute('aria-pressed', String(selected));
           });
 
+        cardByInstanceId.get(inst.id)?.focus({ preventScroll: true });
         renderInspector();
         drawScene();
+        e.preventDefault();
         break;
       }
     }
   };
-  canvas.addEventListener('mousedown', handleMouseDown);
+  canvas.addEventListener('pointerdown', handlePointerDown);
 
-  const handleMouseMove = (e: MouseEvent): void => {
-    if (!dragging || !dragInstanceId) return;
+  const handlePointerMove = (e: PointerEvent): void => {
+    if (!dragging || !dragInstanceId || activePointerId !== e.pointerId) {
+      return;
+    }
     const { x, y } = getCanvasLogicalCoords(e);
     // New render position after drag.
     const newPosX = Math.max(0, Math.min(NES_SCREEN_WIDTH, x - dragOffsetX));
@@ -976,36 +1232,50 @@ export function createScenePreviewPanel(
     const anim = inst
       ? resolveInstanceAnimation(inst, options.animations)
       : null;
-    const originX = anim?.originX ?? 0;
-    const originY = anim?.originY ?? 0;
-
-    // Canonical update: anchorX/Y = newPosX/Y + originX/Y.
-    // Also keep x/y in sync for legacy consumers (they will not be the source
-    // of truth once anchorX/Y are present, but serialization round-trips
-    // expect them to be present).
+    if (inst === undefined) return;
+    const positionPatch = createScenePositionPatch(
+      inst,
+      anim,
+      newPosX,
+      newPosY,
+    );
+    if (positionPatch === null) return;
     pendingDragPatch = {
       instanceId: dragInstanceId,
-      anchorX: newPosX + originX,
-      anchorY: newPosY + originY,
-      x: newPosX,
-      y: newPosY,
+      ...positionPatch,
     };
     drawScene();
+    e.preventDefault();
   };
 
-  const handleMouseUp = (): void => {
-    const patch = pendingDragPatch;
+  const finishPointerDrag = (e: PointerEvent, commit: boolean): void => {
+    if (activePointerId !== e.pointerId) return;
+    const patch = commit ? pendingDragPatch : null;
+    if (canvas.hasPointerCapture(e.pointerId)) {
+      canvas.releasePointerCapture(e.pointerId);
+    }
     dragging = false;
     dragInstanceId = null;
+    activePointerId = null;
     pendingDragPatch = null;
     if (patch !== null) {
       const { instanceId, ...position } = patch;
+      requestSceneFocus(instanceId);
       options.onUpdateInstance(instanceId, position);
     }
   };
 
-  window.addEventListener('mousemove', handleMouseMove);
-  window.addEventListener('mouseup', handleMouseUp);
+  const handlePointerUp = (e: PointerEvent): void => {
+    finishPointerDrag(e, true);
+  };
+  const handlePointerCancel = (e: PointerEvent): void => {
+    finishPointerDrag(e, false);
+    drawScene();
+  };
+
+  canvas.addEventListener('pointermove', handlePointerMove);
+  canvas.addEventListener('pointerup', handlePointerUp);
+  canvas.addEventListener('pointercancel', handlePointerCancel);
 
   scenePreviewDisposers.set(section, () => {
     if (disposed) return;
@@ -1013,9 +1283,10 @@ export function createScenePreviewPanel(
     if (animationFrameHandle !== null) {
       cancelAnimationFrame(animationFrameHandle);
     }
-    canvas.removeEventListener('mousedown', handleMouseDown);
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('mouseup', handleMouseUp);
+    canvas.removeEventListener('pointerdown', handlePointerDown);
+    canvas.removeEventListener('pointermove', handlePointerMove);
+    canvas.removeEventListener('pointerup', handlePointerUp);
+    canvas.removeEventListener('pointercancel', handlePointerCancel);
     scenePreviewDisposers.delete(section);
   });
 

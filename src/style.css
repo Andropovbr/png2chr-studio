@@ -2374,6 +2374,7 @@ input:focus-visible + label {
   border-radius: 0.35rem;
   box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
   cursor: crosshair;
+  touch-action: none;
 }
 
 .scene-preview-canvas-overlay {
@@ -2424,6 +2425,19 @@ input:focus-visible + label {
   background: #141c28;
 }
 
+.scene-preview-instance-focus-target:focus-visible {
+  outline: 3px solid #f8fafc;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--accent);
+}
+
+@media (forced-colors: active) {
+  .scene-preview-instance-focus-target:focus-visible {
+    outline: 3px solid Highlight;
+    box-shadow: none;
+  }
+}
+
 .scene-preview-card-header {
   display: flex;
   align-items: center;
@@ -2432,8 +2446,15 @@ input:focus-visible + label {
 }
 
 .scene-preview-card-title {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-size: 0.9rem;
+  font-weight: 700;
+  text-align: left;
   color: var(--fg);
+  cursor: pointer;
 }
 
 .scene-preview-card-actions {
@@ -2527,6 +2548,7 @@ input:focus-visible + label {
 
 .scene-preview-inspector-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.25rem;
 }

@@ -90,6 +90,7 @@ import {
 } from './core/project';
 import {
   generateInstanceId,
+  reorderSceneInstances,
   resolveInstanceAnimation,
 } from './core/scene-preview';
 import {
@@ -1742,6 +1743,24 @@ function duplicateSceneInstance(instanceId: string): void {
   render();
 }
 
+function reorderSceneInstance(
+  instanceId: string,
+  direction: 'forward' | 'backward',
+): void {
+  const currentInstances = project.scenePreview?.instances ?? [];
+  const reordered = reorderSceneInstances(
+    currentInstances,
+    instanceId,
+    direction,
+  );
+  if (reordered === currentInstances) return;
+  updateProject({
+    ...project,
+    scenePreview: { instances: reordered },
+  });
+  render();
+}
+
 function updateSceneInstance(
   instanceId: string,
   patch: Partial<ScenePreviewInstance>,
@@ -2831,6 +2850,7 @@ function renderAnimationWorkspace(): void {
     onAddSceneInstance: addSceneInstance,
     onRemoveSceneInstance: removeSceneInstance,
     onDuplicateSceneInstance: duplicateSceneInstance,
+    onReorderSceneInstance: reorderSceneInstance,
     onUpdateSceneInstance: updateSceneInstance,
     onSetTilePixel: setTilePixel,
     onResetTileOverride: resetTile,

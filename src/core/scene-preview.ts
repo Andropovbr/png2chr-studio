@@ -159,6 +159,27 @@ export function computeInstanceProjection(
   return { posX, posY, flipH, flipV };
 }
 
+export function reorderSceneInstances(
+  instances: readonly ScenePreviewInstance[],
+  instanceId: string,
+  direction: 'forward' | 'backward',
+): readonly ScenePreviewInstance[] {
+  const currentIndex = instances.findIndex(
+    (instance) => instance.id === instanceId,
+  );
+  const targetIndex =
+    direction === 'forward' ? currentIndex + 1 : currentIndex - 1;
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= instances.length) {
+    return instances;
+  }
+
+  const reordered = [...instances];
+  const [instance] = reordered.splice(currentIndex, 1);
+  if (instance === undefined) return instances;
+  reordered.splice(targetIndex, 0, instance);
+  return reordered;
+}
+
 /**
  * Resolves the AnimationItemSetting for a given scene instance.
  * Matches on entity (case-insensitive) and animation name.

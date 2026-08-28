@@ -9,11 +9,77 @@ import {
   getAvailableEntities,
   initializePlaybackStates,
   resetPlaybackStates,
+  reorderSceneInstances,
   resolveInstanceAnimation,
   resolveInstanceFrames,
   resolveScenePaletteIds,
   type ScenePreviewInstance,
 } from './scene-preview';
+
+describe('reorderSceneInstances', () => {
+  const instances: readonly ScenePreviewInstance[] = [
+    {
+      id: 'back',
+      animationId: 'idle',
+      entityId: 'hero',
+      animationName: 'idle',
+      x: 0,
+      y: 0,
+      visible: true,
+    },
+    {
+      id: 'middle',
+      animationId: 'walk',
+      entityId: 'hero',
+      animationName: 'walk',
+      x: 0,
+      y: 0,
+      visible: true,
+    },
+    {
+      id: 'front',
+      animationId: 'attack',
+      entityId: 'hero',
+      animationName: 'attack',
+      x: 0,
+      y: 0,
+      visible: true,
+    },
+  ];
+
+  it('moves instances within canonical render order without changing identity', () => {
+    const movedForward = reorderSceneInstances(instances, 'middle', 'forward');
+    expect(movedForward.map((instance) => instance.id)).toEqual([
+      'back',
+      'front',
+      'middle',
+    ]);
+    expect(movedForward[2]).toBe(instances[1]);
+
+    const movedBackward = reorderSceneInstances(
+      movedForward,
+      'middle',
+      'backward',
+    );
+    expect(movedBackward.map((instance) => instance.id)).toEqual([
+      'back',
+      'middle',
+      'front',
+    ]);
+  });
+
+  it('returns original order at boundaries or for unknown identities', () => {
+    expect(reorderSceneInstances(instances, 'front', 'forward')).toBe(
+      instances,
+    );
+    expect(reorderSceneInstances(instances, 'back', 'backward')).toBe(
+      instances,
+    );
+    expect(reorderSceneInstances(instances, 'missing', 'forward')).toBe(
+      instances,
+    );
+  });
+});
 
 function createMockAnimation(
   id: string,

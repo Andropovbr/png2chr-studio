@@ -656,7 +656,17 @@ const en = {
   scenePreviewNoSelectedInstance:
     'Select an instance from the list or canvas to inspect and edit its properties.',
   scenePreviewDuplicate: 'Duplicate Instance',
+  scenePreviewMoveBackward: 'Move Backward',
+  scenePreviewMoveForward: 'Move Forward',
   scenePreviewInstanceName: 'Instance Name',
+  scenePreviewKeyboardHint:
+    'Tab to an instance. Arrow keys move it by one pixel. Delete removes it. Control plus Up or Down changes its layer order.',
+  scenePreviewInstanceAriaLabel:
+    '{name}, X {x}, Y {y}, layer {position} of {total}',
+  scenePreviewVisibilityAriaLabel: 'Toggle visibility for {name}',
+  scenePreviewRemoveAriaLabel: 'Remove {name}',
+  scenePreviewMovedAnnouncement: '{name} moved to X {x}, Y {y}',
+  scenePreviewOrderAnnouncement: '{name} layer order changed',
   scenePreviewPaletteStatus: 'Assigned Palette',
   scenePreviewStats:
     '{entities} entities · {instances} instances (NES 256×240)',
@@ -1718,7 +1728,17 @@ const ptBr = {
   scenePreviewNoSelectedInstance:
     'Selecione uma instância na lista ou na tela para inspecionar e editar suas propriedades.',
   scenePreviewDuplicate: 'Duplicar Instância',
+  scenePreviewMoveBackward: 'Mover para Trás',
+  scenePreviewMoveForward: 'Mover para Frente',
   scenePreviewInstanceName: 'Nome da Instância',
+  scenePreviewKeyboardHint:
+    'Use Tab para chegar a uma instância. As setas movem um pixel. Delete remove. Control mais seta para cima ou para baixo altera a ordem da camada.',
+  scenePreviewInstanceAriaLabel:
+    '{name}, X {x}, Y {y}, camada {position} de {total}',
+  scenePreviewVisibilityAriaLabel: 'Alternar visibilidade de {name}',
+  scenePreviewRemoveAriaLabel: 'Remover {name}',
+  scenePreviewMovedAnnouncement: '{name} movida para X {x}, Y {y}',
+  scenePreviewOrderAnnouncement: 'Ordem da camada de {name} alterada',
   scenePreviewPaletteStatus: 'Paleta Atribuída',
   scenePreviewStats:
     '{entities} entidades · {instances} instâncias (NES 256×240)',
