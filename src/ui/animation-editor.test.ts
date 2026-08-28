@@ -828,6 +828,7 @@ describe('Animation Editor Split Architecture', () => {
         instances: [
           {
             id: 'inst-1',
+            animationId: 'anim-1',
             entityId: 'hero',
             animationName: 'idle',
             x: 100,
@@ -837,6 +838,7 @@ describe('Animation Editor Split Architecture', () => {
           },
           {
             id: 'inst-2',
+            animationId: 'anim-2',
             entityId: 'hero',
             animationName: 'walk',
             x: 150,
@@ -893,6 +895,37 @@ describe('Animation Editor Split Architecture', () => {
     );
     duplicateBtn?.click();
     expect(onDuplicateSceneInstance).toHaveBeenCalledWith('inst-2');
+  });
+
+  it('shows invalid animation warnings for a dangling scene reference', () => {
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        selectedSceneInstanceId: 'dangling-instance',
+        scenePreview: {
+          instances: [
+            {
+              id: 'dangling-instance',
+              animationId: 'deleted-animation',
+              entityId: 'hero',
+              animationName: 'deleted',
+              x: 0,
+              y: 0,
+              visible: true,
+            },
+          ],
+        },
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const warnings = editor.querySelectorAll(
+      '.scene-preview-invalid-animation-warning',
+    );
+
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0]?.textContent).toContain('Invalid animation "deleted"');
   });
 
   it('stores animation and frame palette selections by logical palette ID', () => {
@@ -1094,6 +1127,7 @@ describe('Animation Editor Split Architecture', () => {
     }));
     const instances = animations.map((animation, index) => ({
       id: `scene_inst_${String(index)}`,
+      animationId: animation.id,
       entityId: animation.entity ?? '',
       animationName: animation.name,
       x: index * 8,
@@ -1165,6 +1199,7 @@ describe('Animation Editor Split Architecture', () => {
           instances: [
             {
               id: 'scene-inst-override',
+              animationId: animation.id,
               entityId: 'hero',
               animationName: 'idle',
               x: 0,

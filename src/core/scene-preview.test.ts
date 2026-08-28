@@ -4,6 +4,7 @@ import {
   advanceScenePlayback,
   createSceneInstance,
   getAnimationsForEntity,
+  getInstanceAnimationReferenceStatus,
   getAvailableEntities,
   initializePlaybackStates,
   resetPlaybackStates,
@@ -100,6 +101,7 @@ describe('Scene Preview Domain Logic', () => {
 
   it('creates an instance with default idle or first animation', () => {
     const instance = createSceneInstance('Soldier', allAnimations);
+    expect(instance.animationId).toBe('a1');
     expect(instance.entityId).toBe('Soldier');
     expect(instance.animationName).toBe('idle');
     expect(instance.visible).toBe(true);
@@ -126,11 +128,55 @@ describe('Scene Preview Domain Logic', () => {
     expect(bat2.x).toBe(150);
   });
 
-  it('resolves animation for an instance, with graceful fallback if animation not found', () => {
+  it('does not fall back when the canonical animation ID is dangling', () => {
     const instance: ScenePreviewInstance = {
       id: 'i1',
+      animationId: 'missing-animation',
       entityId: 'Soldier',
       animationName: 'unknown_anim',
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    const resolved = resolveInstanceAnimation(instance, allAnimations);
+    expect(resolved).toBeNull();
+    expect(getInstanceAnimationReferenceStatus(instance, allAnimations)).toBe(
+      'dangling',
+    );
+  });
+
+  it('keeps an unresolved legacy reference unresolved despite matching aliases', () => {
+    const instance: ScenePreviewInstance = {
+      id: 'legacy-unresolved',
+      animationId: '',
+      entityId: 'Soldier',
+      animationName: 'idle',
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+
+    expect(resolveInstanceAnimation(instance, allAnimations)).toBeNull();
+    expect(getInstanceAnimationReferenceStatus(instance, allAnimations)).toBe(
+      'unresolved',
+    );
+  });
+
+  it('does not choose the first animation when canonical IDs are duplicated', () => {
+    const instance = createSceneInstance('Soldier', allAnimations);
+    const duplicate = { ...soldierWalk, id: instance.animationId };
+
+    expect(
+      resolveInstanceAnimation(instance, [...allAnimations, duplicate]),
+    ).toBeNull();
+  });
+
+  it('returns null if entity does not exist in animations list', () => {
+    const instance: ScenePreviewInstance = {
+      id: 'i1',
+      animationId: 'a1',
+      entityId: 'DeletedEntity',
+      animationName: 'idle',
       x: 0,
       y: 0,
       visible: true,
@@ -139,22 +185,10 @@ describe('Scene Preview Domain Logic', () => {
     expect(resolved).toBe(soldierIdle);
   });
 
-  it('returns null if entity does not exist in animations list', () => {
-    const instance: ScenePreviewInstance = {
-      id: 'i1',
-      entityId: 'DeletedEntity',
-      animationName: 'idle',
-      x: 0,
-      y: 0,
-      visible: true,
-    };
-    const resolved = resolveInstanceAnimation(instance, allAnimations);
-    expect(resolved).toBeNull();
-  });
-
   it('advances playback for multiple instances independently based on duration', () => {
     const inst1: ScenePreviewInstance = {
       id: 'i1',
+      animationId: 'a2',
       entityId: 'Soldier',
       animationName: 'walk', // 3 frames, 5 ticks each
       x: 10,
@@ -163,6 +197,7 @@ describe('Scene Preview Domain Logic', () => {
     };
     const inst2: ScenePreviewInstance = {
       id: 'i2',
+      animationId: 'a3',
       entityId: 'Bat',
       animationName: 'fly', // 3 frames, 8 ticks each
       x: 20,
@@ -196,6 +231,7 @@ describe('Scene Preview Domain Logic', () => {
   it('resets playback states returning all instances to frame 0', () => {
     const inst1: ScenePreviewInstance = {
       id: 'i1',
+      animationId: 'a2',
       entityId: 'Soldier',
       animationName: 'walk',
       x: 10,
@@ -215,6 +251,7 @@ describe('Scene Preview Domain Logic', () => {
   it('resolves frame information for rendering', () => {
     const inst1: ScenePreviewInstance = {
       id: 'i1',
+      animationId: 'a2',
       entityId: 'Soldier',
       animationName: 'walk',
       x: 10,
@@ -240,6 +277,7 @@ describe('Scene Preview Domain Logic', () => {
     const instances: readonly ScenePreviewInstance[] = [
       {
         id: 'visible-a',
+        animationId: 'a2',
         entityId: 'Soldier',
         animationName: 'walk',
         x: 0,
@@ -248,6 +286,7 @@ describe('Scene Preview Domain Logic', () => {
       },
       {
         id: 'visible-b',
+        animationId: 'a2',
         entityId: 'Soldier',
         animationName: 'walk',
         x: 16,
@@ -256,6 +295,7 @@ describe('Scene Preview Domain Logic', () => {
       },
       {
         id: 'hidden',
+        animationId: 'a2',
         entityId: 'Soldier',
         animationName: 'walk',
         x: 32,
@@ -285,6 +325,7 @@ describe('Scene Preview Domain Logic', () => {
     const sceneA: readonly ScenePreviewInstance[] = [
       {
         id: 'scene-a-instance',
+        animationId: 'a1',
         entityId: 'Soldier',
         animationName: 'idle',
         x: 0,
@@ -295,6 +336,7 @@ describe('Scene Preview Domain Logic', () => {
     const sceneB: readonly ScenePreviewInstance[] = [
       {
         id: 'scene-b-instance',
+        animationId: 'a2',
         entityId: 'Enemy',
         animationName: 'walk',
         x: 0,
@@ -329,6 +371,7 @@ describe('Scene Preview Domain Logic', () => {
     const instances: readonly ScenePreviewInstance[] = [
       {
         id: 'no-source',
+        animationId: 'a1',
         entityId: 'Soldier',
         animationName: 'idle',
         x: 0,
@@ -347,6 +390,7 @@ describe('Scene Preview Domain Logic', () => {
   it('handles hidden instances without advancing their timers', () => {
     const inst1: ScenePreviewInstance = {
       id: 'i1',
+      animationId: 'a2',
       entityId: 'Soldier',
       animationName: 'walk',
       x: 10,
@@ -373,6 +417,7 @@ describe('Scene Preview Domain Logic', () => {
     // Change animation to walk
     instance = {
       ...instance,
+      animationId: 'a2',
       animationName: 'walk',
     };
     const resolved = resolveInstanceAnimation(instance, allAnimations);

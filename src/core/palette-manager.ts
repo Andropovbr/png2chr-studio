@@ -819,6 +819,7 @@ export interface BackgroundMapPaletteUsageTarget {
 export interface SceneInstancePaletteUsageTarget {
   readonly id: string;
   readonly name?: string;
+  readonly animationId?: string;
   readonly entityId?: string;
   readonly animationName?: string;
   readonly paletteId?: string | null;
@@ -1096,6 +1097,7 @@ export interface AnalyzePaletteDiagnosticsOptions {
     readonly instances?: readonly {
       readonly id: string;
       readonly name?: string;
+      readonly animationId?: string;
       readonly entityId?: string;
       readonly animationName?: string;
       readonly paletteId?: string | null;
@@ -1105,6 +1107,7 @@ export interface AnalyzePaletteDiagnosticsOptions {
   readonly sceneInstances?: readonly {
     readonly id: string;
     readonly name?: string;
+    readonly animationId?: string;
     readonly entityId?: string;
     readonly animationName?: string;
     readonly paletteId?: string | null;
@@ -1117,6 +1120,7 @@ export interface AnalyzePaletteDiagnosticsOptions {
     readonly instances: readonly {
       readonly id: string;
       readonly name?: string;
+      readonly animationId?: string;
       readonly entityId?: string;
       readonly animationName?: string;
       readonly paletteId?: string | null;
@@ -1139,6 +1143,7 @@ export interface AnalyzePaletteDiagnosticsOptions {
 interface PaletteDiagnosticSceneInstance {
   readonly id: string;
   readonly name?: string;
+  readonly animationId?: string;
   readonly entityId?: string;
   readonly animationName?: string;
   readonly paletteId?: string | null;
@@ -1344,6 +1349,7 @@ export function analyzeProjectPaletteDiagnostics(
   let sceneInstances: readonly {
     readonly id: string;
     readonly name?: string;
+    readonly animationId?: string;
     readonly entityId?: string;
     readonly animationName?: string;
     readonly paletteId?: string | null;
@@ -1640,18 +1646,18 @@ export function analyzeProjectPaletteDiagnostics(
         scenePalettes.add(inst.paletteId.trim());
         continue;
       }
-      if (!inst.animationName) continue;
-
-      const entityAnimations = animations.filter(
-        (animation) =>
-          !inst.entityId ||
-          (animation.entity ?? 'entity').toLowerCase() ===
-            inst.entityId.toLowerCase(),
-      );
-      const matchedAnim =
-        entityAnimations.find(
-          (animation) => animation.name === inst.animationName,
-        ) ?? entityAnimations[0];
+      const matches =
+        inst.animationId !== undefined
+          ? animations.filter((animation) => animation.id === inst.animationId)
+          : animations.filter(
+              (animation) =>
+                inst.animationName !== undefined &&
+                animation.name === inst.animationName &&
+                (!inst.entityId ||
+                  (animation.entity ?? 'entity').toLowerCase() ===
+                    inst.entityId.toLowerCase()),
+            );
+      const matchedAnim = matches.length === 1 ? matches[0] : undefined;
       if (!matchedAnim) continue;
 
       const frameIndex =

@@ -88,7 +88,10 @@ import {
   type ScenePreviewInstance,
   type StudioProject,
 } from './core/project';
-import { generateInstanceId } from './core/scene-preview';
+import {
+  generateInstanceId,
+  resolveInstanceAnimation,
+} from './core/scene-preview';
 import {
   QUANTIZATION_MODES,
   loadQuantizationSettings,
@@ -1556,6 +1559,9 @@ function updateAnimation(
   animId: string,
   patch: Partial<AnimationItemSetting>,
 ): void {
+  const currentAnimation = project.animation.animations.find(
+    (animation) => animation.id === animId,
+  );
   updateProject({
     ...project,
     animation: {
@@ -1642,6 +1648,23 @@ function updateAnimation(
         return updated;
       }),
     },
+    scenePreview:
+      currentAnimation === undefined ||
+      (patch.name === undefined && patch.entity === undefined)
+        ? project.scenePreview
+        : {
+            instances: (project.scenePreview?.instances ?? []).map(
+              (instance) =>
+                instance.animationId === animId
+                  ? {
+                      ...instance,
+                      entityId:
+                        patch.entity ?? currentAnimation.entity ?? 'entity',
+                      animationName: patch.name ?? currentAnimation.name,
+                    }
+                  : instance,
+            ),
+          },
   });
   setDerivedStatus({ ...derivedStatus, error: null });
   render();
@@ -2396,15 +2419,14 @@ function createPaletteWorkspaceUsageContext(
 ): PaletteUsageSearchContext {
   const sceneInstances = (project.scenePreview?.instances ?? []).map(
     (instance) => {
-      const animation = project.animation.animations.find(
-        (candidate) =>
-          (candidate.entity ?? 'entity').toLowerCase() ===
-            instance.entityId.toLowerCase() &&
-          candidate.name === instance.animationName,
+      const animation = resolveInstanceAnimation(
+        instance,
+        project.animation.animations,
       );
       return {
         id: instance.id,
         name: instance.name,
+        animationId: instance.animationId,
         entityId: instance.entityId,
         animationName: instance.animationName,
         paletteId: animation?.paletteId ?? null,

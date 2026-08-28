@@ -2,7 +2,11 @@ import type { AnimationItemSetting } from '../ui/types';
 
 export interface ScenePreviewInstance {
   readonly id: string;
+  /** Canonical animation identity. Empty marks an unresolved reference. */
+  readonly animationId: string;
+  /** Backward-compatible display alias. */
   readonly entityId: string;
+  /** Backward-compatible display alias. */
   readonly animationName: string;
   readonly x: number;
   readonly y: number;
@@ -27,6 +31,9 @@ export interface ResolvedInstanceFrame {
   readonly sourceFrameIndex: number;
   readonly frameDuration: number;
 }
+
+export type InstanceAnimationReferenceStatus =
+  'resolved' | 'unresolved' | 'dangling';
 
 export const NES_SCREEN_WIDTH = 256;
 export const NES_SCREEN_HEIGHT = 240;
@@ -91,6 +98,7 @@ export function createSceneInstance(
 
   return {
     id: generateInstanceId(),
+    animationId: selectedAnim?.id ?? '',
     entityId,
     animationName: selectedAnim?.name ?? 'anim_1',
     x: Math.max(0, Math.min(NES_SCREEN_WIDTH, defaultX)),
@@ -104,12 +112,21 @@ export function resolveInstanceAnimation(
   instance: ScenePreviewInstance,
   animations: readonly AnimationItemSetting[],
 ): AnimationItemSetting | null {
-  const entityAnims = getAnimationsForEntity(animations, instance.entityId);
-  if (entityAnims.length === 0) {
-    return null;
-  }
-  const match = entityAnims.find((a) => a.name === instance.animationName);
-  return match ?? entityAnims[0] ?? null;
+  if (instance.animationId === '') return null;
+  const matches = animations.filter(
+    (animation) => animation.id === instance.animationId,
+  );
+  return matches.length === 1 ? (matches[0] ?? null) : null;
+}
+
+export function getInstanceAnimationReferenceStatus(
+  instance: ScenePreviewInstance,
+  animations: readonly AnimationItemSetting[],
+): InstanceAnimationReferenceStatus {
+  if (instance.animationId === '') return 'unresolved';
+  return resolveInstanceAnimation(instance, animations) === null
+    ? 'dangling'
+    : 'resolved';
 }
 
 export function initializePlaybackStates(
