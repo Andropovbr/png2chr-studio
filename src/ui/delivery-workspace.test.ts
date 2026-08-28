@@ -213,6 +213,24 @@ function createSampleAnimationModel(): AnimationProjectModel {
   });
 }
 
+function createOamPressureAnimationModel(): AnimationProjectModel {
+  const base = createSampleAnimationModel();
+  const sprite = base.animations[0]?.frames[0]?.sprites[0];
+  if (sprite === undefined) {
+    throw new Error('Expected sample animation to contain one sprite.');
+  }
+  return {
+    ...base,
+    animations: base.animations.map((animation) => ({
+      ...animation,
+      frames: animation.frames.map((frame) => ({
+        ...frame,
+        sprites: Array.from({ length: 33 }, () => sprite),
+      })),
+    })),
+  };
+}
+
 function createOptions(
   overrides?: Partial<DeliveryWorkspaceOptions>,
 ): DeliveryWorkspaceOptions {
@@ -248,6 +266,24 @@ describe('Delivery Workspace', () => {
     (globalThis as unknown as { document: unknown }).document = {
       createElement: (tagName: string) => new MockElement(tagName),
     };
+  });
+
+  it('renders one OAM pressure diagnostic per affected animation frame', () => {
+    const el = createDeliveryWorkspace(
+      createOptions({
+        mode: 'animation',
+        animationModel: createOamPressureAnimationModel(),
+        paletteAnimations: [],
+      }),
+    );
+    const diagnostics = (el as unknown as MockElement).querySelectorAll(
+      '.delivery-diag-item',
+    );
+
+    expect(
+      diagnostics.filter((item) => item.textContent.includes('33')).length,
+    ).toBe(1);
+    expect(diagnostics[0]?.classList.contains('is-warning')).toBe(true);
   });
 
   it('renders readiness and artifacts for Tileset mode with exact byte downloads', () => {
