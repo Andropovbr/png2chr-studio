@@ -635,6 +635,7 @@ describe('StudioProject core infrastructure', () => {
           instances: [
             {
               id: 'inst-1',
+              animationId: 'anim-walk',
               entityId: 'Soldier',
               animationName: 'walk_down',
               x: 120,
@@ -644,6 +645,7 @@ describe('StudioProject core infrastructure', () => {
             },
             {
               id: 'inst-2',
+              animationId: 'anim-fly',
               entityId: 'Bat',
               animationName: 'fly',
               x: 180,
@@ -662,6 +664,7 @@ describe('StudioProject core infrastructure', () => {
         expect(deserialized.project.scenePreview?.instances).toHaveLength(2);
         expect(deserialized.project.scenePreview?.instances[0]).toEqual({
           id: 'inst-1',
+          animationId: 'anim-walk',
           entityId: 'Soldier',
           animationName: 'walk_down',
           x: 120,
@@ -671,6 +674,7 @@ describe('StudioProject core infrastructure', () => {
         });
         expect(deserialized.project.scenePreview?.instances[1]).toEqual({
           id: 'inst-2',
+          animationId: 'anim-fly',
           entityId: 'Bat',
           animationName: 'fly',
           x: 180,
@@ -680,6 +684,114 @@ describe('StudioProject core infrastructure', () => {
         });
       }
     });
+
+    it('migrates one exact legacy scene animation match to its stable ID', () => {
+      const legacy = createDefaultProject('animation');
+      const json = JSON.stringify({
+        ...legacy,
+        scenePreview: {
+          instances: [
+            {
+              id: 'legacy-exact',
+              entityId: 'entity',
+              animationName: 'idle',
+              x: 0,
+              y: 0,
+              visible: true,
+            },
+          ],
+        },
+      });
+
+      const result = deserializeProject(json);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.project.scenePreview?.instances[0]?.animationId).toBe(
+          'anim-default',
+        );
+      }
+    });
+
+    it('refreshes legacy aliases from a canonical animation ID', () => {
+      const project = createDefaultProject('animation');
+      const result = deserializeProject(
+        JSON.stringify({
+          ...project,
+          scenePreview: {
+            instances: [
+              {
+                id: 'renamed-instance',
+                animationId: 'anim-default',
+                entityId: 'old-entity',
+                animationName: 'old-name',
+                x: 0,
+                y: 0,
+                visible: true,
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.project.scenePreview?.instances[0]).toMatchObject({
+          animationId: 'anim-default',
+          entityId: 'entity',
+          animationName: 'idle',
+        });
+      }
+    });
+
+    it.each(['zero', 'multiple'])(
+      'marks a legacy scene reference unresolved for %s matches',
+      (matchCount) => {
+        const legacy = createDefaultProject('animation');
+        if (legacy.animation === undefined) {
+          throw new Error('Expected animation project settings.');
+        }
+        const original = legacy.animation.animations[0];
+        if (original === undefined) {
+          throw new Error('Expected default animation.');
+        }
+        const animations =
+          matchCount === 'zero'
+            ? legacy.animation.animations.map((animation) => ({
+                ...animation,
+                name: 'other',
+              }))
+            : [
+                ...legacy.animation.animations,
+                { ...original, id: 'anim-duplicate' },
+              ];
+        const result = deserializeProject(
+          JSON.stringify({
+            ...legacy,
+            animation: { ...legacy.animation, animations },
+            scenePreview: {
+              instances: [
+                {
+                  id: `legacy-${matchCount}`,
+                  entityId: 'entity',
+                  animationName: 'idle',
+                  x: 0,
+                  y: 0,
+                  visible: true,
+                },
+              ],
+            },
+          }),
+        );
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.project.scenePreview?.instances[0]?.animationId).toBe(
+            '',
+          );
+        }
+      },
+    );
 
     it('round-trips animation item pixelOverrides properly', () => {
       const project: StudioProject = {

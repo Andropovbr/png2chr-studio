@@ -668,6 +668,8 @@ const en = {
   chrTileInspectorPaletteFallback: 'Deterministic preview fallback',
   scenePreviewInvalidEntityWarning:
     'Entity "{name}" was not found in project animations.',
+  scenePreviewInvalidAnimationWarning:
+    'Invalid animation "{name}". Select a valid animation for this instance.',
   paletteManagerTitle: 'Project Palettes',
   paletteManagerHint:
     'Manage a logical palette library and assign definitions to independent Background and Sprite hardware banks.',
@@ -1728,6 +1730,8 @@ const ptBr = {
   chrTileInspectorPaletteFallback: 'Fallback determinístico de preview',
   scenePreviewInvalidEntityWarning:
     'A entidade "{name}" não foi encontrada nas animações do projeto.',
+  scenePreviewInvalidAnimationWarning:
+    'Animação inválida "{name}". Selecione uma animação válida para esta instância.',
   paletteManagerTitle: 'Paletas do Projeto',
   paletteManagerHint:
     'Gerencie uma biblioteca lógica e atribua definições aos bancos de hardware independentes de Background e Sprite.',

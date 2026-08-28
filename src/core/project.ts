@@ -774,7 +774,10 @@ export function deserializeProject(
     };
   }
 
-  const scenePreview = parseScenePreview(raw.scenePreview);
+  const scenePreview = parseScenePreview(
+    raw.scenePreview,
+    animation?.animations ?? [],
+  );
   const chrRegions = parseChrRegions(raw.chrRegions);
   const backgrounds = parseBackgroundSettings(raw.backgrounds);
 
@@ -989,6 +992,7 @@ function parseTilePixelOverrides(
 
 function parseScenePreview(
   value: unknown,
+  animations: readonly ProjectAnimationItemConfig[],
 ): ProjectScenePreviewConfig | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const raw = value as Record<string, unknown>;
@@ -1013,6 +1017,24 @@ function parseScenePreview(
       rawInst.animationName.trim() !== ''
         ? rawInst.animationName.trim()
         : 'idle';
+    const persistedAnimationId =
+      typeof rawInst.animationId === 'string'
+        ? rawInst.animationId.trim()
+        : undefined;
+    let animationId = persistedAnimationId;
+    if (animationId === undefined) {
+      const matches = animations.filter(
+        (animation) =>
+          (animation.entity ?? 'entity').toLowerCase() ===
+            entityId.toLowerCase() && animation.name === animationName,
+      );
+      animationId = matches.length === 1 ? (matches[0]?.id ?? '') : '';
+    }
+    const idMatches =
+      animationId === ''
+        ? []
+        : animations.filter((animation) => animation.id === animationId);
+    const resolvedAnimation = idMatches.length === 1 ? idMatches[0] : undefined;
     const x =
       typeof rawInst.x === 'number' && Number.isFinite(rawInst.x)
         ? rawInst.x
@@ -1029,8 +1051,9 @@ function parseScenePreview(
         : undefined;
     instances.push({
       id,
-      entityId,
-      animationName,
+      animationId,
+      entityId: resolvedAnimation?.entity ?? entityId,
+      animationName: resolvedAnimation?.name ?? animationName,
       x,
       y,
       visible,

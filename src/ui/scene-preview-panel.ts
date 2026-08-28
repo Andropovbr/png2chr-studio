@@ -1,6 +1,7 @@
 import {
   advanceScenePlayback,
   createSceneInstance,
+  getInstanceAnimationReferenceStatus,
   getAnimationsForEntity,
   getAvailableEntities,
   initializePlaybackStates,
@@ -312,6 +313,10 @@ export function createScenePreviewPanel(
       });
 
       const instAnim = resolveInstanceAnimation(inst, options.animations);
+      const animationStatus = getInstanceAnimationReferenceStatus(
+        inst,
+        options.animations,
+      );
       const currentFrameIndex =
         playbackStates.get(inst.id)?.currentFrameIndex ?? 0;
       const effectivePaletteId =
@@ -337,6 +342,16 @@ export function createScenePreviewPanel(
       cardActions.append(btnVisible, btnRemove);
       cardHeader.append(cardTitle, cardActions);
       card.append(cardHeader);
+
+      if (animationStatus !== 'resolved') {
+        const warning = document.createElement('p');
+        warning.className = 'scene-preview-invalid-animation-warning';
+        warning.setAttribute('role', 'alert');
+        warning.textContent = t('scenePreviewInvalidAnimationWarning', {
+          name: inst.animationName,
+        });
+        card.append(warning);
+      }
 
       card.addEventListener('click', () => {
         currentSelectedInstanceId = inst.id;
@@ -448,6 +463,7 @@ export function createScenePreviewPanel(
         entityAnims.find((a) => a.name.toLowerCase().includes('idle')) ??
         entityAnims[0];
       options.onUpdateInstance(selectedInst.id, {
+        animationId: defaultAnim?.id ?? '',
         entityId: newEntity,
         animationName: defaultAnim?.name ?? 'idle',
       });
@@ -464,27 +480,47 @@ export function createScenePreviewPanel(
       options.animations,
       selectedInst.entityId,
     );
-    if (entityAnims.length === 0) {
+    const referenceStatus = getInstanceAnimationReferenceStatus(
+      selectedInst,
+      options.animations,
+    );
+    if (referenceStatus !== 'resolved') {
       const opt = document.createElement('option');
-      opt.value = selectedInst.animationName;
+      opt.value = '';
       opt.textContent = selectedInst.animationName;
+      opt.selected = true;
       animSelect.append(opt);
-      animSelect.disabled = true;
-    } else {
-      entityAnims.forEach((a) => {
-        const opt = document.createElement('option');
-        opt.value = a.name;
-        opt.textContent = a.name;
-        opt.selected = a.name === selectedInst.animationName;
-        animSelect.append(opt);
-      });
     }
+    entityAnims.forEach((a) => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = a.name;
+      opt.selected = a.id === selectedInst.animationId;
+      animSelect.append(opt);
+    });
+    animSelect.disabled = entityAnims.length === 0;
     animSelect.addEventListener('change', () => {
+      const selected = options.animations.find(
+        (animation) => animation.id === animSelect.value,
+      );
+      if (selected === undefined) return;
       options.onUpdateInstance(selectedInst.id, {
-        animationName: animSelect.value,
+        animationId: selected.id,
+        entityId: selected.entity ?? 'entity',
+        animationName: selected.name,
       });
     });
     animLabel.append(animText, animSelect);
+
+    if (referenceStatus !== 'resolved') {
+      const warning = document.createElement('p');
+      warning.className = 'scene-preview-invalid-animation-warning';
+      warning.setAttribute('role', 'alert');
+      warning.textContent = t('scenePreviewInvalidAnimationWarning', {
+        name: selectedInst.animationName,
+      });
+      inspectorCard.append(warning);
+    }
 
     // Coordinates X & Y
     const coordRow = document.createElement('div');
