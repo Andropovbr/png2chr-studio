@@ -1,8 +1,11 @@
 # Arquitetura e Especificação: Palette Manager (Milestone 9)
 
-**Data:** 2026-08-26  
-**Milestone:** 9. Palette Manager (Milestone #10)  
-**Status:** Especificação Aprovada & Roadmap Definido  
+**Data:** 2026-08-27
+
+**Milestone:** 9. Palette Manager (Milestone #10)
+
+**Status:** Implementado; quality pass end-to-end concluído na Issue #128
+
 **Autor:** Antigravity (Pair Programming AI)
 
 ---
@@ -254,9 +257,10 @@ Seguindo o invariante fundamental do Studio ($Logical \neq Physical$):
 2. **Duplicar Paleta (`duplicatePaletteDefinition`):** Clona cores com novo ID e sufixo `(Copy)`.
 3. **Renomear Paleta (`updatePaletteName`):** Atualiza nome descritivo sem afetar referências.
 4. **Editar Cores (`updatePaletteColor`):** Modifica uma das cores via diálogo com as 64 cores mestre do NES.
-5. **Excluir Paleta (`deletePalette`):**
+5. **Excluir Paleta (`deleteProjectPalette`):**
    - Executa busca determinística de referências (`findPaletteUsageReferences`).
-   - Se houver usos ativos em animações, frames, mapas ou slots, solicita confirmação e executa limpeza segura ou reatribuição para fallback.
+   - Se houver usos ativos em animações, frames, mapas, cenas ou slots, lista os consumers e bloqueia a ação destrutiva.
+   - Após remover ou reatribuir todas as referências, permite confirmação e exclui somente a definição, sem cascade delete nem criação voluntária de referências dangling.
 6. **Atribuir a Slot (`assignPaletteToSlot`):** Coloca uma paleta da biblioteca em um dos 4 slots de Background ou Sprite.
 7. **Rastreamento de Uso (`findPaletteUsageReferences`):** Mapeia referências em:
    - Slots de Hardware (`activeBackgroundSlots`, `activeSpriteSlots`);
@@ -276,7 +280,7 @@ A persistência do novo modelo dual-bank permanece em `formatVersion: 1`.
 **Por que isso é seguro e retrocompatível:**
 
 1. **Compatibilidade para frente:** Deserializadores mais novos leem arquivos legados que contenham apenas `paletteSet` e realizam migração determinística e transparente.
-2. **Compatibilidade para trás:** Deserializadores mais antigos ignoram chaves JSON adicionais desconhecidas (`universalBackgroundColor`, `activeBackgroundSlots`, `activeSpriteSlots`) e continuam lendo os campos preservados `paletteSet` e `activeSpritePaletteSlots`.
+2. **Compatibilidade para trás:** Deserializadores mais antigos ignoram chaves JSON adicionais desconhecidas (`universalBackgroundColor`, `activeBackgroundSlots`, `activeSpriteSlots`) e continuam lendo os campos preservados `paletteSet` e `activeSpritePaletteSlots`. `serializeProject` projeta esses aliases a partir dos bancos canônicos no momento do save, sem transformá-los em fontes de verdade de runtime.
 3. **Padrão do repositório:** Segue o mesmo padrão estabelecido nas Milestones anteriores para `chrRegions`, `asset` IDs e `backgrounds`.
 
 ### 10.2 Schema `.p2c.json` Canônico
@@ -439,7 +443,7 @@ O filtro **Em Uso** consulta `findPaletteUsageReferences` com slots dos dois ban
   - Filtro ativo na biblioteca (`all | sprite | background | in-use`);
   - Estado aberto/fechado do modal mestre de cores.
 
-As mutações do workspace passam por callbacks do dispatcher e alteram apenas os campos canônicos correspondentes. `paletteSet` e `activeSpritePaletteSlots` continuam sendo aceitos como compatibilidade de leitura/migração, mas não recebem dual writes da UI. Todos os consumers integrados abaixo usam resolvers derivados do estado canônico.
+As mutações do workspace passam por callbacks do dispatcher e alteram apenas os campos canônicos correspondentes. `paletteSet` e `activeSpritePaletteSlots` continuam sendo aceitos como compatibilidade de leitura/migração, mas não recebem dual writes da UI; `serializeProject` os deriva dos bancos canônicos somente na fronteira de persistência. Todos os consumers integrados abaixo usam resolvers derivados do estado canônico.
 
 ### 14.1 Integração dos consumers (#126)
 
@@ -454,7 +458,7 @@ As mutações do workspace passam por callbacks do dispatcher e alteram apenas o
 
 ## 15. Roadmap de Implementação e Fatiamento de Issues
 
-Para transformar esta especificação em incrementos executáveis, a Milestone 9 foi dividida em **8 issues sequenciais**. As Issues #121 a #126 já estão implementadas; as etapas seguintes permanecem no roadmap:
+Para transformar esta especificação em incrementos executáveis, a Milestone 9 foi dividida em issues sequenciais. As Issues #121 a #127 entregaram arquitetura, domínio, persistência, diagnósticos, UI, integração e exportadores; a Issue #128 conclui a suíte end-to-end, a auditoria, o smoke test e a sincronização documental:
 
 ```mermaid
 flowchart TD

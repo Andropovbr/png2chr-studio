@@ -132,11 +132,36 @@ Validate the end-to-end Background Pipeline, 32×30 map composition, 16×16 Attr
 | 11   | Reopen the saved `.p2c` file.                                                                          | Map configuration, placed tiles, subpalette assignments, and active map selection restore with 100% fidelity.                                                                                                                   |
 | 12   | In **Deliver & Export**, export `.nam`, `.atr`, `.map`, `.chr`, `.pal`, cc65 C, and ca65 ASM.          | Production files compile with exact byte lengths (960B `.nam`, 64B `.atr`, 1024B `.map`, 8192B/4096B `.chr`, 16B `.pal`); C header defines `${ID}_BACKGROUND_PATTERN_TABLE`; ASM source emits cleanly structured `.byte` lines. |
 
+## Palette Manager smoke test (Milestone 9)
+
+Validate the end-to-end dual-bank palette lifecycle, universal background color, assignment, editing, previews, diagnostics, and exports:
+
+| Step | Action                                                                                                        | Expected result                                                                                                                                                                                   |
+| :--- | :------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | Navigate to **Project Palettes** via the sidebar.                                                             | Palette Workspace loads with Background Bank (4 slots), Sprite Bank (4 slots), palette library, and usage inspector; no errors.                                                                   |
+| 2    | Click `[+ New Palette]` and create 4 BG palettes and 4 SPR palettes with distinct colors.                     | Library displays all 8 definitions; usage count badges are visible; project marks dirty.                                                                                                          |
+| 3    | Assign 4 palettes to the **Background** bank slots (0..3) using the slot dropdowns.                           | BG bank cards show the assigned palette names and 4-color previews; the universal `$3F00` color appears as color 0 in all BG slots.                                                               |
+| 4    | Assign 4 palettes to the **Sprite** bank slots (0..3) using the slot dropdowns.                               | SPR bank cards show the assigned palette names; color 0 displays with a transparency badge; BG bank is unaffected.                                                                                |
+| 5    | Click the **universal background color** (`$3F00`) swatch and change it to a different NES color.             | All BG slot previews update color 0 immediately; sprite slot previews continue displaying the transparency indicator; the change is reflected in CHR previews.                                    |
+| 6    | Edit a palette definition's color 1 via the master 64-color NES dialog.                                       | The edited palette updates in the library card, in any assigned bank slot, and in any consuming animation or background preview.                                                                  |
+| 7    | Navigate to **Sprite Sheet & Animation** and open an animation's palette selector.                            | The dropdown lists palette definitions by logical name with active SPR slot badges; selecting a palette updates the animation preview immediately.                                                |
+| 8    | Set a per-frame palette override on frame 2 of an animation.                                                  | Frame 2 renders with the override palette; other frames use the animation default; Scene Preview capacity counts distinct simultaneous palettes correctly.                                        |
+| 9    | Navigate to **Background** workspace. Verify BG subpalette painting and preview.                              | The palette tool (P) shows BG slot 0..3 with logical palette names and the universal `$3F00` color; painting a quadrant and inspecting it reflects the correct slot assignment.                   |
+| 10   | Navigate to **CHR Memory** and cycle through the 9 preview modes (grayscale, BG 0..3, SPR 0..3).              | BG modes apply `$3F00` as color 0; SPR modes show color 0 as transparent; the Tile Inspector displays bank, slot, palette name/ID, NES codes, and RGB values for the current mode.                |
+| 11   | Navigate to **Scene Preview** tab and add 5+ sprite instances using 5 different palettes.                     | Scene capacity diagnostic fires with `slot-capacity-exceeded` error listing the distinct palette IDs and the NES limit of 4.                                                                      |
+| 12   | Navigate to **Deliver & Export** and check palette diagnostics.                                               | Palette integrity facts appear (dangling references, unassigned slots, inconsistent universal color, or clean status) derived from canonical project state.                                       |
+| 13   | Download the **Background Palette** (`.pal`), **Sprite Palette** (`.pal`), and **Full PPU Palette** (`.pal`). | BG file is exactly 16 bytes; SPR file is exactly 16 bytes; Full PPU file is exactly 32 bytes; bytes 0, 4, 8, 12 in BG match the universal `$3F00` value.                                          |
+| 14   | Download the cc65 C (`.h`/`.c`) and ca65 ASM (`.inc`/`.s`) palette exports.                                   | C header defines `${ID}_BANK_SIZE 16`, `${ID}_PPU_SIZE 32`, slot index constants, and `extern` array declarations; ASM source emits `.byte` lines with PPU address range comments and `.segment`. |
+| 15   | Attempt to delete a palette that is assigned to a slot and referenced by an animation.                        | Deletion dialog displays the structured usage list (slot references, animation references, frame overrides); the destructive action is unavailable while references exist.                        |
+| 16   | Remove a palette from all slots and animations, then delete it.                                               | Palette is removed from the library; no dangling references remain; diagnostics remain clean.                                                                                                     |
+| 17   | Save the project as `.p2c`, close and reopen it.                                                              | All palette definitions, both bank assignments, universal background color, animation palette IDs, and frame overrides restore with 100% fidelity.                                                |
+
 ## Automated counterpart
 
 Run these checks before or alongside the manual flow:
 
 ```bash
+npm test -- src/core/palette-pipeline-e2e.test.ts src/core/palette-manager.test.ts src/core/palette-diagnostics.test.ts src/core/palette-exporters.test.ts
 npm test -- src/core/background-pipeline-e2e.test.ts src/core/background-exporters.test.ts src/core/background-model.test.ts src/core/chr-background-allocation.test.ts
 npm test
 npm run build
@@ -152,6 +177,8 @@ CHR inspector attributions, per-asset metrics, ownership diagnostics, transparen
 flip-aware deduplication, reimport reconciliation, aligned multi-target exporters,
 Background domain model, Attribute Table 16×16 packing/unpacking, Background CHR allocation with Base CHR and Reservations,
 Background project persistence purity, pure Background exporters (.nam, .atr, .map, .chr, .pal, cc65, ca65),
+dual-bank palette domain model, $3F00 universal background color propagation, palette diagnostics and integrity checking,
+16/32-byte palette binary export, C/ca65 palette table generation, legacy palette migration roundtrip,
 and cross-mode non-regression.
 Browser-level file chooser and download interactions remain manual because the
 repository deliberately has no browser/E2E harness.
