@@ -80,6 +80,61 @@ export interface WorkspaceState {
   readonly chr: ChrWorkspaceState;
 }
 
+export type RelatedResourceNavigation =
+  | {
+      readonly workspace: 'animation';
+      readonly animationId: string;
+      readonly frameIndex: number;
+    }
+  | { readonly workspace: 'palette'; readonly paletteId: string }
+  | {
+      readonly workspace: 'chr';
+      readonly animationId: string;
+      readonly frameIndex: number;
+      readonly entity: string;
+      readonly physicalTileIndex: number | null;
+      readonly assetId: string | null;
+    };
+
+/** Selects an existing related workspace using transient navigation state. */
+export function navigateToRelatedResource(
+  workspace: WorkspaceState,
+  target: RelatedResourceNavigation,
+): WorkspaceState {
+  if (target.workspace === 'animation') {
+    return {
+      ...workspace,
+      activeWorkspace: 'animation',
+      animation: {
+        ...workspace.animation,
+        selectedAnimationId: target.animationId,
+        selectedFrameIndex: target.frameIndex,
+        activeTab: 'frames',
+      },
+    };
+  }
+  if (target.workspace === 'palette') {
+    return {
+      ...workspace,
+      activeWorkspace: 'palette',
+      palette: { ...workspace.palette, selectedPaletteId: target.paletteId },
+    };
+  }
+  return {
+    ...workspace,
+    activeWorkspace: 'chr',
+    chr: {
+      ...workspace.chr,
+      selectedTileIndex: target.physicalTileIndex,
+      selectedAnimationId: target.animationId,
+      selectedFrameIndex: target.frameIndex,
+      selectedEntity: target.entity,
+      highlightedAssetId: target.assetId,
+      highlightScope: 'frame',
+    },
+  };
+}
+
 export interface DerivedStatus {
   /** Async/validation status derived while loading or processing project data. */
   readonly error: DisplayError | null;

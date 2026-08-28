@@ -39,6 +39,8 @@ Active animation selection (`selectedAnimationId`), selected Scene instance (`se
 
 The Scene panel is mounted only while the dedicated `Animation > Scene` tab is active. Its play/pause flag and per-instance frame clocks live in one transient playback session owned by the UI orchestrator. The session survives ordinary UI rerenders and tab switches, resets when the project transient state resets, and is never projected into `StudioProject` or `.p2c`. Keyboard and pointer movement write canonical anchor coordinates; layer changes reorder the persisted `scenePreview.instances` array already consumed by rendering. Selection and short-lived focus restoration remain transient UI concerns. Before replacing the application shell, the orchestrator explicitly disposes the mounted Scene panel so its `requestAnimationFrame` loop and Pointer Event listeners cannot accumulate.
 
+Scene resource context is derived on demand from current animation settings, palette definitions, `AnimationProjectModel`, and `ChrAssetMappingIndex`. It is not stored in Scene state. `navigateToRelatedResource(...)` updates only existing Animation, Palette, and CHR selections in `WorkspaceState`; it never writes navigation-only references into `StudioProject` or `.p2c`. Returning to Scene therefore reprojects current canonical resource data, including unsaved project edits and explicit dangling references.
+
 Persistable editor callbacks update only the existing project model. CHR
 allocation, deduplication, mirroring, palette meaning, animation mapping, and
 export generation remain in the existing core modules.

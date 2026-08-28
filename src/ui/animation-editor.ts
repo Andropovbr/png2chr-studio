@@ -43,6 +43,7 @@ import type {
   ProjectScenePreviewConfig,
   ScenePreviewInstance,
 } from '../core/scene-preview';
+import type { ChrAssetMappingIndex } from '../core/chr-asset-mapping';
 import {
   createScenePreviewPanel,
   type ScenePreviewPlaybackSession,
@@ -76,6 +77,7 @@ export interface AnimationEditorOptions {
   readonly colorDistanceMode?: ColorDistanceMode;
   readonly scenePreview?: ProjectScenePreviewConfig;
   readonly scenePreviewPlaybackSession?: ScenePreviewPlaybackSession;
+  readonly chrAssetMappingIndex?: ChrAssetMappingIndex | null;
   readonly onSelectAnimation?: (animationId: string) => void;
   readonly onSelectTab?: (
     tab: 'frames' | 'pixels' | 'mapping' | 'scene',
@@ -101,6 +103,18 @@ export interface AnimationEditorOptions {
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
   ) => void;
+  readonly onNavigateSceneToAnimation?: (
+    animationId: string,
+    frameIndex: number,
+  ) => void;
+  readonly onNavigateSceneToPalette?: (paletteId: string) => void;
+  readonly onNavigateSceneToChr?: (context: {
+    readonly animationId: string;
+    readonly frameIndex: number;
+    readonly entity: string;
+    readonly physicalTileIndex: number | null;
+    readonly assetId: string | null;
+  }) => void;
   readonly onSetTilePixel: (
     animationId: string,
     tileX: number,
@@ -1961,12 +1975,17 @@ function createSelectedAnimationEditorPanel(
       activeSpriteSlots: options.activeSpriteSlots,
       defaultPaletteIndex: options.settings.defaultPaletteIndex,
       playbackSession: options.scenePreviewPlaybackSession,
+      animationModel: options.model,
+      chrAssetMappingIndex: options.chrAssetMappingIndex,
       onSelectInstance: options.onSelectSceneInstance,
       onAddInstance: options.onAddSceneInstance,
       onRemoveInstance: options.onRemoveSceneInstance,
       onDuplicateInstance: options.onDuplicateSceneInstance,
       onReorderInstance: options.onReorderSceneInstance,
       onUpdateInstance: options.onUpdateSceneInstance,
+      onNavigateToAnimation: options.onNavigateSceneToAnimation,
+      onNavigateToPalette: options.onNavigateSceneToPalette,
+      onNavigateToChr: options.onNavigateSceneToChr,
     });
     mainColumn.append(scenePreviewPanel);
   }

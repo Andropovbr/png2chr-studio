@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { AnimationItemSetting } from '../ui/types';
+import { buildAnimationProjectModel } from './animation-model';
+import { buildChrAssetMappingIndex } from './chr-asset-mapping';
 import {
   advanceScenePlayback,
   computeInstanceProjection,
   createSceneInstance,
+  deriveSceneInstanceResourceFacts,
   getAnimationsForEntity,
   getInstanceAnimationReferenceStatus,
   getAvailableEntities,
@@ -15,6 +18,101 @@ import {
   resolveScenePaletteIds,
   type ScenePreviewInstance,
 } from './scene-preview';
+
+describe('Scene canonical resource context', () => {
+  it('derives current palette, frame, sprites, and CHR slots without copying project state', () => {
+    const animation = createMockAnimation(
+      'resource-animation',
+      'idle',
+      'hero',
+      [0],
+      [8],
+    );
+    const withPalette = { ...animation, paletteId: 'palette-before' };
+    const sourceImage = animation.source?.indexedImage;
+    expect(sourceImage).toBeDefined();
+    if (sourceImage === undefined) return;
+    const image = {
+      ...sourceImage,
+      pixels: new Uint8Array(sourceImage.width * sourceImage.height).fill(1),
+      colors: [null, null, null, null],
+      transparentIndex: 0 as const,
+      colorCount: 4,
+    };
+    const model = buildAnimationProjectModel({
+      name: 'hero',
+      animations: [
+        {
+          id: animation.id,
+          assetId: animation.source?.assetId,
+          name: 'hero_idle',
+          image,
+          frameWidth: animation.frameWidth,
+          frameHeight: animation.frameHeight,
+          frameIndices: animation.frameIndices,
+          frameDuration: animation.defaultDuration,
+        },
+      ],
+    });
+    const mappingIndex = buildChrAssetMappingIndex({
+      animationModel: model,
+      animations: [withPalette],
+    });
+    const instance: ScenePreviewInstance = {
+      id: 'resource-instance',
+      animationId: animation.id,
+      entityId: 'hero',
+      animationName: 'idle',
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+
+    const before = deriveSceneInstanceResourceFacts(
+      instance,
+      0,
+      [withPalette],
+      model,
+      mappingIndex,
+    );
+    expect(before.status).toBe('resolved');
+    if (before.status !== 'resolved') return;
+    expect(before.paletteId).toBe('palette-before');
+    expect(before.spriteCount).toBeGreaterThan(0);
+    expect(before.physicalTileIndices.length).toBeGreaterThan(0);
+    expect(before.assetId).toBe(animation.source?.assetId);
+
+    const after = deriveSceneInstanceResourceFacts(
+      instance,
+      0,
+      [{ ...withPalette, paletteId: 'palette-after' }],
+      model,
+      mappingIndex,
+    );
+    expect(after.paletteId).toBe('palette-after');
+    expect(before.paletteId).toBe('palette-before');
+  });
+
+  it('keeps dangling animation references explicit and safe', () => {
+    const instance: ScenePreviewInstance = {
+      id: 'dangling-resource-instance',
+      animationId: 'removed-animation',
+      entityId: 'hero',
+      animationName: 'removed',
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    expect(
+      deriveSceneInstanceResourceFacts(instance, 0, [], null, null),
+    ).toEqual({
+      status: 'unresolved-animation',
+      animationId: 'removed-animation',
+      frameIndex: 0,
+      paletteId: null,
+    });
+  });
+});
 
 describe('reorderSceneInstances', () => {
   const instances: readonly ScenePreviewInstance[] = [
