@@ -20,6 +20,7 @@ It is designed for retro game developers and pixel artists who need a transparen
   - Contextual subtool tabs: _Frames & Timing_, _Pixel Overrides_, _Metasprite Mapping_, and a dedicated _Scene Preview_ subworkspace.
   - Multi-entity Scene playback keeps independent transient frame state across editor rerenders and tab switches while project files persist only canonical scene instances.
   - Scene instances support pointer drag with one persisted commit, focusable companion cards with screen-reader labels, one-pixel Arrow-key movement, Delete, and canonical layer reordering through Ctrl+Up/Down or inspector controls.
+  - Scene instance inspectors expose live, read-only animation, palette, and CHR facts from canonical project/derived models, with direct navigation to the related Animation, Palette, and CHR Memory workspaces.
   - Multiple animations per asset with independent spritesheets, frame sizes, signed origin anchors, playback modes (Loop / Once), and flip capability flags.
   - Assisted frame-grid detection for sprite sheets.
   - Deterministic spritesheet reimportation and frame geometry changes with pure reconciliation of pixel overrides, frame sequences, parallel duration/palette arrays, and signed 8-bit origin anchors.

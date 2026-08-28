@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildAnimationProjectModel } from '../core/animation-model';
+import { buildChrAssetMappingIndex } from '../core/chr-asset-mapping';
 import { createDefaultNesPaletteSet } from '../core/nes-palette';
 import {
   resolveEffectivePaletteColors,
@@ -1437,6 +1438,112 @@ describe('Animation Editor Split Architecture', () => {
 
     expect(warnings.length).toBeGreaterThan(0);
     expect(warnings[0]?.textContent).toContain('Invalid animation "deleted"');
+    expect(
+      editor.querySelector('.scene-preview-resource-summary')?.textContent,
+    ).toContain('Animation reference is unresolved');
+    expect(
+      editor.querySelector('.scene-preview-open-animation')?.disabled,
+    ).toBe(true);
+  });
+
+  it('shows canonical resource facts and navigates to related workspaces', () => {
+    const base = createOptions();
+    const baseAnimation = base.settings.animations[0];
+    expect(baseAnimation).toBeDefined();
+    if (baseAnimation === undefined) return;
+    const animation = { ...baseAnimation, paletteId: 'pal_1' };
+    const mappingIndex = buildChrAssetMappingIndex({
+      animationModel: base.model,
+      animations: [animation],
+    });
+    const onNavigateSceneToAnimation = vi.fn();
+    const onNavigateSceneToPalette = vi.fn();
+    const onNavigateSceneToChr = vi.fn();
+    const instance = {
+      id: 'resource-navigation-instance',
+      animationId: animation.id,
+      entityId: animation.entity ?? 'entity',
+      animationName: animation.name,
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        settings: { ...base.settings, animations: [animation] },
+        selectedSceneInstanceId: instance.id,
+        scenePreview: { instances: [instance] },
+        chrAssetMappingIndex: mappingIndex,
+        onNavigateSceneToAnimation,
+        onNavigateSceneToPalette,
+        onNavigateSceneToChr,
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+
+    expect(
+      editor.querySelector('.scene-preview-resource-summary')?.textContent,
+    ).toContain('Current frame 1 of 1');
+    editor.querySelector('.scene-preview-open-animation')?.click();
+    editor.querySelector('.scene-preview-open-palette')?.click();
+    editor.querySelector('.scene-preview-open-chr')?.click();
+
+    expect(onNavigateSceneToAnimation).toHaveBeenCalledWith(animation.id, 0);
+    expect(onNavigateSceneToPalette).toHaveBeenCalledWith('pal_1');
+    expect(onNavigateSceneToChr).toHaveBeenCalledWith(
+      expect.objectContaining({
+        animationId: animation.id,
+        frameIndex: 0,
+        entity: 'hero',
+      }),
+    );
+  });
+
+  it('reads updated palette data when Scene is recreated after another workspace change', () => {
+    const base = createOptions();
+    const animation = {
+      ...base.settings.animations[0],
+      paletteId: 'pal_0',
+    } as AnimationItemSetting;
+    const instance = {
+      id: 'fresh-resource-instance',
+      animationId: animation.id,
+      entityId: animation.entity ?? 'entity',
+      animationName: animation.name,
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    const renderScene = (name: string): MockElement => {
+      const updatedPalettes = base.palettes.map((palette) =>
+        palette.id === 'pal_0' ? { ...palette, name } : palette,
+      );
+      return createAnimationEditor(
+        createOptions({
+          activeTab: 'scene',
+          settings: { ...base.settings, animations: [animation] },
+          palettes: updatedPalettes,
+          selectedSceneInstanceId: instance.id,
+          scenePreview: { instances: [instance] },
+        }),
+      ).find(
+        (panel) => panel.id === 'section-animation-editor',
+      ) as unknown as MockElement;
+    };
+
+    expect(
+      renderScene('Palette Before').querySelector(
+        '.scene-preview-inspector-palette-status',
+      )?.textContent,
+    ).toContain('Palette Before');
+    expect(
+      renderScene('Palette After').querySelector(
+        '.scene-preview-inspector-palette-status',
+      )?.textContent,
+    ).toContain('Palette After');
   });
 
   it('stores animation and frame palette selections by logical palette ID', () => {

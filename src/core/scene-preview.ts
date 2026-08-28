@@ -1,4 +1,9 @@
 import type { AnimationItemSetting } from '../ui/types';
+import type { AnimationProjectModel } from './animation-model';
+import type {
+  AnimationTileUsage,
+  ChrAssetMappingIndex,
+} from './chr-asset-mapping';
 
 export interface ScenePreviewInstance {
   readonly id: string;
@@ -36,6 +41,27 @@ export interface ResolvedInstanceFrame {
 
 export type InstanceAnimationReferenceStatus =
   'resolved' | 'unresolved' | 'dangling';
+
+export type SceneInstanceResourceFacts =
+  | {
+      readonly status: 'unresolved-animation' | 'unavailable-model';
+      readonly animationId: string;
+      readonly frameIndex: number;
+      readonly paletteId: string | null;
+    }
+  | {
+      readonly status: 'resolved';
+      readonly animationId: string;
+      readonly frameIndex: number;
+      readonly frameCount: number;
+      readonly paletteId: string | null;
+      readonly spriteCount: number;
+      readonly physicalTileIndices: readonly number[];
+      readonly patternTables: readonly (0 | 1)[];
+      readonly baseChrTileCount: number;
+      readonly sharedTileCount: number;
+      readonly assetId: string | null;
+    };
 
 export const NES_SCREEN_WIDTH = 256;
 export const NES_SCREEN_HEIGHT = 240;
@@ -205,6 +231,94 @@ export function getInstanceAnimationReferenceStatus(
   return resolveInstanceAnimation(instance, animations) === null
     ? 'dangling'
     : 'resolved';
+}
+
+/**
+ * Projects read-only Scene resource facts from canonical animation settings and
+ * existing derived CHR models. Nothing returned here is persisted or cached.
+ */
+export function deriveSceneInstanceResourceFacts(
+  instance: ScenePreviewInstance,
+  currentFrameIndex: number,
+  animations: readonly AnimationItemSetting[],
+  model: AnimationProjectModel | null,
+  mappingIndex: ChrAssetMappingIndex | null,
+): SceneInstanceResourceFacts {
+  const animation = resolveInstanceAnimation(instance, animations);
+  const requestedFrameIndex = Math.max(0, currentFrameIndex);
+  const safeFrameIndex =
+    animation !== null && requestedFrameIndex < animation.frameIndices.length
+      ? requestedFrameIndex
+      : 0;
+  const paletteId =
+    animation?.framePaletteIds?.[safeFrameIndex] ??
+    animation?.paletteId ??
+    null;
+  if (animation === null) {
+    return {
+      status: 'unresolved-animation',
+      animationId: instance.animationId,
+      frameIndex: safeFrameIndex,
+      paletteId,
+    };
+  }
+
+  const modelAnimation = model?.animations.find(
+    (candidate) =>
+      candidate.id === animation.id &&
+      candidate.generatedByHorizontalFlip !== true,
+  );
+  const frame = modelAnimation?.frames[safeFrameIndex];
+  if (modelAnimation === undefined || frame === undefined) {
+    return {
+      status: 'unavailable-model',
+      animationId: animation.id,
+      frameIndex: safeFrameIndex,
+      paletteId,
+    };
+  }
+
+  const physicalTileIndices = Array.from(
+    new Set(frame.sprites.map((sprite) => sprite.physicalTileIndex)),
+  ).sort((left, right) => left - right);
+  const attributions =
+    mappingIndex === null
+      ? []
+      : physicalTileIndices.flatMap((physicalIndex) => {
+          const attribution = mappingIndex.byPhysicalIndex[physicalIndex];
+          return attribution === undefined ? [] : [attribution];
+        });
+  const matchingUsage = attributions
+    .flatMap((attribution) => attribution.usages)
+    .find(
+      (usage): usage is AnimationTileUsage =>
+        usage.type === 'animation' &&
+        usage.animationId === animation.id &&
+        usage.frameIndex === safeFrameIndex,
+    );
+
+  return {
+    status: 'resolved',
+    animationId: animation.id,
+    frameIndex: safeFrameIndex,
+    frameCount: modelAnimation.frames.length,
+    paletteId,
+    spriteCount: frame.sprites.length,
+    physicalTileIndices,
+    patternTables: Array.from(
+      new Set(
+        physicalTileIndices.map((physicalIndex): 0 | 1 =>
+          physicalIndex < 256 ? 0 : 1,
+        ),
+      ),
+    ),
+    baseChrTileCount: attributions.filter(
+      (attribution) => attribution.origin?.creationKind === 'base-chr',
+    ).length,
+    sharedTileCount: attributions.filter((attribution) => attribution.isShared)
+      .length,
+    assetId: matchingUsage?.assetId ?? null,
+  };
 }
 
 export function initializePlaybackStates(

@@ -680,6 +680,19 @@ const en = {
     'Entity "{name}" was not found in project animations.',
   scenePreviewInvalidAnimationWarning:
     'Invalid animation "{name}". Select a valid animation for this instance.',
+  scenePreviewResourceContextTitle: 'Related Resources',
+  scenePreviewResourceAnimationUnresolved:
+    'Animation reference is unresolved. Related resources cannot be selected.',
+  scenePreviewResourceChrUnavailable:
+    'Animation is resolved, but its current CHR model is unavailable.',
+  scenePreviewResourceSummary:
+    'Current frame {frame} of {frames}: {sprites} sprites, {slots} unique CHR slots ({patternTables}).',
+  scenePreviewResourceOwnershipSummary:
+    'Base CHR reuse: {base} · shared slots: {shared}.',
+  scenePreviewResourcePaletteUnresolved: 'Missing palette reference: {id}.',
+  scenePreviewOpenAnimation: 'Open Animation',
+  scenePreviewOpenPalette: 'Open Palette',
+  scenePreviewInspectChr: 'Inspect Frame in CHR',
   paletteManagerTitle: 'Project Palettes',
   paletteManagerHint:
     'Manage a logical palette library and assign definitions to independent Background and Sprite hardware banks.',
@@ -1752,6 +1765,19 @@ const ptBr = {
     'A entidade "{name}" não foi encontrada nas animações do projeto.',
   scenePreviewInvalidAnimationWarning:
     'Animação inválida "{name}". Selecione uma animação válida para esta instância.',
+  scenePreviewResourceContextTitle: 'Recursos Relacionados',
+  scenePreviewResourceAnimationUnresolved:
+    'A referência da animação não foi resolvida. Recursos relacionados não podem ser selecionados.',
+  scenePreviewResourceChrUnavailable:
+    'A animação foi resolvida, mas seu modelo CHR atual não está disponível.',
+  scenePreviewResourceSummary:
+    'Frame atual {frame} de {frames}: {sprites} sprites, {slots} slots CHR únicos ({patternTables}).',
+  scenePreviewResourceOwnershipSummary:
+    'Reúso de Base CHR: {base} · slots compartilhados: {shared}.',
+  scenePreviewResourcePaletteUnresolved: 'Referência de paleta ausente: {id}.',
+  scenePreviewOpenAnimation: 'Abrir Animação',
+  scenePreviewOpenPalette: 'Abrir Paleta',
+  scenePreviewInspectChr: 'Inspecionar Frame na CHR',
   paletteManagerTitle: 'Paletas do Projeto',
   paletteManagerHint:
     'Gerencie uma biblioteca lógica e atribua definições aos bancos de hardware independentes de Background e Sprite.',

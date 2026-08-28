@@ -163,6 +163,7 @@ import {
 import {
   createDerivedStatus,
   createWorkspaceState,
+  navigateToRelatedResource,
   type DerivedStatus,
   type WorkspaceState,
 } from './ui/workspace-state';
@@ -2768,6 +2769,14 @@ function renderAnimationWorkspace(): void {
   const { model, modelError } = resolveAnimationProjectModel(project);
   const paletteState = resolveProjectPaletteState(project);
   const spritePaletteSet = resolveProjectSpritePaletteSet(project);
+  const sceneChrAssetMappingIndex = buildChrAssetMappingIndex({
+    mode: project.mode,
+    animationModel: model,
+    animations: project.animation.animations,
+    baseChr: project.animation.destinationChr,
+    destinationPatternTable: project.animation.destinationPatternTable,
+    chrRegions: project.chrRegions,
+  });
 
   const selectedAnimationId =
     workspace.animation.selectedAnimationId !== undefined &&
@@ -2806,6 +2815,7 @@ function renderAnimationWorkspace(): void {
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     scenePreview: project.scenePreview,
     scenePreviewPlaybackSession,
+    chrAssetMappingIndex: sceneChrAssetMappingIndex,
     onSelectAnimation: selectAnimation,
     onSelectTab: selectAnimationTab,
     onSelectSceneInstance: (id: string | null) => {
@@ -2852,6 +2862,34 @@ function renderAnimationWorkspace(): void {
     onDuplicateSceneInstance: duplicateSceneInstance,
     onReorderSceneInstance: reorderSceneInstance,
     onUpdateSceneInstance: updateSceneInstance,
+    onNavigateSceneToAnimation: (animationId, frameIndex) => {
+      updateWorkspace(
+        navigateToRelatedResource(workspace, {
+          workspace: 'animation',
+          animationId,
+          frameIndex,
+        }),
+      );
+      render();
+    },
+    onNavigateSceneToPalette: (paletteId) => {
+      updateWorkspace(
+        navigateToRelatedResource(workspace, {
+          workspace: 'palette',
+          paletteId,
+        }),
+      );
+      render();
+    },
+    onNavigateSceneToChr: (context) => {
+      updateWorkspace(
+        navigateToRelatedResource(workspace, {
+          workspace: 'chr',
+          ...context,
+        }),
+      );
+      render();
+    },
     onSetTilePixel: setTilePixel,
     onResetTileOverride: resetTile,
     onUpdateAnimation: updateAnimation,

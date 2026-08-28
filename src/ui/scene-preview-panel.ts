@@ -2,6 +2,7 @@ import {
   advanceScenePlayback,
   computeInstanceProjection,
   createSceneInstance,
+  deriveSceneInstanceResourceFacts,
   getInstanceAnimationReferenceStatus,
   getAnimationsForEntity,
   getAvailableEntities,
@@ -13,6 +14,8 @@ import {
   type InstancePlaybackState,
   type ScenePreviewInstance,
 } from '../core/scene-preview';
+import type { AnimationProjectModel } from '../core/animation-model';
+import type { ChrAssetMappingIndex } from '../core/chr-asset-mapping';
 import { renderIndexedImageWithPalette } from '../core/animation-palette';
 import { applyPixelOverridesToImage } from '../core/pixel-overrides';
 import {
@@ -34,6 +37,8 @@ export interface ScenePreviewPanelOptions {
   readonly palettes: readonly PaletteDefinition[];
   readonly activeSpriteSlots: readonly (string | null)[];
   readonly defaultPaletteIndex: number;
+  readonly animationModel?: AnimationProjectModel | null;
+  readonly chrAssetMappingIndex?: ChrAssetMappingIndex | null;
   readonly playbackSession?: ScenePreviewPlaybackSession;
   readonly onSelectInstance?: (instanceId: string | null) => void;
   readonly onAddInstance: (instance: ScenePreviewInstance) => void;
@@ -47,6 +52,18 @@ export interface ScenePreviewPanelOptions {
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
   ) => void;
+  readonly onNavigateToAnimation?: (
+    animationId: string,
+    frameIndex: number,
+  ) => void;
+  readonly onNavigateToPalette?: (paletteId: string) => void;
+  readonly onNavigateToChr?: (context: {
+    readonly animationId: string;
+    readonly frameIndex: number;
+    readonly entity: string;
+    readonly physicalTileIndex: number | null;
+    readonly assetId: string | null;
+  }) => void;
 }
 
 export interface ScenePreviewPlaybackSession {
@@ -271,6 +288,7 @@ export function createScenePreviewPanel(
   pendingSceneAnnouncement = null;
   const playbackStates = (): Map<string, InstancePlaybackState> =>
     playbackSession.playbackStates;
+  let renderSelectedResourceContext: (() => void) | null = null;
 
   const renderPaletteStatus = (): void => {
     const paletteIds = resolveScenePaletteIds(
@@ -359,6 +377,7 @@ export function createScenePreviewPanel(
           : t('paletteManagerSlotInactive')
       }`;
     }
+    renderSelectedResourceContext?.();
   };
   renderPaletteStatus();
 
@@ -680,6 +699,7 @@ export function createScenePreviewPanel(
   inspectorWrapper.className = 'scene-preview-inspector-wrapper';
 
   const renderInspector = (): void => {
+    renderSelectedResourceContext = null;
     inspectorWrapper.replaceChildren();
 
     const inspectorHeading = document.createElement('h3');
@@ -727,6 +747,139 @@ export function createScenePreviewPanel(
         ? `SPR ${String(selectedPaletteSlot.slotIndex)}`
         : t('paletteManagerSlotInactive')
     }`;
+
+    const resourcePanel = document.createElement('section');
+    resourcePanel.className = 'scene-preview-resource-context';
+    const resourceHeading = document.createElement('h4');
+    resourceHeading.textContent = t('scenePreviewResourceContextTitle');
+    const resourceSummary = document.createElement('p');
+    resourceSummary.className = 'scene-preview-resource-summary';
+    const ownershipSummary = document.createElement('p');
+    ownershipSummary.className =
+      'scene-preview-resource-summary scene-preview-resource-ownership';
+    const missingPalette = document.createElement('p');
+    missingPalette.className = 'scene-preview-resource-warning';
+    resourcePanel.append(
+      resourceHeading,
+      resourceSummary,
+      ownershipSummary,
+      missingPalette,
+    );
+
+    const resourceActions = document.createElement('div');
+    resourceActions.className = 'scene-preview-resource-actions';
+    const openAnimation = document.createElement('button');
+    openAnimation.type = 'button';
+    openAnimation.className =
+      'button secondary-button scene-preview-open-animation';
+    openAnimation.textContent = t('scenePreviewOpenAnimation');
+    openAnimation.addEventListener('click', () => {
+      if (selectedAnimation === null) return;
+      options.onNavigateToAnimation?.(
+        selectedAnimation.id,
+        playbackStates().get(selectedInst.id)?.currentFrameIndex ?? 0,
+      );
+    });
+
+    const openPalette = document.createElement('button');
+    openPalette.type = 'button';
+    openPalette.className =
+      'button secondary-button scene-preview-open-palette';
+    openPalette.textContent = t('scenePreviewOpenPalette');
+    openPalette.addEventListener('click', () => {
+      const frameIndex =
+        playbackStates().get(selectedInst.id)?.currentFrameIndex ?? 0;
+      const paletteId =
+        selectedAnimation?.framePaletteIds?.[frameIndex] ??
+        selectedAnimation?.paletteId;
+      if (
+        paletteId === null ||
+        paletteId === undefined ||
+        !options.palettes.some((palette) => palette.id === paletteId)
+      ) {
+        return;
+      }
+      options.onNavigateToPalette?.(paletteId);
+    });
+
+    const inspectChr = document.createElement('button');
+    inspectChr.type = 'button';
+    inspectChr.className = 'button secondary-button scene-preview-open-chr';
+    inspectChr.textContent = t('scenePreviewInspectChr');
+    inspectChr.addEventListener('click', () => {
+      const frameIndex =
+        playbackStates().get(selectedInst.id)?.currentFrameIndex ?? 0;
+      const resourceContext = deriveSceneInstanceResourceFacts(
+        selectedInst,
+        frameIndex,
+        options.animations,
+        options.animationModel ?? null,
+        options.chrAssetMappingIndex ?? null,
+      );
+      if (resourceContext.status !== 'resolved') return;
+      options.onNavigateToChr?.({
+        animationId: resourceContext.animationId,
+        frameIndex: resourceContext.frameIndex,
+        entity: selectedInst.entityId,
+        physicalTileIndex: resourceContext.physicalTileIndices[0] ?? null,
+        assetId: resourceContext.assetId,
+      });
+    });
+    resourceActions.append(openAnimation, openPalette, inspectChr);
+    resourcePanel.append(resourceActions);
+
+    renderSelectedResourceContext = () => {
+      const frameIndex =
+        playbackStates().get(selectedInst.id)?.currentFrameIndex ?? 0;
+      const resourceContext = deriveSceneInstanceResourceFacts(
+        selectedInst,
+        frameIndex,
+        options.animations,
+        options.animationModel ?? null,
+        options.chrAssetMappingIndex ?? null,
+      );
+      const paletteId = resourceContext.paletteId;
+      const paletteExists =
+        paletteId !== null &&
+        options.palettes.some((palette) => palette.id === paletteId);
+
+      openAnimation.disabled = selectedAnimation === null;
+      openPalette.disabled = !paletteExists;
+      inspectChr.disabled = resourceContext.status !== 'resolved';
+      missingPalette.hidden = paletteId === null || paletteExists;
+      missingPalette.textContent =
+        paletteId !== null && !paletteExists
+          ? t('scenePreviewResourcePaletteUnresolved', { id: paletteId })
+          : '';
+      ownershipSummary.hidden = resourceContext.status !== 'resolved';
+
+      if (resourceContext.status === 'resolved') {
+        const patternTables = resourceContext.patternTables
+          .map((patternTable) => `PT${String(patternTable)}`)
+          .join(' + ');
+        resourceSummary.textContent = t('scenePreviewResourceSummary', {
+          frame: resourceContext.frameIndex + 1,
+          frames: resourceContext.frameCount,
+          sprites: resourceContext.spriteCount,
+          slots: resourceContext.physicalTileIndices.length,
+          patternTables: patternTables === '' ? '—' : patternTables,
+        });
+        ownershipSummary.textContent = t(
+          'scenePreviewResourceOwnershipSummary',
+          {
+            base: resourceContext.baseChrTileCount,
+            shared: resourceContext.sharedTileCount,
+          },
+        );
+      } else if (resourceContext.status === 'unresolved-animation') {
+        resourceSummary.textContent = t(
+          'scenePreviewResourceAnimationUnresolved',
+        );
+      } else {
+        resourceSummary.textContent = t('scenePreviewResourceChrUnavailable');
+      }
+    };
+    renderSelectedResourceContext();
 
     // Name field
     const nameLabel = document.createElement('label');
@@ -949,6 +1102,7 @@ export function createScenePreviewPanel(
 
     inspectorCard.append(
       paletteStatus,
+      resourcePanel,
       nameLabel,
       entityLabel,
       animLabel,

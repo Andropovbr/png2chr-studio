@@ -6,7 +6,11 @@ import {
   applyProjectUpdate,
   applyWorkspaceUpdate,
 } from './state-update';
-import { createDerivedStatus, createWorkspaceState } from './workspace-state';
+import {
+  createDerivedStatus,
+  createWorkspaceState,
+  navigateToRelatedResource,
+} from './workspace-state';
 
 describe('application state update boundaries', () => {
   it('marks a changed persistable project update dirty', () => {
@@ -155,5 +159,55 @@ describe('application state update boundaries', () => {
     expect(deselectTile.marksProjectDirty).toBe(false);
     expect(deselectTile.value.chr.selectedTileIndex).toBeNull();
     expect(serializeProject(project)).toBe(serializedOriginal);
+  });
+
+  it('navigates to related Animation, Palette, and CHR resources using only workspace state', () => {
+    const project = createDefaultProject('Resource navigation', 'animation');
+    const serialized = serializeProject(project);
+    const sceneWorkspace = {
+      ...createWorkspaceState(0, 1, 'animation'),
+      animation: {
+        ...createWorkspaceState().animation,
+        activeTab: 'scene' as const,
+        selectedSceneInstanceId: 'scene-instance',
+      },
+    };
+
+    const animation = navigateToRelatedResource(sceneWorkspace, {
+      workspace: 'animation',
+      animationId: 'animation-id',
+      frameIndex: 2,
+    });
+    expect(animation.animation).toMatchObject({
+      activeTab: 'frames',
+      selectedAnimationId: 'animation-id',
+      selectedFrameIndex: 2,
+      selectedSceneInstanceId: 'scene-instance',
+    });
+
+    const palette = navigateToRelatedResource(sceneWorkspace, {
+      workspace: 'palette',
+      paletteId: 'palette-id',
+    });
+    expect(palette.activeWorkspace).toBe('palette');
+    expect(palette.palette.selectedPaletteId).toBe('palette-id');
+
+    const chr = navigateToRelatedResource(sceneWorkspace, {
+      workspace: 'chr',
+      animationId: 'animation-id',
+      frameIndex: 2,
+      entity: 'hero',
+      physicalTileIndex: 257,
+      assetId: 'asset-hero',
+    });
+    expect(chr.chr).toMatchObject({
+      highlightScope: 'frame',
+      highlightedAssetId: 'asset-hero',
+      selectedAnimationId: 'animation-id',
+      selectedFrameIndex: 2,
+      selectedEntity: 'hero',
+      selectedTileIndex: 257,
+    });
+    expect(serializeProject(project)).toBe(serialized);
   });
 });
