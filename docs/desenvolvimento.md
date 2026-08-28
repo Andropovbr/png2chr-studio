@@ -70,6 +70,16 @@ npx vitest run src/core/animation-model.test.ts
 npx vitest run src/core/project.test.ts
 ```
 
+Para validar o pipeline completo da Scene com a infraestrutura existente:
+
+```bash
+npm test -- src/core/scene-preview.test.ts src/core/project.test.ts src/ui/animation-editor.test.ts src/core/palette-manager.test.ts src/ui/state-update.test.ts
+```
+
+Esse grupo cobre migração e round-trip `.p2c`, múltiplas instâncias, resolução por `animationId`, projeção por âncora e flips, mutações por Pointer Events/teclado, ordem persistida, contexto derivado de paleta/CHR, navegação entre workspaces e lifecycle transitório. Execute também todos os gates da seção 3 antes de concluir mudanças amplas.
+
+Scene não possui exporter standalone nem métrica de cobertura exclusiva configurada. Não adicione formatos ou infraestrutura de cobertura apenas para testar a Scene; use o bloco persistido `scenePreview` e assertions comportamentais nos testes existentes.
+
 ---
 
 ## 4. Estrutura do Código-Fonte

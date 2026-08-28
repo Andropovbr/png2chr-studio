@@ -5,6 +5,7 @@ import { buildChrAssetMappingIndex } from './chr-asset-mapping';
 import {
   advanceScenePlayback,
   computeInstanceProjection,
+  createDuplicatedSceneInstance,
   createSceneInstance,
   deriveSceneInstanceResourceFacts,
   getAnimationsForEntity,
@@ -790,5 +791,53 @@ describe('createSceneInstance anchor emission', () => {
     const { posX, posY } = computeInstanceProjection(inst, anim);
     expect(posX).toBe(50);
     expect(posY).toBe(40);
+  });
+});
+
+describe('createDuplicatedSceneInstance', () => {
+  it('offsets canonical anchors and legacy coordinates together', () => {
+    const source: ScenePreviewInstance = {
+      id: 'source',
+      animationId: 'animation',
+      entityId: 'hero',
+      animationName: 'idle',
+      x: 50,
+      y: 40,
+      anchorX: 58,
+      anchorY: 44,
+      visible: true,
+      name: 'Player',
+    };
+
+    expect(createDuplicatedSceneInstance(source, 'copy')).toEqual({
+      ...source,
+      id: 'copy',
+      name: 'Player (Copy)',
+      x: 58,
+      y: 48,
+      anchorX: 66,
+      anchorY: 52,
+    });
+  });
+
+  it('uses the effective clamped delta at screen edges', () => {
+    const source: ScenePreviewInstance = {
+      id: 'source',
+      animationId: 'animation',
+      entityId: 'hero',
+      animationName: 'idle',
+      x: 252,
+      y: 238,
+      anchorX: 260,
+      anchorY: 242,
+      visible: true,
+    };
+
+    expect(createDuplicatedSceneInstance(source, 'copy')).toMatchObject({
+      x: 256,
+      y: 240,
+      anchorX: 264,
+      anchorY: 244,
+    });
   });
 });

@@ -147,6 +147,31 @@ export function createSceneInstance(
   };
 }
 
+export function createDuplicatedSceneInstance(
+  instance: ScenePreviewInstance,
+  id: string,
+  offset = 8,
+): ScenePreviewInstance {
+  const x = Math.min(NES_SCREEN_WIDTH, instance.x + offset);
+  const y = Math.min(NES_SCREEN_HEIGHT, instance.y + offset);
+  const deltaX = x - instance.x;
+  const deltaY = y - instance.y;
+
+  return {
+    ...instance,
+    id,
+    name: instance.name ? `${instance.name} (Copy)` : undefined,
+    x,
+    y,
+    ...(instance.anchorX !== undefined && instance.anchorY !== undefined
+      ? {
+          anchorX: instance.anchorX + deltaX,
+          anchorY: instance.anchorY + deltaY,
+        }
+      : {}),
+  };
+}
+
 export function computeInstanceProjection(
   instance: ScenePreviewInstance,
   animation: AnimationItemSetting | null,
