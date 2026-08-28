@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AnimationItemSetting } from '../ui/types';
 import {
   advanceScenePlayback,
+  computeInstanceProjection,
   createSceneInstance,
   getAnimationsForEntity,
   getInstanceAnimationReferenceStatus,
@@ -432,5 +433,198 @@ describe('Scene Preview Domain Logic', () => {
     });
     expect(instOutOfBound.x).toBeLessThanOrEqual(256);
     expect(instOutOfBound.y).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('computeInstanceProjection', () => {
+  function makeAnim(
+    overrides: Partial<AnimationItemSetting> = {},
+  ): AnimationItemSetting {
+    return {
+      id: 'anim-test',
+      name: 'idle',
+      entity: 'Hero',
+      source: null,
+      paletteIndex: null,
+      frameWidth: 16,
+      frameHeight: 16,
+      originX: 0,
+      originY: 0,
+      playback: 'loop',
+      allowHorizontalFlip: false,
+      allowVerticalFlip: false,
+      flipH: false,
+      flipV: false,
+      defaultDuration: 10,
+      frameIndices: [0],
+      frameDurations: [10],
+      framePalettes: [],
+      collapsed: false,
+      ...overrides,
+    };
+  }
+
+  function makeInst(
+    overrides: Partial<ScenePreviewInstance> = {},
+  ): ScenePreviewInstance {
+    return {
+      id: 'inst-1',
+      animationId: 'anim-test',
+      entityId: 'Hero',
+      animationName: 'idle',
+      x: 50,
+      y: 40,
+      visible: true,
+      ...overrides,
+    };
+  }
+
+  it('uses anchorX/anchorY when present (canonical path)', () => {
+    const anim = makeAnim({ originX: 8, originY: 4 });
+    // anchorX=58, anchorY=44 → posX=58-8=50, posY=44-4=40
+    const inst = makeInst({ anchorX: 58, anchorY: 44 });
+    const { posX, posY } = computeInstanceProjection(inst, anim);
+    expect(posX).toBe(50);
+    expect(posY).toBe(40);
+  });
+
+  it('canonical anchor with origin=0 gives posX/Y equal to anchor', () => {
+    const anim = makeAnim({ originX: 0, originY: 0 });
+    const inst = makeInst({ anchorX: 50, anchorY: 40 });
+    const { posX, posY } = computeInstanceProjection(inst, anim);
+    expect(posX).toBe(50);
+    expect(posY).toBe(40);
+  });
+
+  it('falls back to legacy x/y when no anchorX/anchorY and animation resolves', () => {
+    const anim = makeAnim({ originX: 8, originY: 4 });
+    // No anchorX/anchorY → legacy path; posX = x = 50 (origin cancels out)
+    const inst = makeInst();
+    const { posX, posY } = computeInstanceProjection(inst, anim);
+    expect(posX).toBe(50);
+    expect(posY).toBe(40);
+  });
+
+  it('falls back to x/y when animation is null (dangling reference) and does NOT invent anchors', () => {
+    const inst = makeInst({ x: 30, y: 20 });
+    const { posX, posY } = computeInstanceProjection(inst, null);
+    expect(posX).toBe(30);
+    expect(posY).toBe(20);
+    // The instance itself must not gain anchorX/anchorY (it's readonly – tested by type, but
+    // we also confirm the projection doesn't mutate the instance).
+    expect(inst.anchorX).toBeUndefined();
+    expect(inst.anchorY).toBeUndefined();
+  });
+
+  it('returns flipH=false flipV=false when animation has no flips', () => {
+    const anim = makeAnim({ flipH: false, flipV: false });
+    const inst = makeInst({ anchorX: 50, anchorY: 40 });
+    const { flipH, flipV } = computeInstanceProjection(inst, anim);
+    expect(flipH).toBe(false);
+    expect(flipV).toBe(false);
+  });
+
+  it('returns flipH=true when animation is horizontally flipped', () => {
+    const anim = makeAnim({ flipH: true, flipV: false });
+    const inst = makeInst({ anchorX: 50, anchorY: 40 });
+    const { flipH, flipV } = computeInstanceProjection(inst, anim);
+    expect(flipH).toBe(true);
+    expect(flipV).toBe(false);
+  });
+
+  it('returns flipV=true when animation is vertically flipped', () => {
+    const anim = makeAnim({ flipH: false, flipV: true });
+    const inst = makeInst({ anchorX: 50, anchorY: 40 });
+    const { flipH, flipV } = computeInstanceProjection(inst, anim);
+    expect(flipH).toBe(false);
+    expect(flipV).toBe(true);
+  });
+
+  it('returns flipH=true and flipV=true for combined H+V flip', () => {
+    const anim = makeAnim({ flipH: true, flipV: true });
+    const inst = makeInst({ anchorX: 50, anchorY: 40 });
+    const { flipH, flipV } = computeInstanceProjection(inst, anim);
+    expect(flipH).toBe(true);
+    expect(flipV).toBe(true);
+  });
+
+  it('returns flipH=false flipV=false when animation is null', () => {
+    const inst = makeInst({ anchorX: 50, anchorY: 40 });
+    const { flipH, flipV } = computeInstanceProjection(inst, null);
+    expect(flipH).toBe(false);
+    expect(flipV).toBe(false);
+  });
+});
+
+describe('createSceneInstance anchor emission', () => {
+  function makeAnim(
+    overrides: Partial<AnimationItemSetting> = {},
+  ): AnimationItemSetting {
+    const width = 16;
+    const height = 16;
+    return {
+      id: 'a1',
+      name: 'idle',
+      entity: 'Hero',
+      source: {
+        assetId: 'a1-src',
+        fileName: 'hero.png',
+        sourceImage: {
+          data: new Uint8ClampedArray(width * height * 4),
+          width,
+          height,
+          colorSpace: 'srgb',
+        },
+        indexedImage: {
+          width,
+          height,
+          pixels: new Uint8Array(width * height),
+          colors: [],
+          transparentIndex: null,
+          colorCount: 0,
+        },
+      },
+      paletteIndex: null,
+      frameWidth: width,
+      frameHeight: height,
+      originX: 0,
+      originY: 0,
+      playback: 'loop',
+      allowHorizontalFlip: false,
+      allowVerticalFlip: false,
+      flipH: false,
+      flipV: false,
+      defaultDuration: 10,
+      frameIndices: [0],
+      frameDurations: [10],
+      framePalettes: [],
+      collapsed: false,
+      ...overrides,
+    };
+  }
+
+  it('emits anchorX/anchorY = renderX+originX, renderY+originY when origin is non-zero', () => {
+    const anim = makeAnim({ originX: 8, originY: 4 });
+    const inst = createSceneInstance('Hero', [anim], { x: 50, y: 40 });
+    // posX = 50, so anchorX = 50 + 8 = 58
+    expect(inst.x).toBe(50);
+    expect(inst.y).toBe(40);
+    expect(inst.anchorX).toBe(58);
+    expect(inst.anchorY).toBe(44);
+  });
+
+  it('emits anchorX/anchorY equal to x/y when origin is 0', () => {
+    const anim = makeAnim({ originX: 0, originY: 0 });
+    const inst = createSceneInstance('Hero', [anim], { x: 100, y: 80 });
+    expect(inst.anchorX).toBe(100);
+    expect(inst.anchorY).toBe(80);
+  });
+
+  it('round-trips through computeInstanceProjection back to original render position', () => {
+    const anim = makeAnim({ originX: 8, originY: 4 });
+    const inst = createSceneInstance('Hero', [anim], { x: 50, y: 40 });
+    const { posX, posY } = computeInstanceProjection(inst, anim);
+    expect(posX).toBe(50);
+    expect(posY).toBe(40);
   });
 });

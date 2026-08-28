@@ -8,8 +8,10 @@ export interface ScenePreviewInstance {
   readonly entityId: string;
   /** Backward-compatible display alias. */
   readonly animationName: string;
-  readonly x: number;
-  readonly y: number;
+  readonly x: number; // legacy position (deprecated)
+  readonly y: number; // legacy position (deprecated)
+  readonly anchorX?: number; // canonical anchor position
+  readonly anchorY?: number; // canonical anchor position
   readonly visible: boolean;
   readonly name?: string;
 }
@@ -95,19 +97,74 @@ export function createSceneInstance(
 
   const defaultX = options?.x ?? Math.floor(NES_SCREEN_WIDTH / 2 - 8);
   const defaultY = options?.y ?? Math.floor(NES_SCREEN_HEIGHT / 2 - 8);
+  const clampedX = Math.max(0, Math.min(NES_SCREEN_WIDTH, defaultX));
+  const clampedY = Math.max(0, Math.min(NES_SCREEN_HEIGHT, defaultY));
+
+  // Compute canonical anchor from the resolved animation's origin.
+  // anchorX = renderX + originX  (so posX = anchorX - originX round-trips cleanly).
+  const originX = selectedAnim?.originX ?? 0;
+  const originY = selectedAnim?.originY ?? 0;
+  const anchorX = clampedX + originX;
+  const anchorY = clampedY + originY;
 
   return {
     id: generateInstanceId(),
     animationId: selectedAnim?.id ?? '',
     entityId,
     animationName: selectedAnim?.name ?? 'anim_1',
-    x: Math.max(0, Math.min(NES_SCREEN_WIDTH, defaultX)),
-    y: Math.max(0, Math.min(NES_SCREEN_HEIGHT, defaultY)),
+    x: clampedX,
+    y: clampedY,
+    anchorX,
+    anchorY,
     visible: true,
     name: options?.name ?? `${entityId} #${String(instanceCounter)}`,
   };
 }
 
+export function computeInstanceProjection(
+  instance: ScenePreviewInstance,
+  animation: AnimationItemSetting | null,
+): { posX: number; posY: number; flipH: boolean; flipV: boolean } {
+  // Single source of truth for render position, anchor/origin semantics and flips.
+  //
+  // Canonical path: anchorX/anchorY are stored on the instance.
+  //   posX = anchorX - originX;  posY = anchorY - originY.
+  //
+  // Legacy path (no anchorX/anchorY on instance): instance.x/y IS the render
+  // position. When the animation resolves unambiguously the legacy render
+  // position is used directly (round-trips as anchorX=x+originX then
+  // posX=anchorX-originX=x). When animation is null, origin is unknown so
+  // we use x/y directly and do NOT invent anchor coordinates.
+  const originX = animation?.originX ?? 0;
+  const originY = animation?.originY ?? 0;
+
+  let posX: number;
+  let posY: number;
+
+  if (instance.anchorX !== undefined && instance.anchorY !== undefined) {
+    // Canonical anchor path.
+    posX = instance.anchorX - originX;
+    posY = instance.anchorY - originY;
+  } else {
+    // Legacy path: x/y is the render position. Origin doesn't change the result
+    // because anchorX would be x+originX, so posX = (x+originX) - originX = x.
+    // Dangling (animation===null) also falls here – no anchor invented.
+    posX = instance.x;
+    posY = instance.y;
+  }
+
+  const flipH = !!animation?.flipH;
+  const flipV = !!animation?.flipV;
+
+  return { posX, posY, flipH, flipV };
+}
+
+/**
+ * Resolves the AnimationItemSetting for a given scene instance.
+ * Matches on entity (case-insensitive) and animation name.
+ * Falls back to the first animation for the entity when the named animation is
+ * not found. Returns null when the entity has no animations at all.
+ */
 export function resolveInstanceAnimation(
   instance: ScenePreviewInstance,
   animations: readonly AnimationItemSetting[],
