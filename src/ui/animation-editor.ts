@@ -43,7 +43,10 @@ import type {
   ProjectScenePreviewConfig,
   ScenePreviewInstance,
 } from '../core/scene-preview';
-import { createScenePreviewPanel } from './scene-preview-panel';
+import {
+  createScenePreviewPanel,
+  type ScenePreviewPlaybackSession,
+} from './scene-preview-panel';
 import {
   applyPixelOverridesToImage,
   calculateTileCoordinates,
@@ -72,6 +75,7 @@ export interface AnimationEditorOptions {
   readonly activeSpriteSlots: ActivePaletteSlots;
   readonly colorDistanceMode?: ColorDistanceMode;
   readonly scenePreview?: ProjectScenePreviewConfig;
+  readonly scenePreviewPlaybackSession?: ScenePreviewPlaybackSession;
   readonly onSelectAnimation?: (animationId: string) => void;
   readonly onSelectTab?: (
     tab: 'frames' | 'pixels' | 'mapping' | 'scene',
@@ -1952,6 +1956,7 @@ function createSelectedAnimationEditorPanel(
       palettes: options.palettes,
       activeSpriteSlots: options.activeSpriteSlots,
       defaultPaletteIndex: options.settings.defaultPaletteIndex,
+      playbackSession: options.scenePreviewPlaybackSession,
       onSelectInstance: options.onSelectSceneInstance,
       onAddInstance: options.onAddSceneInstance,
       onRemoveInstance: options.onRemoveSceneInstance,
@@ -2462,25 +2467,6 @@ export function createAnimationEditor(
     listPanel,
     selectedEditorPanel,
   ];
-
-  if (options.activeTab !== 'scene') {
-    const scenePreviewPanel = createScenePreviewPanel({
-      instances: options.scenePreview?.instances ?? [],
-      selectedInstanceId: options.selectedSceneInstanceId,
-      animations: options.settings.animations,
-      spritePaletteSet: options.spritePaletteSet,
-      palettes: options.palettes,
-      activeSpriteSlots: options.activeSpriteSlots,
-      defaultPaletteIndex: options.settings.defaultPaletteIndex,
-      onSelectInstance: options.onSelectSceneInstance,
-      onAddInstance: options.onAddSceneInstance,
-      onRemoveInstance: options.onRemoveSceneInstance,
-      onDuplicateInstance: options.onDuplicateSceneInstance,
-      onUpdateInstance: options.onUpdateSceneInstance,
-    });
-    scenePreviewPanel.id = 'section-scene-preview';
-    panels.push(scenePreviewPanel);
-  }
 
   const mappingPanel = createMapping(options);
   mappingPanel.id = 'section-mapping';

@@ -9,6 +9,7 @@ export interface SidebarOptions {
   readonly quantizationMode?: QuantizationMode;
   readonly onQuantizationModeChange?: (mode: QuantizationMode) => void;
   readonly onWorkspaceChange?: (workspace: WorkspaceView) => void;
+  readonly onAnimationSceneSelect?: () => void;
 }
 
 const QUANTIZATION_LABELS: Record<QuantizationMode, TranslationKey> = {
@@ -76,7 +77,7 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
   const linksContainer = document.createElement('div');
   linksContainer.className = 'sidebar-links';
 
-  const links: readonly (readonly [string, string])[] =
+  const links: readonly (readonly [string, string, 'scene'?])[] =
     options.activeWorkspace === 'deliver'
       ? [
           ['#section-delivery-readiness', t('deliveryReadinessTitle')],
@@ -119,6 +120,11 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
                     '#section-animation-editor',
                     t('animationSelectedEditorTitle'),
                   ],
+                  [
+                    '#section-animation-editor',
+                    t('navigationScenePreview'),
+                    'scene',
+                  ],
                   ['#section-mapping', t('navigationMapping')],
                   ['#section-export', t('navigationExport')],
                 ]
@@ -129,11 +135,16 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
                   ['#section-export', t('navigationExport')],
                 ];
 
-  links.forEach(([href, label]) => {
+  links.forEach(([href, label, action]) => {
     const anchor = document.createElement('a');
     anchor.href = href;
     anchor.className = 'sidebar-link';
     anchor.textContent = label;
+    if (action === 'scene') {
+      anchor.addEventListener('click', () => {
+        options.onAnimationSceneSelect?.();
+      });
+    }
     linksContainer.append(anchor);
   });
 
