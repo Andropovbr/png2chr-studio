@@ -1049,6 +1049,17 @@ function parseScenePreview(
       typeof rawInst.name === 'string' && rawInst.name.trim() !== ''
         ? rawInst.name.trim()
         : undefined;
+    // Read canonical anchor coords if present in persisted JSON.
+    // Do NOT fabricate anchors when absent – migration to anchorX/Y happens
+    // at runtime in computeInstanceProjection or when instances are updated.
+    const rawAnchorX =
+      typeof rawInst.anchorX === 'number' && Number.isFinite(rawInst.anchorX)
+        ? rawInst.anchorX
+        : undefined;
+    const rawAnchorY =
+      typeof rawInst.anchorY === 'number' && Number.isFinite(rawInst.anchorY)
+        ? rawInst.anchorY
+        : undefined;
     instances.push({
       id,
       animationId,
@@ -1058,6 +1069,9 @@ function parseScenePreview(
       y,
       visible,
       ...(name ? { name } : {}),
+      ...(rawAnchorX !== undefined && rawAnchorY !== undefined
+        ? { anchorX: rawAnchorX, anchorY: rawAnchorY }
+        : {}),
     });
   }
   return { instances };

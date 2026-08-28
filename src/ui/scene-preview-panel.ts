@@ -1,5 +1,6 @@
 import {
   advanceScenePlayback,
+  computeInstanceProjection,
   createSceneInstance,
   getInstanceAnimationReferenceStatus,
   getAnimationsForEntity,
@@ -512,6 +513,7 @@ export function createScenePreviewPanel(
     });
     animLabel.append(animText, animSelect);
 
+
     if (referenceStatus !== 'resolved') {
       const warning = document.createElement('p');
       warning.className = 'scene-preview-invalid-animation-warning';
@@ -522,7 +524,15 @@ export function createScenePreviewPanel(
       inspectorCard.append(warning);
     }
 
-    // Coordinates X & Y
+    // Coordinates X & Y – display and edit the render position (posX/posY).
+    // Internally stored as anchorX/anchorY; posX = anchorX - originX.
+    const { posX: instPosX, posY: instPosY } = computeInstanceProjection(
+      selectedInst,
+      selectedAnimation,
+    );
+    const instOriginX = selectedAnimation?.originX ?? 0;
+    const instOriginY = selectedAnimation?.originY ?? 0;
+
     const coordRow = document.createElement('div');
     coordRow.className = 'scene-preview-coord-row';
 
@@ -534,13 +544,16 @@ export function createScenePreviewPanel(
     xInput.type = 'number';
     xInput.min = '0';
     xInput.max = String(NES_SCREEN_WIDTH);
-    xInput.value = String(selectedInst.x);
+    xInput.value = String(instPosX);
     xInput.addEventListener('change', () => {
       const val = Math.max(
         0,
         Math.min(NES_SCREEN_WIDTH, parseInt(xInput.value, 10) || 0),
       );
-      options.onUpdateInstance(selectedInst.id, { x: val });
+      options.onUpdateInstance(selectedInst.id, {
+        anchorX: val + instOriginX,
+        x: val,
+      });
     });
     xLabel.append(xText, xInput);
 
@@ -552,13 +565,16 @@ export function createScenePreviewPanel(
     yInput.type = 'number';
     yInput.min = '0';
     yInput.max = String(NES_SCREEN_HEIGHT);
-    yInput.value = String(selectedInst.y);
+    yInput.value = String(instPosY);
     yInput.addEventListener('change', () => {
       const val = Math.max(
         0,
         Math.min(NES_SCREEN_HEIGHT, parseInt(yInput.value, 10) || 0),
       );
-      options.onUpdateInstance(selectedInst.id, { y: val });
+      options.onUpdateInstance(selectedInst.id, {
+        anchorY: val + instOriginY,
+        y: val,
+      });
     });
     yLabel.append(yText, yInput);
 
@@ -652,6 +668,7 @@ export function createScenePreviewPanel(
     for (const inst of options.instances) {
       if (!inst.visible) continue;
 
+// Updated rendering using computeInstanceProjection
       const anim = resolveInstanceAnimation(inst, options.animations);
       if (!anim?.source || anim.frameIndices.length === 0) continue;
 
@@ -696,18 +713,22 @@ export function createScenePreviewPanel(
         anim.frameHeight,
       );
 
-      const posX = inst.x;
-      const posY = inst.y;
+      // Use projection helper
+      const { posX, posY, flipH, flipV } = computeInstanceProjection(inst, anim);
 
       ctx.save();
       ctx.imageSmoothingEnabled = false;
 
-      // Handle flip variants if enabled on the animation
-      if (anim.flipH) {
+      // Handle combined flips
+      if (flipH && flipV) {
+        ctx.translate(posX + anim.frameWidth, posY + anim.frameHeight);
+        ctx.scale(-1, -1);
+        ctx.drawImage(cropped, 0, 0);
+      } else if (flipH) {
         ctx.translate(posX + anim.frameWidth, posY);
         ctx.scale(-1, 1);
         ctx.drawImage(cropped, 0, 0);
-      } else if (anim.flipV) {
+      } else if (flipV) {
         ctx.translate(posX, posY + anim.frameHeight);
         ctx.scale(1, -1);
         ctx.drawImage(cropped, 0, 0);
@@ -729,6 +750,7 @@ export function createScenePreviewPanel(
         );
         ctx.setLineDash([]);
       }
+
     }
   };
 
@@ -799,24 +821,27 @@ export function createScenePreviewPanel(
   canvas.addEventListener('mousedown', (e) => {
     const { x, y } = getCanvasLogicalCoords(e);
 
-    // Find clicked instance in reverse order (topmost on screen)
+    // Find clicked instance in reverse order (topmost on screen).
+    // Hit-testing uses the same projected position as rendering so the
+    // clickable area always matches what is drawn on canvas.
     for (let i = options.instances.length - 1; i >= 0; i -= 1) {
       const inst = options.instances[i];
       if (!inst?.visible) continue;
 
       const anim = resolveInstanceAnimation(inst, options.animations);
+      const { posX, posY } = computeInstanceProjection(inst, anim);
       const w = anim?.frameWidth ?? 16;
       const h = anim?.frameHeight ?? 16;
 
-      if (x >= inst.x && x < inst.x + w && y >= inst.y && y < inst.y + h) {
+      if (x >= posX && x < posX + w && y >= posY && y < posY + h) {
         dragging = true;
         dragInstanceId = inst.id;
         currentSelectedInstanceId = inst.id;
         if (options.onSelectInstance) {
           options.onSelectInstance(inst.id);
         }
-        dragOffsetX = x - inst.x;
-        dragOffsetY = y - inst.y;
+        dragOffsetX = x - posX;
+        dragOffsetY = y - posY;
 
         section
           .querySelectorAll('.scene-preview-instance-card')
@@ -834,10 +859,26 @@ export function createScenePreviewPanel(
   window.addEventListener('mousemove', (e) => {
     if (!dragging || !dragInstanceId) return;
     const { x, y } = getCanvasLogicalCoords(e);
-    const targetX = Math.max(0, Math.min(NES_SCREEN_WIDTH, x - dragOffsetX));
-    const targetY = Math.max(0, Math.min(NES_SCREEN_HEIGHT, y - dragOffsetY));
+    // New render position after drag.
+    const newPosX = Math.max(0, Math.min(NES_SCREEN_WIDTH, x - dragOffsetX));
+    const newPosY = Math.max(0, Math.min(NES_SCREEN_HEIGHT, y - dragOffsetY));
 
-    options.onUpdateInstance(dragInstanceId, { x: targetX, y: targetY });
+    // Find the dragged instance so we can resolve its animation origin.
+    const inst = options.instances.find((i) => i.id === dragInstanceId);
+    const anim = inst ? resolveInstanceAnimation(inst, options.animations) : null;
+    const originX = anim?.originX ?? 0;
+    const originY = anim?.originY ?? 0;
+
+    // Canonical update: anchorX/Y = newPosX/Y + originX/Y.
+    // Also keep x/y in sync for legacy consumers (they will not be the source
+    // of truth once anchorX/Y are present, but serialization round-trips
+    // expect them to be present).
+    options.onUpdateInstance(dragInstanceId, {
+      anchorX: newPosX + originX,
+      anchorY: newPosY + originY,
+      x: newPosX,
+      y: newPosY,
+    });
   });
 
   window.addEventListener('mouseup', () => {
