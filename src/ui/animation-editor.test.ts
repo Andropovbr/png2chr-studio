@@ -15,6 +15,10 @@ import {
   resolveAnimationSetting,
   type AnimationEditorOptions,
 } from './animation-editor';
+import {
+  createScenePreviewPlaybackSession,
+  disposeScenePreviewPanels,
+} from './scene-preview-panel';
 import type { AnimationItemSetting, AnimationSettings } from './types';
 import { setLocale } from '../i18n';
 
@@ -99,6 +103,14 @@ class MockElement {
     const list = this.eventListeners.get(event) ?? [];
     list.push(handler);
     this.eventListeners.set(event, list);
+  }
+
+  removeEventListener(event: string, handler: (e?: unknown) => void) {
+    const list = this.eventListeners.get(event) ?? [];
+    this.eventListeners.set(
+      event,
+      list.filter((candidate) => candidate !== handler),
+    );
   }
 
   dispatchEvent(event: { type: string }) {
@@ -215,6 +227,15 @@ class MockElement {
       };
     }
     return null;
+  }
+
+  getBoundingClientRect() {
+    return {
+      left: 0,
+      top: 0,
+      width: this.width || 256,
+      height: this.height || 240,
+    };
   }
 }
 
@@ -487,10 +508,13 @@ describe('Animation Editor Split Architecture', () => {
       'section-palettes',
       'section-animations',
       'section-animation-editor',
-      'section-scene-preview',
       'section-mapping',
       'section-export',
     ]);
+
+    expect(
+      panels.some((panel) => panel.classList.contains('scene-preview-panel')),
+    ).toBe(false);
   });
 
   it('renders animation list panel with compact cards for all animations', () => {
@@ -895,6 +919,164 @@ describe('Animation Editor Split Architecture', () => {
     );
     duplicateBtn?.click();
     expect(onDuplicateSceneInstance).toHaveBeenCalledWith('inst-2');
+  });
+
+  it('preserves transient playback across Scene subworkspace rerenders', () => {
+    const playbackSession = createScenePreviewPlaybackSession();
+    const base = createOptions();
+    const baseAnimation = base.settings.animations[0];
+    expect(baseAnimation).toBeDefined();
+    if (baseAnimation === undefined) return;
+    const animation: AnimationItemSetting = {
+      ...baseAnimation,
+      frameIndices: [0, 0],
+      frameDurations: [1, 1],
+    };
+    const instance = {
+      id: 'persistent-playback',
+      animationId: animation.id,
+      entityId: animation.entity ?? 'hero',
+      animationName: animation.name,
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    const options = createOptions({
+      activeTab: 'scene',
+      settings: { ...base.settings, animations: [animation] },
+      scenePreview: { instances: [instance] },
+      scenePreviewPlaybackSession: playbackSession,
+    });
+
+    createAnimationEditor(options);
+    playbackSession.advance([instance], [animation], 1);
+    expect(
+      playbackSession.playbackStates.get(instance.id)?.currentFrameIndex,
+    ).toBe(1);
+
+    const firstRerender = createAnimationEditor(options);
+    const firstEditor = firstRerender.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    firstEditor.querySelector('.scene-preview-toolbar button')?.click();
+
+    const secondRerender = createAnimationEditor(options);
+    const secondEditor = secondRerender.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    expect(playbackSession.playing).toBe(false);
+    expect(
+      playbackSession.playbackStates.get(instance.id)?.currentFrameIndex,
+    ).toBe(1);
+    expect(
+      secondEditor.querySelector('.scene-preview-toolbar button')?.textContent,
+    ).toBe('Play');
+  });
+
+  it('cancels Scene RAF and removes global listeners during explicit teardown', () => {
+    const cancelAnimationFrame = vi.fn();
+    const addEventListener = vi.fn(
+      (event: string, handler: EventListener): void => {
+        void event;
+        void handler;
+      },
+    );
+    const removeEventListener = vi.fn(
+      (event: string, handler: EventListener): void => {
+        void event;
+        void handler;
+      },
+    );
+    (
+      globalThis as unknown as {
+        requestAnimationFrame: (fn: () => void) => number;
+        cancelAnimationFrame: (id: number) => void;
+        window: unknown;
+      }
+    ).requestAnimationFrame = () => 42;
+    (
+      globalThis as unknown as {
+        cancelAnimationFrame: (id: number) => void;
+      }
+    ).cancelAnimationFrame = cancelAnimationFrame;
+    (globalThis as unknown as { window: unknown }).window = {
+      addEventListener,
+      removeEventListener,
+    };
+
+    const panels = createAnimationEditor(createOptions({ activeTab: 'scene' }));
+    const body = (globalThis as unknown as { document: { body: MockElement } })
+      .document.body;
+    body.append(...(panels as unknown as MockElement[]));
+
+    disposeScenePreviewPanels(body as unknown as ParentNode);
+    disposeScenePreviewPanels(body as unknown as ParentNode);
+
+    expect(cancelAnimationFrame).toHaveBeenCalledOnce();
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(42);
+    expect(addEventListener).toHaveBeenCalledTimes(2);
+    expect(removeEventListener).toHaveBeenCalledTimes(2);
+    expect(removeEventListener.mock.calls.map(([event]) => event)).toEqual([
+      'mousemove',
+      'mouseup',
+    ]);
+  });
+
+  it('previews canvas dragging locally and commits one project update on mouseup', () => {
+    const windowHandlers = new Map<string, (event: MouseEvent) => void>();
+    (globalThis as unknown as { window: unknown }).window = {
+      addEventListener: (
+        event: string,
+        handler: (event: MouseEvent) => void,
+      ) => {
+        windowHandlers.set(event, handler);
+      },
+      removeEventListener: (event: string) => {
+        windowHandlers.delete(event);
+      },
+    };
+    const onUpdateSceneInstance = vi.fn();
+    const instance = {
+      id: 'dragged-instance',
+      animationId: 'anim-1',
+      entityId: 'hero',
+      animationName: 'idle',
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        selectedSceneInstanceId: instance.id,
+        scenePreview: { instances: [instance] },
+        onUpdateSceneInstance,
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const canvas = editor.querySelector('.scene-preview-canvas');
+
+    canvas?.dispatchEvent({
+      type: 'mousedown',
+      clientX: 1,
+      clientY: 1,
+    } as unknown as { type: string });
+    windowHandlers.get('mousemove')?.({
+      clientX: 20,
+      clientY: 30,
+    } as MouseEvent);
+    expect(onUpdateSceneInstance).not.toHaveBeenCalled();
+
+    windowHandlers.get('mouseup')?.({} as MouseEvent);
+    expect(onUpdateSceneInstance).toHaveBeenCalledOnce();
+    expect(onUpdateSceneInstance).toHaveBeenCalledWith(instance.id, {
+      anchorX: 19,
+      anchorY: 29,
+      x: 19,
+      y: 29,
+    });
   });
 
   it('shows invalid animation warnings for a dangling scene reference', () => {

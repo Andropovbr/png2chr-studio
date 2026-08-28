@@ -104,6 +104,10 @@ import {
   createAnimationEditor,
   type AnimationEditorOptions,
 } from './ui/animation-editor';
+import {
+  createScenePreviewPlaybackSession,
+  disposeScenePreviewPanels,
+} from './ui/scene-preview-panel';
 import { createHeader } from './ui/header';
 import { createInspector } from './ui/inspector';
 import type { QuantizationPreview } from './ui/quantization-panel';
@@ -274,6 +278,7 @@ let workspace: WorkspaceState = createWorkspaceState(
   project.mode,
 );
 let derivedStatus: DerivedStatus = createDerivedStatus();
+const scenePreviewPlaybackSession = createScenePreviewPlaybackSession();
 
 class PngLoadError extends Error {
   constructor(readonly failure: PngLoadFailure) {
@@ -308,6 +313,7 @@ function resetTransientState(error: DisplayError | null = null): void {
     project.mode,
   );
   derivedStatus = createDerivedStatus(error);
+  scenePreviewPlaybackSession.clear();
 }
 
 const assetFileCache = new Map<string, File>();
@@ -2780,6 +2786,7 @@ function renderAnimationWorkspace(): void {
     activeSpriteSlots: paletteState.activeSpriteSlots,
     colorDistanceMode: project.quantizationSettings.colorDistanceMode,
     scenePreview: project.scenePreview,
+    scenePreviewPlaybackSession,
     onSelectAnimation: selectAnimation,
     onSelectTab: selectAnimationTab,
     onSelectSceneInstance: (id: string | null) => {
@@ -2790,7 +2797,6 @@ function renderAnimationWorkspace(): void {
           selectedSceneInstanceId: id,
         },
       });
-      render();
     },
     onSettingsChange: (animation: AnimationSettings) => {
       updateProject({
@@ -2897,6 +2903,9 @@ function renderAnimationWorkspace(): void {
   const sidebar = createSidebar({
     activeWorkspace: 'animation',
     fileName: project.fileName,
+    onAnimationSceneSelect: () => {
+      selectAnimationTab('scene');
+    },
     onWorkspaceChange: (view) => {
       updateWorkspace({ ...workspace, activeWorkspace: view });
       if (
@@ -4036,6 +4045,7 @@ function renderBackgroundWorkspace(): void {
 }
 
 function render(): void {
+  disposeScenePreviewPanels(app);
   document.documentElement.lang = getLocale();
   document.title = `${projectName}${projectDirty ? ' *' : ''} - ${t('appTitle')}`;
   if (workspace.activeWorkspace === 'palette') {

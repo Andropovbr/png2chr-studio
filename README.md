@@ -17,7 +17,8 @@ It is designed for retro game developers and pixel artists who need a transparen
 - **Background Map Workspace:** Dedicated NES screen tilemap workspace for composing full 32×30 Nametables (256×240 px) with source image tile browser, brush tools (pencil, picker, eraser, palette), hardware-accurate 16×16 Attribute Table painting, canonical BG 0..3 slot previews with logical palette names and the universal `$3F00` color, Pattern Table selection (PT0 / PT1), 1×–4× zoom controls, grid/attribute overlays, cell inspector with direct physical CHR slot tracking and _Inspect in CHR Memory_ navigation, and live integrity diagnostics.
 - **Sprite Sheet & Animation Workflow:**
   - Decoupled workspace layout with a compact entity/animation list, single focused animation editor, responsive multi-column palette grids, and a collapsible, sticky live preview column.
-  - Contextual subtool tabs: _Frames & Timing_, _Pixel Overrides_, and _Metasprite Mapping_.
+  - Contextual subtool tabs: _Frames & Timing_, _Pixel Overrides_, _Metasprite Mapping_, and a dedicated _Scene Preview_ subworkspace.
+  - Multi-entity Scene playback keeps independent transient frame state across editor rerenders and tab switches while project files persist only canonical scene instances.
   - Multiple animations per asset with independent spritesheets, frame sizes, signed origin anchors, playback modes (Loop / Once), and flip capability flags.
   - Assisted frame-grid detection for sprite sheets.
   - Deterministic spritesheet reimportation and frame geometry changes with pure reconciliation of pixel overrides, frame sequences, parallel duration/palette arrays, and signed 8-bit origin anchors.

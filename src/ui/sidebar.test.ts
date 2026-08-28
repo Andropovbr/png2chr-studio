@@ -249,9 +249,11 @@ describe('Sidebar component', () => {
   });
 
   it('renders section anchors for animation mode', () => {
+    const onAnimationSceneSelect = vi.fn();
     const sidebar = createSidebar({
       activeWorkspace: 'animation',
       fileName: 'hero.png',
+      onAnimationSceneSelect,
     });
 
     const links = (sidebar as unknown as MockElement).querySelectorAll(
@@ -264,9 +266,15 @@ describe('Sidebar component', () => {
       '#section-palettes',
       '#section-animations',
       '#section-animation-editor',
+      '#section-animation-editor',
       '#section-mapping',
       '#section-export',
     ]);
+
+    const sceneLink = links[4];
+    expect(sceneLink).toBeDefined();
+    sceneLink?.click();
+    expect(onAnimationSceneSelect).toHaveBeenCalledOnce();
   });
 
   it('renders section anchors for palette mode', () => {

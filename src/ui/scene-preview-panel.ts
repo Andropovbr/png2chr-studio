@@ -5,7 +5,6 @@ import {
   getInstanceAnimationReferenceStatus,
   getAnimationsForEntity,
   getAvailableEntities,
-  initializePlaybackStates,
   NES_SCREEN_HEIGHT,
   NES_SCREEN_WIDTH,
   resetPlaybackStates,
@@ -35,6 +34,7 @@ export interface ScenePreviewPanelOptions {
   readonly palettes: readonly PaletteDefinition[];
   readonly activeSpriteSlots: readonly (string | null)[];
   readonly defaultPaletteIndex: number;
+  readonly playbackSession?: ScenePreviewPlaybackSession;
   readonly onSelectInstance?: (instanceId: string | null) => void;
   readonly onAddInstance: (instance: ScenePreviewInstance) => void;
   readonly onRemoveInstance: (instanceId: string) => void;
@@ -43,6 +43,91 @@ export interface ScenePreviewPanelOptions {
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
   ) => void;
+}
+
+export interface ScenePreviewPlaybackSession {
+  readonly playing: boolean;
+  readonly playbackStates: Map<string, InstancePlaybackState>;
+  reconcile(
+    instances: readonly ScenePreviewInstance[],
+    animations: readonly AnimationItemSetting[],
+  ): void;
+  setPlaying(playing: boolean): void;
+  reset(instances: readonly ScenePreviewInstance[]): void;
+  advance(
+    instances: readonly ScenePreviewInstance[],
+    animations: readonly AnimationItemSetting[],
+    ticks: number,
+  ): void;
+  clear(): void;
+}
+
+export function createScenePreviewPlaybackSession(): ScenePreviewPlaybackSession {
+  let playing = true;
+  let playbackStates = new Map<string, InstancePlaybackState>();
+  let animationIds = new Map<string, string>();
+
+  return {
+    get playing() {
+      return playing;
+    },
+    get playbackStates() {
+      return playbackStates;
+    },
+    reconcile(instances, animations) {
+      const nextStates = new Map<string, InstancePlaybackState>();
+      const nextAnimationIds = new Map<string, string>();
+      for (const instance of instances) {
+        const animationId =
+          resolveInstanceAnimation(instance, animations)?.id ??
+          instance.animationId;
+        const existing = playbackStates.get(instance.id);
+        const sameAnimation = animationIds.get(instance.id) === animationId;
+        nextStates.set(
+          instance.id,
+          existing !== undefined && sameAnimation
+            ? existing
+            : {
+                instanceId: instance.id,
+                currentFrameIndex: 0,
+                elapsedTicks: 0,
+              },
+        );
+        nextAnimationIds.set(instance.id, animationId);
+      }
+      playbackStates = nextStates;
+      animationIds = nextAnimationIds;
+    },
+    setPlaying(nextPlaying) {
+      playing = nextPlaying;
+    },
+    reset(instances) {
+      playbackStates = resetPlaybackStates(instances);
+    },
+    advance(instances, animations, ticks) {
+      playbackStates = advanceScenePlayback(
+        instances,
+        playbackStates,
+        animations,
+        ticks,
+      );
+    },
+    clear() {
+      playing = true;
+      playbackStates = new Map<string, InstancePlaybackState>();
+      animationIds = new Map<string, string>();
+    },
+  };
+}
+
+const scenePreviewDisposers = new WeakMap<HTMLElement, () => void>();
+
+export function disposeScenePreviewPanels(root: ParentNode): void {
+  root
+    .querySelectorAll<HTMLElement>('.scene-preview-panel')
+    .forEach((panel) => {
+      scenePreviewDisposers.get(panel)?.();
+    });
 }
 
 export function createScenePreviewPanel(
@@ -78,18 +163,20 @@ export function createScenePreviewPanel(
   const toolbar = document.createElement('div');
   toolbar.className = 'scene-preview-toolbar';
 
-  let playing = true;
+  const playbackSession =
+    options.playbackSession ?? createScenePreviewPlaybackSession();
+  playbackSession.reconcile(options.instances, options.animations);
   let currentSelectedInstanceId: string | null =
     options.selectedInstanceId !== undefined
       ? options.selectedInstanceId
       : (options.instances[0]?.id ?? null);
-  let playbackStates: Map<string, InstancePlaybackState> =
-    initializePlaybackStates(options.instances);
+  const playbackStates = (): Map<string, InstancePlaybackState> =>
+    playbackSession.playbackStates;
 
   const renderPaletteStatus = (): void => {
     const paletteIds = resolveScenePaletteIds(
       options.instances,
-      playbackStates,
+      playbackStates(),
       options.animations,
     );
     const paletteAnalysis = analyzeScenePalettes(
@@ -128,7 +215,7 @@ export function createScenePreviewPanel(
       if (badge === null) return;
       const animation = resolveInstanceAnimation(instance, options.animations);
       const frameIndex =
-        playbackStates.get(instance.id)?.currentFrameIndex ?? 0;
+        playbackStates().get(instance.id)?.currentFrameIndex ?? 0;
       const paletteId =
         animation?.framePaletteIds?.[frameIndex] ?? animation?.paletteId;
       badge.hidden = !paletteId;
@@ -157,7 +244,7 @@ export function createScenePreviewPanel(
         options.animations,
       );
       const frameIndex =
-        playbackStates.get(selectedInstance.id)?.currentFrameIndex ?? 0;
+        playbackStates().get(selectedInstance.id)?.currentFrameIndex ?? 0;
       const paletteId =
         animation?.framePaletteIds?.[frameIndex] ?? animation?.paletteId;
       const slot = resolveSpritePaletteSlot(
@@ -179,7 +266,9 @@ export function createScenePreviewPanel(
   const btnPlayPause = document.createElement('button');
   btnPlayPause.type = 'button';
   btnPlayPause.className = 'button primary-button';
-  btnPlayPause.textContent = t('scenePreviewPause');
+  btnPlayPause.textContent = t(
+    playbackSession.playing ? 'scenePreviewPause' : 'scenePreviewPlay',
+  );
 
   const btnReset = document.createElement('button');
   btnReset.type = 'button';
@@ -319,7 +408,7 @@ export function createScenePreviewPanel(
         options.animations,
       );
       const currentFrameIndex =
-        playbackStates.get(inst.id)?.currentFrameIndex ?? 0;
+        playbackStates().get(inst.id)?.currentFrameIndex ?? 0;
       const effectivePaletteId =
         instAnim?.framePaletteIds?.[currentFrameIndex] ?? instAnim?.paletteId;
       const slotRes = resolveSpritePaletteSlot(
@@ -407,7 +496,7 @@ export function createScenePreviewPanel(
       options.animations,
     );
     const selectedFrameIndex =
-      playbackStates.get(selectedInst.id)?.currentFrameIndex ?? 0;
+      playbackStates().get(selectedInst.id)?.currentFrameIndex ?? 0;
     const selectedPaletteId =
       selectedAnimation?.framePaletteIds?.[selectedFrameIndex] ??
       selectedAnimation?.paletteId;
@@ -512,7 +601,6 @@ export function createScenePreviewPanel(
       });
     });
     animLabel.append(animText, animSelect);
-
 
     if (referenceStatus !== 'resolved') {
       const warning = document.createElement('p');
@@ -668,11 +756,14 @@ export function createScenePreviewPanel(
     for (const inst of options.instances) {
       if (!inst.visible) continue;
 
-// Updated rendering using computeInstanceProjection
-      const anim = resolveInstanceAnimation(inst, options.animations);
+      const displayedInstance = getDisplayedInstance(inst);
+      const anim = resolveInstanceAnimation(
+        displayedInstance,
+        options.animations,
+      );
       if (!anim?.source || anim.frameIndices.length === 0) continue;
 
-      const playback = playbackStates.get(inst.id);
+      const playback = playbackStates().get(inst.id);
       const safeIndex =
         playback && playback.currentFrameIndex < anim.frameIndices.length
           ? playback.currentFrameIndex
@@ -714,7 +805,10 @@ export function createScenePreviewPanel(
       );
 
       // Use projection helper
-      const { posX, posY, flipH, flipV } = computeInstanceProjection(inst, anim);
+      const { posX, posY, flipH, flipV } = computeInstanceProjection(
+        displayedInstance,
+        anim,
+      );
 
       ctx.save();
       ctx.imageSmoothingEnabled = false;
@@ -750,20 +844,19 @@ export function createScenePreviewPanel(
         );
         ctx.setLineDash([]);
       }
-
     }
   };
 
   // Play / Pause / Reset handlers
   btnPlayPause.addEventListener('click', () => {
-    playing = !playing;
+    playbackSession.setPlaying(!playbackSession.playing);
     btnPlayPause.textContent = t(
-      playing ? 'scenePreviewPause' : 'scenePreviewPlay',
+      playbackSession.playing ? 'scenePreviewPause' : 'scenePreviewPlay',
     );
   });
 
   btnReset.addEventListener('click', () => {
-    playbackStates = resetPlaybackStates(options.instances);
+    playbackSession.reset(options.instances);
     renderPaletteStatus();
     drawScene();
   });
@@ -778,7 +871,7 @@ export function createScenePreviewPanel(
     const delta = Math.min(100, timestamp - lastTimestamp);
     lastTimestamp = timestamp;
 
-    if (playing) {
+    if (playbackSession.playing) {
       accumulatedMs += delta;
       let ticks = 0;
       while (accumulatedMs >= MS_PER_FRAME) {
@@ -786,20 +879,18 @@ export function createScenePreviewPanel(
         ticks += 1;
       }
       if (ticks > 0) {
-        playbackStates = advanceScenePlayback(
-          options.instances,
-          playbackStates,
-          options.animations,
-          ticks,
-        );
+        playbackSession.advance(options.instances, options.animations, ticks);
         renderPaletteStatus();
         drawScene();
       }
     }
 
-    animationFrameHandle = requestAnimationFrame(animationLoop);
+    if (!disposed) {
+      animationFrameHandle = requestAnimationFrame(animationLoop);
+    }
   };
 
+  let disposed = false;
   animationFrameHandle = requestAnimationFrame(animationLoop);
 
   // Drag & Drop on Canvas
@@ -807,6 +898,18 @@ export function createScenePreviewPanel(
   let dragInstanceId: string | null = null;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
+  let pendingDragPatch:
+    | (Pick<ScenePreviewInstance, 'x' | 'y' | 'anchorX' | 'anchorY'> & {
+        readonly instanceId: string;
+      })
+    | null = null;
+
+  const getDisplayedInstance = (
+    instance: ScenePreviewInstance,
+  ): ScenePreviewInstance =>
+    pendingDragPatch?.instanceId === instance.id
+      ? { ...instance, ...pendingDragPatch }
+      : instance;
 
   const getCanvasLogicalCoords = (e: MouseEvent): { x: number; y: number } => {
     const rect = canvas.getBoundingClientRect();
@@ -818,7 +921,7 @@ export function createScenePreviewPanel(
     };
   };
 
-  canvas.addEventListener('mousedown', (e) => {
+  const handleMouseDown = (e: MouseEvent): void => {
     const { x, y } = getCanvasLogicalCoords(e);
 
     // Find clicked instance in reverse order (topmost on screen).
@@ -828,8 +931,12 @@ export function createScenePreviewPanel(
       const inst = options.instances[i];
       if (!inst?.visible) continue;
 
-      const anim = resolveInstanceAnimation(inst, options.animations);
-      const { posX, posY } = computeInstanceProjection(inst, anim);
+      const displayedInstance = getDisplayedInstance(inst);
+      const anim = resolveInstanceAnimation(
+        displayedInstance,
+        options.animations,
+      );
+      const { posX, posY } = computeInstanceProjection(displayedInstance, anim);
       const w = anim?.frameWidth ?? 16;
       const h = anim?.frameHeight ?? 16;
 
@@ -854,9 +961,10 @@ export function createScenePreviewPanel(
         break;
       }
     }
-  });
+  };
+  canvas.addEventListener('mousedown', handleMouseDown);
 
-  window.addEventListener('mousemove', (e) => {
+  const handleMouseMove = (e: MouseEvent): void => {
     if (!dragging || !dragInstanceId) return;
     const { x, y } = getCanvasLogicalCoords(e);
     // New render position after drag.
@@ -865,7 +973,9 @@ export function createScenePreviewPanel(
 
     // Find the dragged instance so we can resolve its animation origin.
     const inst = options.instances.find((i) => i.id === dragInstanceId);
-    const anim = inst ? resolveInstanceAnimation(inst, options.animations) : null;
+    const anim = inst
+      ? resolveInstanceAnimation(inst, options.animations)
+      : null;
     const originX = anim?.originX ?? 0;
     const originY = anim?.originY ?? 0;
 
@@ -873,27 +983,41 @@ export function createScenePreviewPanel(
     // Also keep x/y in sync for legacy consumers (they will not be the source
     // of truth once anchorX/Y are present, but serialization round-trips
     // expect them to be present).
-    options.onUpdateInstance(dragInstanceId, {
+    pendingDragPatch = {
+      instanceId: dragInstanceId,
       anchorX: newPosX + originX,
       anchorY: newPosY + originY,
       x: newPosX,
       y: newPosY,
-    });
-  });
+    };
+    drawScene();
+  };
 
-  window.addEventListener('mouseup', () => {
+  const handleMouseUp = (): void => {
+    const patch = pendingDragPatch;
     dragging = false;
     dragInstanceId = null;
-  });
-
-  // Cleanup on element removal
-  const observer = new MutationObserver(() => {
-    if (!document.body.contains(section) && animationFrameHandle !== null) {
-      cancelAnimationFrame(animationFrameHandle);
-      observer.disconnect();
+    pendingDragPatch = null;
+    if (patch !== null) {
+      const { instanceId, ...position } = patch;
+      options.onUpdateInstance(instanceId, position);
     }
+  };
+
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseup', handleMouseUp);
+
+  scenePreviewDisposers.set(section, () => {
+    if (disposed) return;
+    disposed = true;
+    if (animationFrameHandle !== null) {
+      cancelAnimationFrame(animationFrameHandle);
+    }
+    canvas.removeEventListener('mousedown', handleMouseDown);
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
+    scenePreviewDisposers.delete(section);
   });
-  observer.observe(document.body, { childList: true, subtree: true });
 
   // Initial draw
   renderPaletteStatus();
