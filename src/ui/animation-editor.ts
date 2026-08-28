@@ -93,6 +93,10 @@ export interface AnimationEditorOptions {
   readonly onAddSceneInstance: (instance: ScenePreviewInstance) => void;
   readonly onRemoveSceneInstance: (instanceId: string) => void;
   readonly onDuplicateSceneInstance?: (instanceId: string) => void;
+  readonly onReorderSceneInstance: (
+    instanceId: string,
+    direction: 'forward' | 'backward',
+  ) => void;
   readonly onUpdateSceneInstance: (
     instanceId: string,
     patch: Partial<ScenePreviewInstance>,
@@ -1961,6 +1965,7 @@ function createSelectedAnimationEditorPanel(
       onAddInstance: options.onAddSceneInstance,
       onRemoveInstance: options.onRemoveSceneInstance,
       onDuplicateInstance: options.onDuplicateSceneInstance,
+      onReorderInstance: options.onReorderSceneInstance,
       onUpdateInstance: options.onUpdateSceneInstance,
     });
     mainColumn.append(scenePreviewPanel);

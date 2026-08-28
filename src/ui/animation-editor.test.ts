@@ -39,9 +39,11 @@ class MockElement {
   min = '';
   max = '';
   step = '';
+  tabIndex = -1;
   width = 0;
   height = 0;
   style: Record<string, string> = {};
+  capturedPointerIds = new Set<number>();
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
@@ -118,6 +120,27 @@ class MockElement {
     handlers.forEach((fn) => {
       fn(event);
     });
+  }
+
+  focus() {
+    const mockDocument = (
+      globalThis as unknown as {
+        document: { activeElement?: MockElement };
+      }
+    ).document;
+    mockDocument.activeElement = this;
+  }
+
+  setPointerCapture(pointerId: number) {
+    this.capturedPointerIds.add(pointerId);
+  }
+
+  hasPointerCapture(pointerId: number) {
+    return this.capturedPointerIds.has(pointerId);
+  }
+
+  releasePointerCapture(pointerId: number) {
+    this.capturedPointerIds.delete(pointerId);
   }
 
   click() {
@@ -357,6 +380,7 @@ describe('Animation Editor Split Architecture', () => {
     ).document = {
       createElement: (tagName: string) => new MockElement(tagName),
       body: new MockElement('body'),
+      activeElement: null,
     };
     (globalThis as unknown as { ImageData: unknown }).ImageData = MockImageData;
     (
@@ -477,6 +501,7 @@ describe('Animation Editor Split Architecture', () => {
       onTogglePaletteCollapse: vi.fn(),
       onAddSceneInstance: vi.fn(),
       onRemoveSceneInstance: vi.fn(),
+      onReorderSceneInstance: vi.fn(),
       onUpdateSceneInstance: vi.fn(),
       onSetTilePixel: vi.fn(),
       onResetTileOverride: vi.fn(),
@@ -894,6 +919,20 @@ describe('Animation Editor Split Architecture', () => {
     expect(instanceCards.length).toBe(2);
     expect(instanceCards[0]?.classList.contains('is-selected')).toBe(true);
     expect(instanceCards[1]?.classList.contains('is-selected')).toBe(false);
+    const focusTargets = mockEditor.querySelectorAll(
+      '.scene-preview-instance-focus-target',
+    );
+    expect(focusTargets.length).toBe(2);
+    expect(focusTargets[0]?.tagName).toBe('BUTTON');
+    expect(focusTargets[0]?.getAttribute('aria-pressed')).toBe('true');
+    expect(focusTargets[0]?.getAttribute('aria-label')).toContain(
+      'Hero Player, X 100, Y 120, layer 1 of 2',
+    );
+    expect(
+      instanceCards[0]
+        ?.querySelector('.scene-preview-vis-btn')
+        ?.getAttribute('aria-label'),
+    ).toContain('Hero Player');
 
     // Inspector is rendered for inst-1
     const inspector = mockEditor.querySelector(
@@ -973,7 +1012,7 @@ describe('Animation Editor Split Architecture', () => {
     ).toBe('Play');
   });
 
-  it('cancels Scene RAF and removes global listeners during explicit teardown', () => {
+  it('cancels Scene RAF and removes pointer listeners during explicit teardown', () => {
     const cancelAnimationFrame = vi.fn();
     const addEventListener = vi.fn(
       (event: string, handler: EventListener): void => {
@@ -1014,27 +1053,16 @@ describe('Animation Editor Split Architecture', () => {
 
     expect(cancelAnimationFrame).toHaveBeenCalledOnce();
     expect(cancelAnimationFrame).toHaveBeenCalledWith(42);
-    expect(addEventListener).toHaveBeenCalledTimes(2);
-    expect(removeEventListener).toHaveBeenCalledTimes(2);
-    expect(removeEventListener.mock.calls.map(([event]) => event)).toEqual([
-      'mousemove',
-      'mouseup',
-    ]);
+    expect(addEventListener).not.toHaveBeenCalled();
+    expect(removeEventListener).not.toHaveBeenCalled();
+    const canvas = body.querySelector('.scene-preview-canvas');
+    expect(canvas?.eventListeners.get('pointerdown')).toEqual([]);
+    expect(canvas?.eventListeners.get('pointermove')).toEqual([]);
+    expect(canvas?.eventListeners.get('pointerup')).toEqual([]);
+    expect(canvas?.eventListeners.get('pointercancel')).toEqual([]);
   });
 
-  it('previews canvas dragging locally and commits one project update on mouseup', () => {
-    const windowHandlers = new Map<string, (event: MouseEvent) => void>();
-    (globalThis as unknown as { window: unknown }).window = {
-      addEventListener: (
-        event: string,
-        handler: (event: MouseEvent) => void,
-      ) => {
-        windowHandlers.set(event, handler);
-      },
-      removeEventListener: (event: string) => {
-        windowHandlers.delete(event);
-      },
-    };
+  it('previews canvas dragging locally and commits one project update on pointerup', () => {
     const onUpdateSceneInstance = vi.fn();
     const instance = {
       id: 'dragged-instance',
@@ -1059,17 +1087,26 @@ describe('Animation Editor Split Architecture', () => {
     const canvas = editor.querySelector('.scene-preview-canvas');
 
     canvas?.dispatchEvent({
-      type: 'mousedown',
+      type: 'pointerdown',
       clientX: 1,
       clientY: 1,
+      button: 0,
+      pointerId: 7,
+      preventDefault: vi.fn(),
     } as unknown as { type: string });
-    windowHandlers.get('mousemove')?.({
+    canvas?.dispatchEvent({
+      type: 'pointermove',
       clientX: 20,
       clientY: 30,
-    } as MouseEvent);
+      pointerId: 7,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
     expect(onUpdateSceneInstance).not.toHaveBeenCalled();
 
-    windowHandlers.get('mouseup')?.({} as MouseEvent);
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 7,
+    } as unknown as { type: string });
     expect(onUpdateSceneInstance).toHaveBeenCalledOnce();
     expect(onUpdateSceneInstance).toHaveBeenCalledWith(instance.id, {
       anchorX: 19,
@@ -1077,6 +1114,298 @@ describe('Animation Editor Split Architecture', () => {
       x: 19,
       y: 29,
     });
+  });
+
+  it('moves a focused Scene instance by keyboard using canonical anchor coordinates', () => {
+    const base = createOptions();
+    const baseAnimation = base.settings.animations[0];
+    expect(baseAnimation).toBeDefined();
+    if (baseAnimation === undefined) return;
+    const animation = {
+      ...baseAnimation,
+      originX: 4,
+      originY: 6,
+    };
+    const instance = {
+      id: 'keyboard-instance',
+      animationId: animation.id,
+      entityId: 'hero',
+      animationName: animation.name,
+      x: 10,
+      y: 20,
+      anchorX: 14,
+      anchorY: 26,
+      visible: true,
+      name: 'Keyboard Hero',
+    };
+    const onUpdateSceneInstance = vi.fn();
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        settings: { ...base.settings, animations: [animation] },
+        selectedSceneInstanceId: instance.id,
+        scenePreview: { instances: [instance] },
+        onUpdateSceneInstance,
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const card = editor.querySelector('.scene-preview-instance-focus-target');
+    const preventDefault = vi.fn();
+
+    card?.dispatchEvent({
+      type: 'keydown',
+      key: 'ArrowRight',
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: card,
+      preventDefault,
+    } as unknown as { type: string });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(onUpdateSceneInstance).toHaveBeenCalledWith(instance.id, {
+      anchorX: 15,
+      anchorY: 26,
+      x: 11,
+      y: 20,
+    });
+  });
+
+  it('deletes and reorders focused Scene instances with scoped shortcuts', () => {
+    const instances = [
+      {
+        id: 'back',
+        animationId: 'anim-1',
+        entityId: 'hero',
+        animationName: 'idle',
+        x: 0,
+        y: 0,
+        visible: true,
+      },
+      {
+        id: 'front',
+        animationId: 'anim-2',
+        entityId: 'hero',
+        animationName: 'walk',
+        x: 8,
+        y: 0,
+        visible: true,
+      },
+    ];
+    const onRemoveSceneInstance = vi.fn();
+    const onReorderSceneInstance = vi.fn();
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        selectedSceneInstanceId: 'back',
+        scenePreview: { instances },
+        onRemoveSceneInstance,
+        onReorderSceneInstance,
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const cards = editor.querySelectorAll(
+      '.scene-preview-instance-focus-target',
+    );
+    const backCard = cards[0];
+
+    backCard?.dispatchEvent({
+      type: 'keydown',
+      key: 'ArrowUp',
+      ctrlKey: true,
+      altKey: false,
+      metaKey: false,
+      target: backCard,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+    expect(onReorderSceneInstance).toHaveBeenCalledWith('back', 'forward');
+
+    backCard?.dispatchEvent({
+      type: 'keydown',
+      key: 'Delete',
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: backCard,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+    expect(onRemoveSceneInstance).toHaveBeenCalledWith('back');
+  });
+
+  it('preserves instance-card focus across a keyboard movement rerender', async () => {
+    const instance = {
+      id: 'focus-instance',
+      animationId: 'anim-1',
+      entityId: 'hero',
+      animationName: 'idle',
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    let rerenderedEditor: MockElement | null = null;
+    const onUpdateSceneInstance = vi.fn(
+      (_instanceId: string, patch: Partial<typeof instance>) => {
+        const nextInstance = { ...instance, ...patch };
+        const panels = createAnimationEditor({
+          ...options,
+          scenePreview: { instances: [nextInstance] },
+        });
+        rerenderedEditor = panels.find(
+          (panel) => panel.id === 'section-animation-editor',
+        ) as unknown as MockElement;
+      },
+    );
+    const options = createOptions({
+      activeTab: 'scene',
+      selectedSceneInstanceId: instance.id,
+      scenePreview: { instances: [instance] },
+      onUpdateSceneInstance,
+    });
+    const panels = createAnimationEditor(options);
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const card = editor.querySelector('.scene-preview-instance-focus-target');
+
+    card?.dispatchEvent({
+      type: 'keydown',
+      key: 'ArrowDown',
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: card,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+    await Promise.resolve();
+
+    const focused = (
+      globalThis as unknown as { document: { activeElement: MockElement } }
+    ).document.activeElement;
+    expect(rerenderedEditor).not.toBeNull();
+    expect(focused.getAttribute('data-scene-instance-id')).toBe(instance.id);
+  });
+
+  it('does not run Scene shortcuts from text, number, or select controls', () => {
+    const onUpdateSceneInstance = vi.fn();
+    const onRemoveSceneInstance = vi.fn();
+    const panels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        selectedSceneInstanceId: 'scoped',
+        scenePreview: {
+          instances: [
+            {
+              id: 'scoped',
+              animationId: 'anim-1',
+              entityId: 'hero',
+              animationName: 'idle',
+              x: 0,
+              y: 0,
+              visible: true,
+            },
+          ],
+        },
+        onUpdateSceneInstance,
+        onRemoveSceneInstance,
+      }),
+    );
+    const editor = panels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const card = editor.querySelector('.scene-preview-instance-focus-target');
+
+    for (const tagName of ['input', 'textarea', 'select']) {
+      const control = new MockElement(tagName);
+      card?.dispatchEvent({
+        type: 'keydown',
+        key: tagName === 'select' ? 'Delete' : 'ArrowLeft',
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false,
+        target: control,
+        preventDefault: vi.fn(),
+      } as unknown as { type: string });
+    }
+
+    expect(onUpdateSceneInstance).not.toHaveBeenCalled();
+    expect(onRemoveSceneInstance).not.toHaveBeenCalled();
+  });
+
+  it('uses the same anchor-aware position patch for pointer and keyboard movement', () => {
+    const instance = {
+      id: 'parity-instance',
+      animationId: 'anim-1',
+      entityId: 'hero',
+      animationName: 'idle',
+      x: 0,
+      y: 0,
+      visible: true,
+    };
+    const pointerUpdate = vi.fn();
+    const pointerPanels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        selectedSceneInstanceId: instance.id,
+        scenePreview: { instances: [instance] },
+        onUpdateSceneInstance: pointerUpdate,
+      }),
+    );
+    const pointerEditor = pointerPanels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const canvas = pointerEditor.querySelector('.scene-preview-canvas');
+    canvas?.dispatchEvent({
+      type: 'pointerdown',
+      clientX: 0,
+      clientY: 0,
+      button: 0,
+      pointerId: 3,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+    canvas?.dispatchEvent({
+      type: 'pointermove',
+      clientX: 1,
+      clientY: 0,
+      pointerId: 3,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+    canvas?.dispatchEvent({
+      type: 'pointerup',
+      pointerId: 3,
+    } as unknown as { type: string });
+
+    const keyboardUpdate = vi.fn();
+    const keyboardPanels = createAnimationEditor(
+      createOptions({
+        activeTab: 'scene',
+        selectedSceneInstanceId: instance.id,
+        scenePreview: { instances: [instance] },
+        onUpdateSceneInstance: keyboardUpdate,
+      }),
+    );
+    const keyboardEditor = keyboardPanels.find(
+      (panel) => panel.id === 'section-animation-editor',
+    ) as unknown as MockElement;
+    const card = keyboardEditor.querySelector(
+      '.scene-preview-instance-focus-target',
+    );
+    card?.dispatchEvent({
+      type: 'keydown',
+      key: 'ArrowRight',
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: card,
+      preventDefault: vi.fn(),
+    } as unknown as { type: string });
+
+    expect(pointerUpdate.mock.calls[0]?.[1]).toEqual(
+      keyboardUpdate.mock.calls[0]?.[1],
+    );
   });
 
   it('shows invalid animation warnings for a dangling scene reference', () => {
