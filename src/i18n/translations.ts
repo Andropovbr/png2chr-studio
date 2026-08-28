@@ -555,6 +555,10 @@ const en = {
     'The destination CHR must be a valid multiple of 16 bytes and fit within 512 tiles (8 KiB).',
   animationErrorCapacity:
     'The resulting CHR exceeds the 256-tile sprite pattern-table capacity.',
+  oamCapacityPressure:
+    'Animation "{animation}" frame {frame} uses {sprites} OAM entries. This is sprite-count pressure above 32, not a hardware limit.',
+  oamCapacityExceeded:
+    'Animation "{animation}" frame {frame} uses {sprites} OAM entries and exceeds the NES OAM capacity of 64.',
   animationAdd: '+ Add animation',
   animationDuplicate: 'Duplicate',
   animationRemove: 'Remove',
@@ -1638,6 +1642,10 @@ const ptBr = {
     'O CHR de destino deve ser múltiplo de 16 bytes e caber em 512 tiles (8 KiB).',
   animationErrorCapacity:
     'O CHR resultante excede a capacidade de 256 tiles da pattern table de sprites.',
+  oamCapacityPressure:
+    'O frame {frame} da animação "{animation}" usa {sprites} entradas OAM. Isso indica pressão acima de 32 sprites, não um limite de hardware.',
+  oamCapacityExceeded:
+    'O frame {frame} da animação "{animation}" usa {sprites} entradas OAM e excede a capacidade OAM do NES de 64.',
   animationAdd: '+ Adicionar animação',
   animationDuplicate: 'Duplicar',
   animationRemove: 'Remover',

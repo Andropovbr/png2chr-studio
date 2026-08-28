@@ -38,6 +38,10 @@ import {
   type DualBankPaletteState,
 } from '../core/palette-manager';
 import type { IndexedImage } from '../core/types';
+import {
+  analyzeAnimationOamCapacity,
+  formatOamCapacityDiagnosticMessage,
+} from '../core/oam-diagnostics';
 import { t, type TranslationKey } from '../i18n';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
@@ -384,6 +388,16 @@ export function createDeliveryWorkspace(
           }),
           targetWorkspace: 'chr',
           actionLabel: t('deliveryLinkChr'),
+        });
+      }
+
+      for (const fact of analyzeAnimationOamCapacity(model)) {
+        diagnostics.push({
+          id: fact.id,
+          level: fact.severity,
+          message: formatOamCapacityDiagnosticMessage(fact),
+          targetWorkspace: 'animation',
+          actionLabel: t('deliveryLinkAnimation'),
         });
       }
     }
