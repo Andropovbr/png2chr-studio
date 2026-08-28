@@ -231,6 +231,26 @@ function createOamPressureAnimationModel(): AnimationProjectModel {
   };
 }
 
+function createScanlinePressureAnimationModel(
+  spriteCount: number,
+): AnimationProjectModel {
+  const base = createSampleAnimationModel();
+  const sprite = base.animations[0]?.frames[0]?.sprites[0];
+  if (sprite === undefined) {
+    throw new Error('Expected sample animation to contain one sprite.');
+  }
+  return {
+    ...base,
+    animations: base.animations.map((animation) => ({
+      ...animation,
+      frames: animation.frames.map((frame) => ({
+        ...frame,
+        sprites: Array.from({ length: spriteCount }, () => sprite),
+      })),
+    })),
+  };
+}
+
 function createOptions(
   overrides?: Partial<DeliveryWorkspaceOptions>,
 ): DeliveryWorkspaceOptions {
@@ -281,10 +301,43 @@ describe('Delivery Workspace', () => {
     );
 
     expect(
-      diagnostics.filter((item) => item.textContent.includes('33')).length,
+      diagnostics.filter(
+        (item) =>
+          item.textContent.includes('33') &&
+          !item.textContent.includes('scanline'),
+      ).length,
     ).toBe(1);
     expect(diagnostics[0]?.classList.contains('is-warning')).toBe(true);
   });
+
+  it.each([
+    [6, 'is-warning'],
+    [8, 'is-warning'],
+    [9, 'is-error'],
+  ] as const)(
+    'renders scanline pressure for %s concurrent sprites',
+    (spriteCount, expectedClass) => {
+      const el = createDeliveryWorkspace(
+        createOptions({
+          mode: 'animation',
+          animationModel: createScanlinePressureAnimationModel(spriteCount),
+          paletteAnimations: [],
+        }),
+      );
+      const diagnostics = (el as unknown as MockElement).querySelectorAll(
+        '.delivery-diag-item',
+      );
+      const scanlineDiagnostic = diagnostics.find((item) =>
+        item.textContent.includes('scanline 0'),
+      );
+
+      expect(scanlineDiagnostic).toBeDefined();
+      expect(scanlineDiagnostic?.textContent).toContain(
+        `${String(spriteCount)} sprites`,
+      );
+      expect(scanlineDiagnostic?.classList.contains(expectedClass)).toBe(true);
+    },
+  );
 
   it('renders readiness and artifacts for Tileset mode with exact byte downloads', () => {
     const onDownloadBytes = vi.fn();
