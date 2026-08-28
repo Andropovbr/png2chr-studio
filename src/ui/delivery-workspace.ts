@@ -42,6 +42,10 @@ import {
   analyzeAnimationOamCapacity,
   formatOamCapacityDiagnosticMessage,
 } from '../core/oam-diagnostics';
+import {
+  analyzeAnimationSpriteScanlinePressure,
+  formatSpriteScanlinePressureDiagnosticMessage,
+} from '../core/nes-sprite-diagnostics';
 import { t, type TranslationKey } from '../i18n';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
@@ -396,6 +400,16 @@ export function createDeliveryWorkspace(
           id: fact.id,
           level: fact.severity,
           message: formatOamCapacityDiagnosticMessage(fact),
+          targetWorkspace: 'animation',
+          actionLabel: t('deliveryLinkAnimation'),
+        });
+      }
+
+      for (const fact of analyzeAnimationSpriteScanlinePressure(model)) {
+        diagnostics.push({
+          id: fact.id,
+          level: fact.severity,
+          message: formatSpriteScanlinePressureDiagnosticMessage(fact),
           targetWorkspace: 'animation',
           actionLabel: t('deliveryLinkAnimation'),
         });

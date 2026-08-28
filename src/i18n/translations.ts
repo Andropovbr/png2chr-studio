@@ -559,6 +559,10 @@ const en = {
     'Animation "{animation}" frame {frame} uses {sprites} OAM entries. This is sprite-count pressure above 32, not a hardware limit.',
   oamCapacityExceeded:
     'Animation "{animation}" frame {frame} uses {sprites} OAM entries and exceeds the NES OAM capacity of 64.',
+  spriteScanlinePressure:
+    'Animation "{animation}" frame {frame} has {sprites} sprites on scanline {scanline}. This leaves little capacity below the NES limit of 8.',
+  spriteScanlineLimitExceeded:
+    'Animation "{animation}" frame {frame} has {sprites} sprites on scanline {scanline} and exceeds the NES limit of 8.',
   animationAdd: '+ Add animation',
   animationDuplicate: 'Duplicate',
   animationRemove: 'Remove',
@@ -1646,6 +1650,10 @@ const ptBr = {
     'O frame {frame} da animação "{animation}" usa {sprites} entradas OAM. Isso indica pressão acima de 32 sprites, não um limite de hardware.',
   oamCapacityExceeded:
     'O frame {frame} da animação "{animation}" usa {sprites} entradas OAM e excede a capacidade OAM do NES de 64.',
+  spriteScanlinePressure:
+    'O frame {frame} da animação "{animation}" tem {sprites} sprites na scanline {scanline}. Isso deixa pouca capacidade abaixo do limite de 8 sprites do NES.',
+  spriteScanlineLimitExceeded:
+    'O frame {frame} da animação "{animation}" tem {sprites} sprites na scanline {scanline} e excede o limite de 8 sprites do NES.',
   animationAdd: '+ Adicionar animação',
   animationDuplicate: 'Duplicar',
   animationRemove: 'Remover',
