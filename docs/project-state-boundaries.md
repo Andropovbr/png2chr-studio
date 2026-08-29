@@ -23,10 +23,21 @@ The following Milestone 6 structures are computed dynamically in memory from the
 - `ChrOwnershipDiagnosticFact` (ownership integrity, orphan detection, dangling reference facts).
 
 `ProjectView` also carries reconstructed source images and conversion caches
-needed by the current browser workflow. New projects and successfully loaded
-projects replace that canonical view directly and explicitly reset the dirty
-flag. `buildCurrentStudioProject()` remains the only projection from the
-working view into the persisted `StudioProject` schema.
+needed by the current browser workflow. It retains the persisted Tileset and
+Playfield configurations while another mode is active, plus original asset
+references when browser decoding is unavailable. These retained values remain
+part of the same canonical view; they are not a second project store. New
+projects and successfully loaded projects replace that canonical view directly
+and explicitly reset the dirty flag.
+
+`buildCurrentStudioProject()` remains the only projection from the working view
+into the persisted `StudioProject` schema. It projects the active legacy source
+from its runtime image state and carries every other durable domain through:
+Background Maps, CHR Regions/Reservations, Animation, Scene, palette-manager
+state, and inactive Tileset/Playfield configuration. Project opening restores
+those domains regardless of the selected legacy mode. A graphics-source import
+clears only the active source's working image, assignments, overrides, and
+Playfield collisions; it preserves unrelated project-owned state.
 
 The project name is persisted separately from `ProjectView`, so its header
 callback uses the same dirty rule through `updateProjectName(...)`.
@@ -67,6 +78,12 @@ export generation remain in the existing core modules.
 `src/ui/state-update.test.ts` verifies that changed project updates mark dirty,
 identity updates remain clean, workspace and derived-status changes remain
 clean, and workspace changes do not alter serialized project data.
+
+`src/ui/project-runtime.test.ts` exercises the application runtime projection
+through save, deserialize, restore, and repeat-save boundaries for Tileset,
+Playfield, and Animation modes. It also verifies focused source replacement,
+stable asset/map IDs, Background/Animation coexistence, CHR Regions and
+Reservations, Scene state, and palette-manager state.
 
 The existing project, animation, palette, CHR, and exporter tests continue to
 protect the persisted schema and NES-domain semantics. Use the full validation

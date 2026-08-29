@@ -267,6 +267,14 @@ export function createEmptyBackgroundCells(): (BackgroundMapCell | null)[] {
   return new Array<BackgroundMapCell | null>(BACKGROUND_TILE_COUNT).fill(null);
 }
 
+let backgroundMapIdCounter = 0;
+
+/** Generates a unique ID for a newly created Background Map. */
+export function generateBackgroundMapId(): string {
+  backgroundMapIdCounter += 1;
+  return `bg_map_${String(Date.now())}_${String(backgroundMapIdCounter)}`;
+}
+
 /**
  * Creates a valid, initialized empty BackgroundMapDefinition.
  */
@@ -274,7 +282,7 @@ export function createEmptyBackgroundMap(
   options: CreateEmptyBackgroundMapOptions = {},
 ): BackgroundMapDefinition {
   return {
-    id: options.id ?? 'bg_map_default',
+    id: options.id ?? generateBackgroundMapId(),
     name: options.name ?? 'New Background',
     widthTiles: BACKGROUND_WIDTH_TILES,
     heightTiles: BACKGROUND_HEIGHT_TILES,

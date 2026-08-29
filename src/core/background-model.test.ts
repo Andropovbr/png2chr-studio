@@ -72,6 +72,13 @@ describe('Milestone 8 (Issue #108): Background Domain Model & Attribute Table Pa
         validateBackgroundMapDefinition(map);
       }).not.toThrow();
     });
+
+    it('creates unique IDs for new Background Maps', () => {
+      const first = createEmptyBackgroundMap();
+      const second = createEmptyBackgroundMap();
+
+      expect(first.id).not.toBe(second.id);
+    });
   });
 
   describe('Dimension & Structural Validations', () => {

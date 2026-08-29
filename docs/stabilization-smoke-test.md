@@ -48,6 +48,13 @@ After opening or saving a project so the dirty marker is clear:
    panels and other workspace-only state may reset to defaults.
 5. Trigger a recoverable load/processing error. Showing or clearing the error
    alone must not mark an otherwise clean project dirty.
+6. Create at least two Background Maps, one CHR Region, one Reservation, an
+   animation Scene instance, and a custom project palette. Save and reopen from
+   Tileset, Playfield, and Animation modes. Every domain and stable ID must
+   remain unchanged.
+7. Import a replacement Tileset or Playfield source. Background Maps,
+   Animation, Scene, CHR Regions/Reservations, palette definitions, and hardware
+   slot assignments must remain unchanged.
 
 ## CHR Regions & Reservations smoke test (Milestone 5)
 
@@ -194,6 +201,7 @@ Scene não possui export standalone; validação de export nesta milestone signi
 Run these checks before or alongside the manual flow:
 
 ```bash
+npm test -- src/ui/project-runtime.test.ts src/core/background-model.test.ts
 npm test -- src/core/palette-pipeline-e2e.test.ts src/core/palette-manager.test.ts src/core/palette-diagnostics.test.ts src/core/palette-exporters.test.ts
 npm test -- src/core/background-pipeline-e2e.test.ts src/core/background-exporters.test.ts src/core/background-model.test.ts src/core/chr-background-allocation.test.ts
 npm test
@@ -205,6 +213,8 @@ npm run format:check
 The focused suite covers PNG failure/recovery, effective mapping and flip
 orientation, raw CHR occupancy, PT0/PT1 local/physical indexing, sparse-slot
 allocation, 8 KiB output, project persistence/removal, CHR regions/reservations CRUD,
+runtime save/load restoration across all active modes, focused source imports,
+stable asset and Background Map IDs, coexistence of Background, Animation, Scene, and palette state,
 asset identity persistence, bidirectional mapping, lifecycle reconciliation,
 CHR inspector attributions, per-asset metrics, ownership diagnostics, transparent cell omission,
 flip-aware deduplication, reimport reconciliation, aligned multi-target exporters,
