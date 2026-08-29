@@ -12,6 +12,11 @@ import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import type { ProjectMode } from '../core/project-mode';
 import type { FrameDetectionResult } from '../core/frame-detection';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
+import type {
+  ProjectAssetReference,
+  ProjectPlayfieldConfig,
+  ProjectTilesetConfig,
+} from '../core/project';
 import type { ImageAnalysisError, IndexedImage, Tile } from '../core/types';
 import type { TranslationKey, TranslationVariables } from '../i18n';
 import type {
@@ -44,6 +49,8 @@ export interface AnimationItemSetting {
   readonly name: string;
   readonly entity?: string;
   readonly source: AnimationSourceData | null;
+  /** Persisted source reference retained even when image decoding is unavailable. */
+  readonly asset?: ProjectAssetReference | null;
   readonly paletteId?: string | null;
   readonly paletteIndex?: number | null;
   readonly framePaletteIds?: readonly (string | null)[];
@@ -81,6 +88,8 @@ export interface AnimationSettings {
   readonly spriteColorIndex: number;
   readonly colorIndices: Uint8Array;
   readonly destinationChrAssetId?: string | null;
+  /** Persisted Base CHR reference retained even when bytes cannot be reconstructed. */
+  readonly destinationChrAsset?: ProjectAssetReference | null;
   readonly destinationChrName: string | null;
   readonly destinationChr: Uint8Array;
   /** Pattern table used by sprite OAM tile bytes (PPUCTRL bit 3). */
@@ -121,6 +130,9 @@ export interface ProjectView {
   readonly pixelOverrides: Uint8Array;
   readonly activePaletteIndex: number;
   readonly activeColorIndex: number;
+  /** Persisted legacy domains retained while another project mode is active. */
+  readonly tileset?: ProjectTilesetConfig;
+  readonly playfield?: ProjectPlayfieldConfig;
   readonly chrRegions?: readonly ChrRegion[];
   readonly animation: AnimationSettings;
   readonly scenePreview?: ProjectScenePreviewConfig;

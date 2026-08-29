@@ -81,10 +81,6 @@ import {
   deserializeProject,
   findMissingAssets,
   serializeProject,
-  type ProjectAnimationItemConfig,
-  type ProjectAnimationSettingsConfig,
-  type ProjectPlayfieldConfig,
-  type ProjectTilesetConfig,
   type ScenePreviewInstance,
   type StudioProject,
 } from './core/project';
@@ -162,6 +158,12 @@ import {
   type ProjectMode,
   type ProjectView,
 } from './ui/types';
+import {
+  beginGraphicsSourceImport,
+  buildStudioProjectFromRuntime,
+  restoreProjectView,
+  type RestoredRuntimeSource,
+} from './ui/project-runtime';
 import {
   createDerivedStatus,
   createWorkspaceState,
@@ -269,8 +271,15 @@ let project: ProjectView = {
   pixelOverrides: new Uint8Array(),
   activePaletteIndex: 0,
   activeColorIndex: 1,
+  tileset: { asset: null },
+  playfield: {
+    asset: null,
+    randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+  },
+  chrRegions: [],
   animation: createDefaultAnimationSettings(),
   scenePreview: { instances: [] },
+  backgrounds: { activeMapId: null, maps: [] },
   quantizationSettings: loadQuantizationSettings(settingsStorage),
 };
 
@@ -397,176 +406,12 @@ function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 function buildCurrentStudioProject(): StudioProject {
-  const tileset: ProjectTilesetConfig = {
-    asset:
-      project.fileName !== null && project.mode === 'tileset'
-        ? {
-            id: project.assetId ?? undefined,
-            path: project.fileName,
-            name: project.fileName,
-            sourceKind: project.sourceKind ?? undefined,
-            dataUrl:
-              project.sourceImage !== null
-                ? imageDataToDataUrl(project.sourceImage)
-                : undefined,
-          }
-        : null,
-    paletteAssignments:
-      project.paletteAssignments.length > 0
-        ? Array.from(project.paletteAssignments)
-        : undefined,
-    pixelOverrides:
-      project.pixelOverrides.length > 0
-        ? Array.from(project.pixelOverrides)
-        : undefined,
-  };
-
-  const playfield: ProjectPlayfieldConfig = {
-    asset:
-      project.fileName !== null && project.mode === 'playfield'
-        ? {
-            id: project.assetId ?? undefined,
-            path: project.fileName,
-            name: project.fileName,
-            sourceKind: project.sourceKind ?? 'png',
-            dataUrl:
-              project.sourceImage !== null
-                ? imageDataToDataUrl(project.sourceImage)
-                : undefined,
-          }
-        : null,
-    collisionCells: Array.from(project.collisionCells),
-    activeCollisionType: project.activeCollisionType,
-    randomPlayfieldFeatures: [...project.randomPlayfieldFeatures],
-    paletteAssignments:
-      project.paletteAssignments.length > 0
-        ? Array.from(project.paletteAssignments)
-        : undefined,
-    pixelOverrides:
-      project.pixelOverrides.length > 0
-        ? Array.from(project.pixelOverrides)
-        : undefined,
-  };
-
-  const animations: ProjectAnimationItemConfig[] =
-    project.animation.animations.map((anim) => ({
-      id: anim.id,
-      name: anim.name,
-      entity: anim.entity ?? 'entity',
-      asset:
-        anim.source !== null
-          ? {
-              id: anim.source.assetId ?? undefined,
-              path: anim.source.fileName,
-              name: anim.source.fileName,
-              sourceKind: 'png',
-              dataUrl: imageDataToDataUrl(anim.source.sourceImage),
-            }
-          : null,
-      paletteId: anim.paletteId ?? null,
-      paletteIndex: anim.paletteIndex ?? null,
-      quantizationMode: anim.quantizationMode ?? 'median-cut',
-      ditheringMode: anim.ditheringMode ?? 'none',
-      frameWidth: anim.frameWidth,
-      frameHeight: anim.frameHeight,
-      originX: anim.originX,
-      originY: anim.originY,
-      playback: anim.playback,
-      allowHorizontalFlip: anim.allowHorizontalFlip,
-      allowVerticalFlip: anim.allowVerticalFlip,
-      ...(anim.flipH !== undefined ? { flipH: anim.flipH } : {}),
-      ...(anim.flipV !== undefined ? { flipV: anim.flipV } : {}),
-      defaultDuration: anim.defaultDuration,
-      ...(anim.pixelOverrides && Object.keys(anim.pixelOverrides).length > 0
-        ? { pixelOverrides: anim.pixelOverrides }
-        : {}),
-      frameIndices: [...anim.frameIndices],
-      frameDurations: [...anim.frameDurations],
-      ...(anim.framePalettes !== undefined
-        ? { framePalettes: [...anim.framePalettes] }
-        : {}),
-      ...(anim.framePaletteIds !== undefined
-        ? { framePaletteIds: [...anim.framePaletteIds] }
-        : {}),
-    }));
-
-  const animation: ProjectAnimationSettingsConfig = {
-    name: project.animation.name,
-    symbolPrefix: project.animation.symbolPrefix,
-    defaultPaletteIndex: project.animation.defaultPaletteIndex,
-    quantizationMode: project.animation.quantizationMode,
-    ditheringMode: project.animation.ditheringMode,
-    flipDeduplication: project.animation.flipDeduplication,
-    spritePalette: project.animation.spritePalette,
-    spriteColorIndex: project.animation.spriteColorIndex,
-    patternTable: project.animation.patternTable,
-    destinationPatternTable: project.animation.destinationPatternTable,
-    destinationChr:
-      project.animation.destinationChrName !== null
-        ? {
-            id: project.animation.destinationChrAssetId ?? undefined,
-            path: project.animation.destinationChrName,
-            name: project.animation.destinationChrName,
-            sourceKind: 'chr',
-            dataUrl:
-              project.animation.destinationChr.length > 0
-                ? `data:application/octet-stream;base64,${uint8ArrayToBase64(project.animation.destinationChr)}`
-                : undefined,
-          }
-        : null,
-    animations,
-  };
-
-  const palettes =
-    project.palettes ?? createDefaultPaletteDefinitions(project.paletteSet);
-  const univColor =
-    project.universalBackgroundColor ?? project.paletteSet[0][0];
-  const bgSlots = project.activeBackgroundSlots ?? [
-    palettes[0]?.id ?? null,
-    palettes[1]?.id ?? null,
-    palettes[2]?.id ?? null,
-    palettes[3]?.id ?? null,
-  ];
-  const spSlots =
-    project.activeSpriteSlots ??
-    (project.activeSpritePaletteSlots
-      ? [
-          project.activeSpritePaletteSlots[0] ?? null,
-          project.activeSpritePaletteSlots[1] ?? null,
-          project.activeSpritePaletteSlots[2] ?? null,
-          project.activeSpritePaletteSlots[3] ?? null,
-        ]
-      : [
-          palettes[0]?.id ?? null,
-          palettes[1]?.id ?? null,
-          palettes[2]?.id ?? null,
-          palettes[3]?.id ?? null,
-        ]);
-
-  return {
-    formatVersion: 1,
-    name: projectName,
-    mode: project.mode,
-    settings: {
-      deduplicationEnabled: project.deduplicationEnabled,
-      flipDeduplicationEnabled: project.flipDeduplicationEnabled,
-      quantization: project.quantizationSettings,
-    },
-    palette: {
-      universalBackgroundColor: univColor,
-      palettes,
-      activeBackgroundSlots: bgSlots,
-      activeSpriteSlots: spSlots,
-      paletteSet: project.paletteSet,
-      activePaletteIndex: project.activePaletteIndex,
-      activeColorIndex: project.activeColorIndex,
-      activeSpritePaletteSlots: spSlots,
-    },
-    tileset,
-    playfield,
-    animation,
-    scenePreview: project.scenePreview ?? { instances: [] },
-  };
+  return buildStudioProjectFromRuntime(
+    projectName,
+    project,
+    imageDataToDataUrl,
+    uint8ArrayToBase64,
+  );
 }
 
 function handleSaveProject(): void {
@@ -618,11 +463,184 @@ function handleNewProject(): void {
     pixelOverrides: new Uint8Array(),
     activePaletteIndex: 0,
     activeColorIndex: 1,
+    tileset: { asset: null },
+    playfield: {
+      asset: null,
+      randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+    },
+    chrRegions: [],
     animation: createDefaultAnimationSettings(),
+    scenePreview: { instances: [] },
+    backgrounds: { activeMapId: null, maps: [] },
     quantizationSettings: loadQuantizationSettings(settingsStorage),
   };
   resetTransientState();
   render();
+}
+
+async function restoreProjectAnimation(loaded: StudioProject): Promise<{
+  readonly animation: AnimationSettings;
+  readonly error: DisplayError | null;
+}> {
+  const animSettings = loaded.animation;
+  const reconstructedAnimations: AnimationItemSetting[] = [];
+  let restoredPngError: DisplayError | null = null;
+
+  for (const anim of animSettings?.animations ?? []) {
+    let source: AnimationSourceData | null = null;
+    let detection: FrameDetectionResult | null = null;
+    const matchingFile = findMatchingAssetFile(anim.asset);
+    const quantMode =
+      anim.quantizationMode ?? animSettings?.quantizationMode ?? 'median-cut';
+    const dithMode =
+      anim.ditheringMode ?? animSettings?.ditheringMode ?? 'none';
+
+    if (matchingFile) {
+      try {
+        const imageData = await decodeImage(matchingFile);
+        const indexedImage = quantizePngSource(imageData, 'animation', {
+          quantizationMode: quantMode,
+          ditheringMode: dithMode,
+          colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
+        });
+        source = {
+          assetId: anim.asset?.id,
+          fileName: matchingFile.name,
+          sourceImage: imageData,
+          indexedImage,
+        };
+        detection = detectFrameGrid(imageData);
+      } catch (error: unknown) {
+        console.error('Project animation PNG load failed', {
+          fileName: matchingFile.name,
+          error,
+        });
+        restoredPngError ??=
+          error instanceof PngLoadError
+            ? displayPngLoadError(error.failure)
+            : { key: 'imageProcessingFailed' };
+      }
+    } else if (anim.asset?.dataUrl) {
+      try {
+        const imageData = await decodeDataUrl(anim.asset.dataUrl);
+        const indexedImage = quantizePngSource(imageData, 'animation', {
+          quantizationMode: quantMode,
+          ditheringMode: dithMode,
+          colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
+        });
+        source = {
+          assetId: anim.asset.id,
+          fileName: anim.asset.name ?? anim.asset.path,
+          sourceImage: imageData,
+          indexedImage,
+        };
+        detection = detectFrameGrid(imageData);
+      } catch (error: unknown) {
+        console.error('Embedded project animation PNG load failed', error);
+        restoredPngError ??= { key: 'imageDecodeFailed' };
+      }
+    }
+
+    const totalFrames = source
+      ? Math.floor(source.sourceImage.width / anim.frameWidth) *
+        Math.floor(source.sourceImage.height / anim.frameHeight)
+      : 0;
+    const frameIndices =
+      anim.frameIndices.length > 0
+        ? [...anim.frameIndices]
+        : totalFrames > 0
+          ? Array.from({ length: totalFrames }, (_, index) => index)
+          : [];
+    const frameDurations =
+      anim.frameDurations.length > 0
+        ? [...anim.frameDurations]
+        : Array.from(
+            { length: frameIndices.length },
+            () => anim.defaultDuration,
+          );
+    const framePalettes = anim.framePalettes
+      ? [...anim.framePalettes]
+      : Array.from({ length: frameIndices.length }, () => null);
+
+    reconstructedAnimations.push({
+      id: anim.id,
+      name: anim.name,
+      entity: anim.entity ?? 'entity',
+      asset: anim.asset,
+      source,
+      paletteId: anim.paletteId ?? null,
+      paletteIndex: anim.paletteIndex ?? null,
+      framePaletteIds: anim.framePaletteIds
+        ? [...anim.framePaletteIds]
+        : undefined,
+      quantizationMode: quantMode,
+      ditheringMode: dithMode,
+      frameWidth: anim.frameWidth,
+      frameHeight: anim.frameHeight,
+      originX: anim.originX,
+      originY: anim.originY,
+      playback: anim.playback,
+      allowHorizontalFlip: anim.allowHorizontalFlip,
+      allowVerticalFlip: anim.allowVerticalFlip,
+      flipH: anim.flipH ?? false,
+      flipV: anim.flipV ?? false,
+      defaultDuration: anim.defaultDuration,
+      frameIndices,
+      frameDurations,
+      framePalettes,
+      pixelOverrides: anim.pixelOverrides,
+      frameDetection: detection,
+    });
+  }
+
+  let destinationChr = new Uint8Array();
+  if (animSettings?.destinationChr) {
+    const chrFile = findMatchingAssetFile(animSettings.destinationChr);
+    if (chrFile) {
+      try {
+        destinationChr = new Uint8Array(await chrFile.arrayBuffer());
+      } catch {
+        destinationChr = new Uint8Array();
+      }
+    } else if (animSettings.destinationChr.dataUrl) {
+      try {
+        destinationChr = base64ToUint8Array(
+          animSettings.destinationChr.dataUrl,
+        );
+      } catch {
+        destinationChr = new Uint8Array();
+      }
+    }
+  }
+
+  const defaultAnimation = createDefaultAnimationSettings();
+  return {
+    animation: {
+      ...defaultAnimation,
+      name: animSettings?.name ?? 'entity',
+      symbolPrefix: animSettings?.symbolPrefix ?? 'entity',
+      defaultPaletteIndex: animSettings?.defaultPaletteIndex ?? 0,
+      quantizationMode: animSettings?.quantizationMode ?? 'median-cut',
+      ditheringMode: animSettings?.ditheringMode ?? 'none',
+      flipDeduplication: animSettings?.flipDeduplication ?? true,
+      spritePalette: animSettings?.spritePalette ?? 0,
+      spriteColorIndex: animSettings?.spriteColorIndex ?? 1,
+      patternTable: animSettings?.patternTable ?? 0,
+      destinationPatternTable: animSettings?.destinationPatternTable ?? 0,
+      destinationChrAsset: animSettings?.destinationChr ?? null,
+      destinationChrAssetId: animSettings?.destinationChr?.id ?? null,
+      destinationChrName:
+        animSettings?.destinationChr?.name ??
+        animSettings?.destinationChr?.path ??
+        null,
+      destinationChr,
+      animations:
+        reconstructedAnimations.length > 0
+          ? reconstructedAnimations
+          : defaultAnimation.animations,
+    },
+    error: restoredPngError,
+  };
 }
 
 async function loadProjectFile(
@@ -687,167 +705,10 @@ async function loadProjectFile(
           }
         : null;
 
+    const restoredAnimation = await restoreProjectAnimation(loaded);
+
     if (loaded.mode === 'animation') {
-      const animSettings = loaded.animation;
-      const reconstructedAnimations: AnimationItemSetting[] = [];
-      let restoredPngError: DisplayError | null = null;
-
-      for (const anim of animSettings?.animations ?? []) {
-        let source: AnimationSourceData | null = null;
-        let detection: FrameDetectionResult | null = null;
-        const matchingFile = findMatchingAssetFile(anim.asset);
-        const quantMode =
-          anim.quantizationMode ??
-          animSettings?.quantizationMode ??
-          'median-cut';
-        const dithMode =
-          anim.ditheringMode ?? animSettings?.ditheringMode ?? 'none';
-
-        if (matchingFile) {
-          try {
-            const imageData = await decodeImage(matchingFile);
-            const indexedImage = quantizePngSource(imageData, 'animation', {
-              quantizationMode: quantMode,
-              ditheringMode: dithMode,
-              colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
-            });
-            source = {
-              assetId: anim.asset?.id,
-              fileName: matchingFile.name,
-              sourceImage: imageData,
-              indexedImage,
-            };
-            detection = detectFrameGrid(imageData);
-          } catch (error: unknown) {
-            console.error('Project animation PNG load failed', {
-              fileName: matchingFile.name,
-              error,
-            });
-            restoredPngError ??=
-              error instanceof PngLoadError
-                ? displayPngLoadError(error.failure)
-                : { key: 'imageProcessingFailed' };
-            source = null;
-          }
-        } else if (anim.asset?.dataUrl) {
-          try {
-            const imageData = await decodeDataUrl(anim.asset.dataUrl);
-            const indexedImage = quantizePngSource(imageData, 'animation', {
-              quantizationMode: quantMode,
-              ditheringMode: dithMode,
-              colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
-            });
-            source = {
-              assetId: anim.asset.id,
-              fileName: anim.asset.name ?? anim.asset.path,
-              sourceImage: imageData,
-              indexedImage,
-            };
-            detection = detectFrameGrid(imageData);
-          } catch (error: unknown) {
-            console.error('Embedded project animation PNG load failed', error);
-            restoredPngError ??= { key: 'imageDecodeFailed' };
-            source = null;
-          }
-        }
-
-        const totalFrames = source
-          ? Math.floor(source.sourceImage.width / anim.frameWidth) *
-            Math.floor(source.sourceImage.height / anim.frameHeight)
-          : 0;
-        const frameIndices =
-          anim.frameIndices.length > 0
-            ? [...anim.frameIndices]
-            : totalFrames > 0
-              ? Array.from({ length: totalFrames }, (_, i) => i)
-              : [];
-        const frameDurations =
-          anim.frameDurations.length > 0
-            ? [...anim.frameDurations]
-            : Array.from(
-                { length: frameIndices.length },
-                () => anim.defaultDuration,
-              );
-        const framePalettes = anim.framePalettes
-          ? [...anim.framePalettes]
-          : Array.from({ length: frameIndices.length }, () => null);
-        const framePaletteIds = anim.framePaletteIds
-          ? [...anim.framePaletteIds]
-          : undefined;
-
-        reconstructedAnimations.push({
-          id: anim.id,
-          name: anim.name,
-          entity: anim.entity ?? 'entity',
-          source,
-          paletteId: anim.paletteId ?? null,
-          paletteIndex: anim.paletteIndex ?? null,
-          framePaletteIds,
-          quantizationMode: quantMode,
-          ditheringMode: dithMode,
-          frameWidth: anim.frameWidth,
-          frameHeight: anim.frameHeight,
-          originX: anim.originX,
-          originY: anim.originY,
-          playback: anim.playback,
-          allowHorizontalFlip: anim.allowHorizontalFlip,
-          allowVerticalFlip: anim.allowVerticalFlip,
-          flipH: anim.flipH ?? false,
-          flipV: anim.flipV ?? false,
-          defaultDuration: anim.defaultDuration,
-          frameIndices,
-          frameDurations,
-          framePalettes,
-          pixelOverrides: anim.pixelOverrides,
-          frameDetection: detection,
-        });
-      }
-
-      let destinationChr = new Uint8Array();
-      if (animSettings?.destinationChr) {
-        const chrFile = findMatchingAssetFile(animSettings.destinationChr);
-        if (chrFile) {
-          try {
-            destinationChr = new Uint8Array(await chrFile.arrayBuffer());
-          } catch {
-            destinationChr = new Uint8Array();
-          }
-        } else if (animSettings.destinationChr.dataUrl) {
-          try {
-            destinationChr = base64ToUint8Array(
-              animSettings.destinationChr.dataUrl,
-            );
-          } catch {
-            destinationChr = new Uint8Array();
-          }
-        }
-      }
-
-      const animation: AnimationSettings = {
-        ...createDefaultAnimationSettings(),
-        name: animSettings?.name ?? 'entity',
-        symbolPrefix: animSettings?.symbolPrefix ?? 'entity',
-        defaultPaletteIndex: animSettings?.defaultPaletteIndex ?? 0,
-        quantizationMode: animSettings?.quantizationMode ?? 'median-cut',
-        ditheringMode: animSettings?.ditheringMode ?? 'none',
-        flipDeduplication: animSettings?.flipDeduplication ?? true,
-        spritePalette: animSettings?.spritePalette ?? 0,
-        spriteColorIndex: animSettings?.spriteColorIndex ?? 1,
-        patternTable: animSettings?.patternTable ?? 0,
-        destinationPatternTable: animSettings?.destinationPatternTable ?? 0,
-        destinationChrAssetId: animSettings?.destinationChr?.id ?? null,
-        destinationChrName:
-          animSettings?.destinationChr?.name ??
-          animSettings?.destinationChr?.path ??
-          null,
-        destinationChr,
-        animations:
-          reconstructedAnimations.length > 0
-            ? reconstructedAnimations
-            : createDefaultAnimationSettings().animations,
-      };
-
-      project = {
+      const emptySource: RestoredRuntimeSource = {
         assetId: null,
         fileName: null,
         sourceKind: null,
@@ -856,32 +717,19 @@ async function loadProjectFile(
         sourceImage: null,
         indexedImage: null,
         tiles: [],
-        mode: 'animation',
-        deduplicationEnabled: loaded.settings.deduplicationEnabled,
-        flipDeduplicationEnabled: loaded.settings.flipDeduplicationEnabled,
-        collisionCells: createEmptyCollisionMap(),
-        activeCollisionType: COLLISION_TYPES.solid,
-        randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
-        universalBackgroundColor: loaded.palette.universalBackgroundColor,
-        paletteSet: loaded.palette.paletteSet,
-        palettes: loaded.palette.palettes,
-        activeBackgroundSlots: loaded.palette.activeBackgroundSlots,
-        activeSpriteSlots: loaded.palette.activeSpriteSlots,
-        activeSpritePaletteSlots: loaded.palette.activeSpriteSlots,
         paletteAssignments: new Uint8Array(),
         pixelOverrides: new Uint8Array(),
-        activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
-        activeColorIndex: loaded.palette.activeColorIndex ?? 1,
-        chrRegions: loaded.chrRegions ?? [],
-        animation,
-        scenePreview: loaded.scenePreview ?? { instances: [] },
-        quantizationSettings: loaded.settings.quantization,
+        collisionCells: createEmptyCollisionMap(),
       };
-      resetTransientState(restoredPngError ?? missingError);
+      project = restoreProjectView(
+        loaded,
+        emptySource,
+        restoredAnimation.animation,
+      );
+      resetTransientState(restoredAnimation.error ?? missingError);
       render();
       return;
     }
-
     // Tileset and Playfield modes
     const isPlayfield = loaded.mode === 'playfield';
     const assetRef = isPlayfield
@@ -1051,7 +899,7 @@ async function loadProjectFile(
       }
     }
 
-    project = {
+    const restoredSource: RestoredRuntimeSource = {
       assetId: assetRef?.id ?? null,
       fileName: assetRef?.name ?? assetRef?.path ?? null,
       sourceKind: assetRef?.sourceKind ?? 'png',
@@ -1060,31 +908,18 @@ async function loadProjectFile(
       sourceImage,
       indexedImage,
       tiles,
-      mode: loaded.mode,
-      deduplicationEnabled: loaded.settings.deduplicationEnabled,
-      flipDeduplicationEnabled: loaded.settings.flipDeduplicationEnabled,
       collisionCells,
-      activeCollisionType:
-        loaded.playfield?.activeCollisionType ?? COLLISION_TYPES.solid,
-      randomPlayfieldFeatures: loaded.playfield?.randomPlayfieldFeatures
-        ? [...loaded.playfield.randomPlayfieldFeatures]
-        : [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
-      universalBackgroundColor: loaded.palette.universalBackgroundColor,
-      paletteSet: loaded.palette.paletteSet,
-      palettes: loaded.palette.palettes,
-      activeBackgroundSlots: loaded.palette.activeBackgroundSlots,
-      activeSpriteSlots: loaded.palette.activeSpriteSlots,
-      activeSpritePaletteSlots: loaded.palette.activeSpriteSlots,
       paletteAssignments,
       pixelOverrides,
-      activePaletteIndex: loaded.palette.activePaletteIndex ?? 0,
-      activeColorIndex: loaded.palette.activeColorIndex ?? 1,
-      chrRegions: loaded.chrRegions ?? [],
-      animation: createDefaultAnimationSettings(),
-      scenePreview: loaded.scenePreview ?? { instances: [] },
-      quantizationSettings: loaded.settings.quantization,
     };
-    resetTransientState(restoredPngError ?? missingError);
+    project = restoreProjectView(
+      loaded,
+      restoredSource,
+      restoredAnimation.animation,
+    );
+    resetTransientState(
+      restoredPngError ?? restoredAnimation.error ?? missingError,
+    );
     render();
   } catch {
     setProjectError({ key: 'projectInvalidJson' });
@@ -2051,6 +1886,7 @@ async function loadAnimationSourceFile(
     );
     const existingAssetId =
       targetAnim?.source?.assetId ??
+      targetAnim?.asset?.id ??
       normalizeProjectAssetId(undefined, 'spritesheet', animId);
     const quantMode = targetAnim?.quantizationMode ?? 'median-cut';
     const dithMode = targetAnim?.ditheringMode ?? 'none';
@@ -2113,6 +1949,12 @@ async function loadAnimationSourceFile(
 
       return {
         ...anim,
+        asset: {
+          id: existingAssetId,
+          path: file.name,
+          name: file.name,
+          sourceKind: 'png' as const,
+        },
         source,
         quantizationMode: quantMode,
         ditheringMode: dithMode,
@@ -2418,10 +2260,21 @@ async function loadAnimationDestination(file: File): Promise<void> {
     if (bytes.length === 0 || bytes.length % 16 !== 0 || bytes.length > 8192) {
       throw new RangeError('Invalid animation destination CHR.');
     }
+    const destinationChrAssetId = normalizeProjectAssetId(
+      project.animation.destinationChrAssetId,
+      'base-chr',
+    );
     updateProject({
       ...project,
       animation: {
         ...project.animation,
+        destinationChrAsset: {
+          id: destinationChrAssetId,
+          path: file.name,
+          name: file.name,
+          sourceKind: 'chr',
+        },
+        destinationChrAssetId,
         destinationChrName: file.name,
         destinationChr: bytes,
       },
@@ -2920,6 +2773,8 @@ function renderAnimationWorkspace(): void {
         ...project,
         animation: {
           ...project.animation,
+          destinationChrAsset: null,
+          destinationChrAssetId: null,
           destinationChrName: null,
           destinationChr: new Uint8Array(),
         },
@@ -4221,17 +4076,12 @@ async function loadFile(file: File): Promise<void> {
   quantizationPreviewsLoading = false;
   quantizationPreviewCache.clear();
   const mode = project.mode;
-  const deduplicationEnabled = project.deduplicationEnabled;
-  const flipDeduplicationEnabled = project.flipDeduplicationEnabled;
   const paletteSet =
     mode === 'animation'
       ? resolveProjectSpritePaletteSet(project)
       : resolveProjectBackgroundPaletteSet(project);
-  const activePaletteIndex = project.activePaletteIndex;
   const paletteColorTarget = workspace.paletteColorTarget;
-  const activeColorIndex = project.activeColorIndex;
   const showPaletteNumbers = workspace.showPaletteNumbers;
-  const randomPlayfieldFeatures = project.randomPlayfieldFeatures;
   const sourceSymbolPrefix = normalizeCIdentifier(
     file.name.replace(/\.[^.]*$/, ''),
   );
@@ -4243,33 +4093,16 @@ async function loadFile(file: File): Promise<void> {
         }
       : project.animation;
   const quantizationSettings = project.quantizationSettings;
+  const sourceKind = isChrFile
+    ? 'chr'
+    : isNesFile
+      ? 'nes'
+      : isPngFile
+        ? 'png'
+        : null;
   updateProject({
-    fileName: file.name,
-    sourceKind: isChrFile
-      ? 'chr'
-      : isNesFile
-        ? 'nes'
-        : isPngFile
-          ? 'png'
-          : null,
-    width: null,
-    height: null,
-    sourceImage: null,
-    indexedImage: null,
-    tiles: [],
-    mode,
-    deduplicationEnabled,
-    flipDeduplicationEnabled,
-    collisionCells: createEmptyCollisionMap(),
-    activeCollisionType: COLLISION_TYPES.solid,
-    randomPlayfieldFeatures,
-    paletteSet,
-    paletteAssignments: new Uint8Array(),
-    pixelOverrides: new Uint8Array(),
-    activePaletteIndex,
-    activeColorIndex,
+    ...beginGraphicsSourceImport(project, file.name, sourceKind),
     animation,
-    quantizationSettings,
   });
   updateWorkspace({
     ...workspace,
@@ -4375,6 +4208,12 @@ async function loadFile(file: File): Promise<void> {
       const detection = detectFrameGrid(imageData);
       const defaultFrames = decideFrameDimensions(16, 16, detection);
       const sourceData: AnimationSourceData = {
+        assetId: normalizeProjectAssetId(
+          animation.animations[0]?.source?.assetId ??
+            animation.animations[0]?.asset?.id,
+          'spritesheet',
+          animation.animations[0]?.id,
+        ),
         fileName: file.name,
         sourceImage: imageData,
         indexedImage,
@@ -4388,6 +4227,12 @@ async function loadFile(file: File): Promise<void> {
           );
           return {
             ...anim,
+            asset: {
+              id: sourceData.assetId,
+              path: file.name,
+              name: file.name,
+              sourceKind: 'png' as const,
+            },
             source: sourceData,
             frameWidth: width,
             frameHeight: height,
@@ -4485,7 +4330,7 @@ function generatePlayfield(): void {
     features: project.randomPlayfieldFeatures,
   });
   const paletteAssignments = assignmentsForImage(indexedImage, 'playfield');
-  const paletteSet = createDefaultNesPaletteSet();
+  const paletteSet = resolveProjectBackgroundPaletteSet(project);
   const pixelOverrides = createPixelOverrides(
     indexedImage.width,
     indexedImage.height,
@@ -4499,7 +4344,14 @@ function generatePlayfield(): void {
     false,
     project.quantizationSettings.colorDistanceMode,
   );
+  const assetId = normalizeProjectAssetId(
+    project.mode === 'playfield' ? project.assetId : undefined,
+    'playfield-image',
+  );
+  const collisionCells = createEmptyCollisionMap();
   updateProject({
+    ...project,
+    assetId,
     fileName: 'random-playfield.png',
     sourceKind: 'png',
     width: indexedImage.width,
@@ -4510,16 +4362,24 @@ function generatePlayfield(): void {
     mode: 'playfield',
     deduplicationEnabled: true,
     flipDeduplicationEnabled: false,
-    collisionCells: createEmptyCollisionMap(),
+    collisionCells,
     activeCollisionType: COLLISION_TYPES.solid,
     randomPlayfieldFeatures: project.randomPlayfieldFeatures,
-    paletteSet,
+    playfield: {
+      ...project.playfield,
+      asset: {
+        id: assetId,
+        path: 'random-playfield.png',
+        name: 'random-playfield.png',
+        sourceKind: 'png',
+      },
+      collisionCells: Array.from(collisionCells),
+      randomPlayfieldFeatures: [...project.randomPlayfieldFeatures],
+    },
     paletteAssignments,
     pixelOverrides,
     activePaletteIndex: 0,
     activeColorIndex: 1,
-    animation: project.animation,
-    quantizationSettings: project.quantizationSettings,
   });
   resetTransientState();
   render();

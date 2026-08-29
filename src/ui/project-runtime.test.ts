@@ -1,0 +1,320 @@
+import { describe, expect, it } from 'vitest';
+import { createEmptyBackgroundMap } from '../core/background-model';
+import { createEmptyCollisionMap } from '../core/collision-encoder';
+import {
+  createDefaultProject,
+  deserializeProject,
+  serializeProject,
+  type StudioProject,
+} from '../core/project';
+import type { AnimationSettings } from './types';
+import {
+  beginGraphicsSourceImport,
+  buildStudioProjectFromRuntime,
+  restoreProjectView,
+  type RestoredRuntimeSource,
+} from './project-runtime';
+
+const encodeImage = (): string => 'data:image/png;base64,runtime-image';
+const encodeBytes = (bytes: Uint8Array): string =>
+  Array.from(bytes, (byte) => String(byte)).join('-');
+
+function createAnimationRuntime(project: StudioProject): AnimationSettings {
+  const animation = project.animation;
+  if (!animation) throw new Error('Expected animation fixture.');
+
+  return {
+    name: animation.name,
+    symbolPrefix: animation.symbolPrefix,
+    defaultPaletteIndex: animation.defaultPaletteIndex,
+    quantizationMode: animation.quantizationMode,
+    ditheringMode: animation.ditheringMode,
+    animations: animation.animations.map((item) => ({
+      ...item,
+      asset: item.asset,
+      source: null,
+    })),
+    flipDeduplication: animation.flipDeduplication,
+    spritePalette: animation.spritePalette,
+    spriteColorIndex: animation.spriteColorIndex,
+    colorIndices: new Uint8Array(),
+    destinationChrAsset: animation.destinationChr,
+    destinationChrAssetId: animation.destinationChr?.id ?? null,
+    destinationChrName:
+      animation.destinationChr?.name ?? animation.destinationChr?.path ?? null,
+    destinationChr: new Uint8Array(),
+    patternTable: animation.patternTable,
+    destinationPatternTable: animation.destinationPatternTable,
+  };
+}
+
+function createRuntimeSource(project: StudioProject): RestoredRuntimeSource {
+  const asset =
+    project.mode === 'playfield'
+      ? project.playfield?.asset
+      : project.mode === 'tileset'
+        ? project.tileset?.asset
+        : null;
+  const persistedAssignments =
+    project.mode === 'playfield'
+      ? project.playfield?.paletteAssignments
+      : project.tileset?.paletteAssignments;
+  const persistedOverrides =
+    project.mode === 'playfield'
+      ? project.playfield?.pixelOverrides
+      : project.tileset?.pixelOverrides;
+
+  return {
+    assetId: asset?.id ?? null,
+    fileName: asset?.name ?? asset?.path ?? null,
+    sourceKind: asset?.sourceKind ?? null,
+    width: null,
+    height: null,
+    sourceImage: null,
+    indexedImage: null,
+    tiles: [],
+    paletteAssignments: new Uint8Array(persistedAssignments ?? []),
+    pixelOverrides: new Uint8Array(persistedOverrides ?? []),
+    collisionCells: new Uint8Array(
+      project.playfield?.collisionCells ?? createEmptyCollisionMap(),
+    ),
+  };
+}
+
+function createCompleteProject(mode: StudioProject['mode']): StudioProject {
+  const base = createDefaultProject('Runtime State', mode);
+  const mapOne = {
+    ...createEmptyBackgroundMap({
+      id: 'bg-overworld',
+      name: 'Overworld',
+      assetId: 'asset-bg-overworld',
+    }),
+    asset: {
+      id: 'asset-bg-overworld',
+      path: 'backgrounds/overworld.png',
+      name: 'overworld.png',
+      sourceKind: 'png' as const,
+      dataUrl: 'data:image/png;base64,background',
+    },
+  };
+  const mapTwo = createEmptyBackgroundMap({
+    id: 'bg-castle',
+    name: 'Castle',
+    patternTable: 1,
+  });
+  const animation = base.animation;
+  if (!animation) throw new Error('Expected default animation.');
+  const animationItem = animation.animations[0];
+  if (!animationItem) throw new Error('Expected default animation item.');
+
+  return {
+    ...base,
+    mode,
+    tileset: {
+      asset: {
+        id: 'asset-tileset-stable',
+        path: 'graphics/tiles.png',
+        name: 'tiles.png',
+        sourceKind: 'png',
+        dataUrl: 'data:image/png;base64,tiles',
+      },
+      paletteAssignments: [0, 1],
+      pixelOverrides: [2, 3],
+    },
+    playfield: {
+      asset: {
+        id: 'asset-playfield-stable',
+        path: 'graphics/level.png',
+        name: 'level.png',
+        sourceKind: 'png',
+        dataUrl: 'data:image/png;base64,level',
+      },
+      collisionCells: Array.from(createEmptyCollisionMap(), (_, index) =>
+        index === 0 ? 3 : 0,
+      ),
+      activeCollisionType: 3,
+      randomPlayfieldFeatures: ['platforms'],
+      paletteAssignments: [2, 1],
+      pixelOverrides: [1, 2],
+    },
+    chrRegions: [
+      {
+        id: 'region-ui',
+        name: 'UI Tiles',
+        patternTable: 0,
+        startTile: 16,
+        endTile: 31,
+        kind: 'region',
+      },
+      {
+        id: 'reservation-engine',
+        name: 'Engine Reserved',
+        patternTable: 1,
+        startTile: 224,
+        endTile: 255,
+        kind: 'reservation',
+      },
+    ],
+    backgrounds: {
+      activeMapId: mapTwo.id,
+      maps: [mapOne, mapTwo],
+    },
+    animation: {
+      ...animation,
+      destinationChr: {
+        id: 'asset-base-chr-stable',
+        path: 'graphics/base.chr',
+        name: 'base.chr',
+        sourceKind: 'chr',
+        dataUrl: 'data:application/octet-stream;base64,base',
+      },
+      animations: [
+        {
+          ...animationItem,
+          id: 'anim-hero-idle',
+          entity: 'hero',
+          asset: {
+            id: 'asset-hero-stable',
+            path: 'sprites/hero.png',
+            name: 'hero.png',
+            sourceKind: 'png',
+            dataUrl: 'data:image/png;base64,hero',
+          },
+        },
+      ],
+    },
+    scenePreview: {
+      instances: [
+        {
+          id: 'scene-hero',
+          animationId: 'anim-hero-idle',
+          entityId: 'hero',
+          animationName: 'idle',
+          x: 24,
+          y: 32,
+          anchorX: 24,
+          anchorY: 32,
+          visible: true,
+        },
+      ],
+    },
+  };
+}
+
+function roundTripRuntime(project: StudioProject): StudioProject {
+  const runtime = restoreProjectView(
+    project,
+    createRuntimeSource(project),
+    createAnimationRuntime(project),
+  );
+  const serialized = serializeProject(
+    buildStudioProjectFromRuntime(
+      project.name,
+      runtime,
+      encodeImage,
+      encodeBytes,
+    ),
+  );
+  const loaded = deserializeProject(serialized);
+  if (!loaded.success) throw new Error(loaded.error.message);
+  return loaded.project;
+}
+
+describe('runtime project persistence boundary', () => {
+  it.each(['tileset', 'playfield', 'animation'] as const)(
+    'preserves every project-owned domain when active mode is %s',
+    (mode) => {
+      const original = createCompleteProject(mode);
+      const loaded = roundTripRuntime(original);
+
+      expect(loaded.backgrounds).toEqual(original.backgrounds);
+      expect(loaded.chrRegions).toEqual(original.chrRegions);
+      expect(loaded.animation).toEqual(original.animation);
+      expect(loaded.scenePreview).toEqual(original.scenePreview);
+      expect(loaded.palette).toEqual(original.palette);
+      expect(loaded.tileset?.asset?.id).toBe('asset-tileset-stable');
+      expect(loaded.playfield?.asset?.id).toBe('asset-playfield-stable');
+      expect(loaded.animation?.animations[0]?.asset?.id).toBe(
+        'asset-hero-stable',
+      );
+      expect(loaded.backgrounds?.maps.map((map) => map.id)).toEqual([
+        'bg-overworld',
+        'bg-castle',
+      ]);
+    },
+  );
+
+  it.each(['tileset', 'playfield'] as const)(
+    '%s import clears only intended source working state',
+    (mode) => {
+      const persisted = createCompleteProject(mode);
+      const runtime = restoreProjectView(
+        persisted,
+        createRuntimeSource(persisted),
+        createAnimationRuntime(persisted),
+      );
+      const imported = beginGraphicsSourceImport(
+        runtime,
+        `${mode}-replacement.png`,
+        'png',
+      );
+
+      expect(imported.backgrounds).toBe(runtime.backgrounds);
+      expect(imported.chrRegions).toBe(runtime.chrRegions);
+      expect(imported.animation).toBe(runtime.animation);
+      expect(imported.scenePreview).toBe(runtime.scenePreview);
+      expect(imported.palettes).toBe(runtime.palettes);
+      expect(imported.activeBackgroundSlots).toBe(
+        runtime.activeBackgroundSlots,
+      );
+      expect(imported.activeSpriteSlots).toBe(runtime.activeSpriteSlots);
+      expect(imported.fileName).toBe(`${mode}-replacement.png`);
+      expect(imported.paletteAssignments).toHaveLength(0);
+      expect(imported.pixelOverrides).toHaveLength(0);
+      expect(
+        mode === 'tileset'
+          ? imported.tileset?.asset?.id
+          : imported.playfield?.asset?.id,
+      ).toBe(
+        mode === 'tileset' ? 'asset-tileset-stable' : 'asset-playfield-stable',
+      );
+    },
+  );
+
+  it('keeps missing decoded asset references and stable IDs on repeated runtime round-trips', () => {
+    const first = roundTripRuntime(createCompleteProject('tileset'));
+    const second = roundTripRuntime(first);
+
+    expect(second.tileset?.asset).toEqual(first.tileset?.asset);
+    expect(second.animation?.destinationChr).toEqual(
+      first.animation?.destinationChr,
+    );
+    expect(second.animation?.animations[0]?.asset).toEqual(
+      first.animation?.animations[0]?.asset,
+    );
+    expect(second.backgrounds?.maps.map((map) => map.id)).toEqual(
+      first.backgrounds?.maps.map((map) => map.id),
+    );
+  });
+
+  it('preserves unique generated Background Map IDs across runtime round-trip', () => {
+    const original = createCompleteProject('animation');
+    const firstMap = createEmptyBackgroundMap({ name: 'Generated One' });
+    const secondMap = createEmptyBackgroundMap({ name: 'Generated Two' });
+    const withGeneratedMaps: StudioProject = {
+      ...original,
+      backgrounds: {
+        activeMapId: secondMap.id,
+        maps: [firstMap, secondMap],
+      },
+    };
+
+    const loaded = roundTripRuntime(withGeneratedMaps);
+    const originalIds = [firstMap.id, secondMap.id];
+    const loadedIds = loaded.backgrounds?.maps.map((map) => map.id);
+
+    expect(new Set(originalIds)).toHaveLength(2);
+    expect(loadedIds).toEqual(originalIds);
+    expect(loaded.backgrounds?.activeMapId).toBe(secondMap.id);
+  });
+});
