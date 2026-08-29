@@ -41,12 +41,15 @@ import type { IndexedImage } from '../core/types';
 import {
   analyzeAnimationOamCapacity,
   formatOamCapacityDiagnosticMessage,
+  type OamCapacityDiagnosticFact,
 } from '../core/oam-diagnostics';
 import {
   analyzeAnimationSpriteScanlinePressure,
   analyzeSceneInstanceVisibility,
   formatSceneInstanceVisibilityDiagnosticMessage,
   formatSpriteScanlinePressureDiagnosticMessage,
+  type AnimationSpriteScanlinePressureFact,
+  type SceneInstanceVisibilityFact,
 } from '../core/nes-sprite-diagnostics';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
 import type {
@@ -249,6 +252,64 @@ export function formatAttributeTableAssignmentDiagnosticMessage(
   });
 }
 
+function createAnimationDeliveryItem(
+  fact:
+    | OamCapacityDiagnosticFact
+    | AnimationSpriteScanlinePressureFact
+    | SceneInstanceVisibilityFact,
+  message: string,
+): DeliveryDiagnosticItem {
+  return {
+    id: fact.id,
+    level: fact.severity,
+    message,
+    targetWorkspace: 'animation',
+    actionLabel: t('deliveryLinkAnimation'),
+  };
+}
+
+export function convertOamCapacityFactsToDeliveryItems(
+  facts: readonly OamCapacityDiagnosticFact[],
+): readonly DeliveryDiagnosticItem[] {
+  return facts.map((fact) =>
+    createAnimationDeliveryItem(fact, formatOamCapacityDiagnosticMessage(fact)),
+  );
+}
+
+export function convertSpriteScanlineFactsToDeliveryItems(
+  facts: readonly AnimationSpriteScanlinePressureFact[],
+): readonly DeliveryDiagnosticItem[] {
+  return facts.map((fact) =>
+    createAnimationDeliveryItem(
+      fact,
+      formatSpriteScanlinePressureDiagnosticMessage(fact),
+    ),
+  );
+}
+
+export function convertSceneVisibilityFactsToDeliveryItems(
+  facts: readonly SceneInstanceVisibilityFact[],
+): readonly DeliveryDiagnosticItem[] {
+  return facts.map((fact) =>
+    createAnimationDeliveryItem(
+      fact,
+      formatSceneInstanceVisibilityDiagnosticMessage(fact),
+    ),
+  );
+}
+
+export function convertNametableChrFactsToDeliveryItems(
+  facts: readonly NametableChrConsistencyFact[],
+): readonly DeliveryDiagnosticItem[] {
+  return facts.map((fact) => ({
+    id: fact.id,
+    level: fact.severity,
+    message: formatNametableChrConsistencyDiagnosticMessage(fact),
+    targetWorkspace: 'chr' as const,
+    actionLabel: t('deliveryLinkChr'),
+  }));
+}
+
 export function convertAttributeTableAssignmentFactsToDeliveryItems(
   facts: readonly AttributeTableAssignmentFact[],
 ): readonly DeliveryDiagnosticItem[] {
@@ -271,6 +332,26 @@ export function convertChrRegionDiagnosticFactsToDeliveryItems(
     targetWorkspace: 'chr',
     actionLabel: t('deliveryLinkChr'),
   }));
+}
+
+/** Keep first occurrence; fact IDs are canonical, legacy items use a stable fallback key. */
+export function deduplicateDeliveryDiagnosticItems(
+  items: readonly DeliveryDiagnosticItem[],
+): readonly DeliveryDiagnosticItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key =
+      item.id ??
+      [
+        item.level,
+        item.message,
+        item.targetWorkspace ?? '',
+        item.actionLabel ?? '',
+      ].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function createPaletteDeliveryArtifacts(
@@ -450,38 +531,20 @@ export function createDeliveryWorkspace(
         });
       }
 
-      for (const fact of analyzeAnimationOamCapacity(model)) {
-        diagnostics.push({
-          id: fact.id,
-          level: fact.severity,
-          message: formatOamCapacityDiagnosticMessage(fact),
-          targetWorkspace: 'animation',
-          actionLabel: t('deliveryLinkAnimation'),
-        });
-      }
-
-      for (const fact of analyzeAnimationSpriteScanlinePressure(model)) {
-        diagnostics.push({
-          id: fact.id,
-          level: fact.severity,
-          message: formatSpriteScanlinePressureDiagnosticMessage(fact),
-          targetWorkspace: 'animation',
-          actionLabel: t('deliveryLinkAnimation'),
-        });
-      }
-
-      for (const fact of analyzeSceneInstanceVisibility(
-        options.scenePreview?.instances ?? [],
-        model.animations,
-      )) {
-        diagnostics.push({
-          id: fact.id,
-          level: fact.severity,
-          message: formatSceneInstanceVisibilityDiagnosticMessage(fact),
-          targetWorkspace: 'animation',
-          actionLabel: t('deliveryLinkAnimation'),
-        });
-      }
+      diagnostics.push(
+        ...convertOamCapacityFactsToDeliveryItems(
+          analyzeAnimationOamCapacity(model),
+        ),
+        ...convertSpriteScanlineFactsToDeliveryItems(
+          analyzeAnimationSpriteScanlinePressure(model),
+        ),
+        ...convertSceneVisibilityFactsToDeliveryItems(
+          analyzeSceneInstanceVisibility(
+            options.scenePreview?.instances ?? [],
+            model.animations,
+          ),
+        ),
+      );
     }
   } else if (options.mode === 'playfield') {
     if (options.nametable === null && options.error === null) {
@@ -499,15 +562,7 @@ export function createDeliveryWorkspace(
         options.chrSlotClassifications,
         options.backgroundPatternTable,
       );
-      for (const fact of facts) {
-        diagnostics.push({
-          id: fact.id,
-          level: fact.severity,
-          message: formatNametableChrConsistencyDiagnosticMessage(fact),
-          targetWorkspace: 'chr',
-          actionLabel: t('deliveryLinkChr'),
-        });
-      }
+      diagnostics.push(...convertNametableChrFactsToDeliveryItems(facts));
     }
 
     if (options.backgroundMap && options.chrSlotClassifications) {
@@ -581,6 +636,10 @@ export function createDeliveryWorkspace(
       actionLabel: t('deliveryLinkPalettes'),
     });
   }
+
+  const uniqueDiagnostics = deduplicateDeliveryDiagnosticItems(diagnostics);
+  diagnostics.length = 0;
+  diagnostics.push(...uniqueDiagnostics);
 
   const errorCount = diagnostics.filter((d) => d.level === 'error').length;
   const warnCount = diagnostics.filter((d) => d.level === 'warning').length;

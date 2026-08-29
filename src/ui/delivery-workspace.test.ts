@@ -20,6 +20,11 @@ import { createDefaultDualBankPaletteState } from '../core/palette-manager';
 import type { IndexedImage } from '../core/types';
 import {
   createDeliveryWorkspace,
+  convertNametableChrFactsToDeliveryItems,
+  convertOamCapacityFactsToDeliveryItems,
+  convertSceneVisibilityFactsToDeliveryItems,
+  convertSpriteScanlineFactsToDeliveryItems,
+  deduplicateDeliveryDiagnosticItems,
   type DeliveryWorkspaceOptions,
 } from './delivery-workspace';
 import type { ChrSlotClassification } from '../core/chr-pattern-table';
@@ -28,6 +33,8 @@ import type {
   PhysicalSlotAttribution,
 } from '../core/chr-asset-mapping';
 import { analyzeSceneInstanceVisibility } from '../core/nes-sprite-diagnostics';
+import { analyzeAnimationOamCapacity } from '../core/oam-diagnostics';
+import { analyzeAnimationSpriteScanlinePressure } from '../core/nes-sprite-diagnostics';
 import { setLocale } from '../i18n';
 
 class MockElement {
@@ -1007,6 +1014,78 @@ describe('Delivery Workspace', () => {
       [c.source, c.sourceFileName],
       [asm.include, asm.includeFileName],
       [asm.source, asm.sourceFileName],
+    ]);
+  });
+
+  it('converts every milestone NES fact family to the correct Delivery target', () => {
+    const animationModel = createOamPressureAnimationModel();
+    const oamFacts = convertOamCapacityFactsToDeliveryItems(
+      analyzeAnimationOamCapacity(animationModel),
+    );
+    const scanlineFacts = convertSpriteScanlineFactsToDeliveryItems(
+      analyzeAnimationSpriteScanlinePressure(animationModel),
+    );
+    const visibilityFacts = convertSceneVisibilityFactsToDeliveryItems(
+      analyzeSceneInstanceVisibility(
+        [
+          {
+            id: 'scene-hero',
+            animationId: 'a1',
+            entityId: 'hero',
+            animationName: 'Hero_idle',
+            x: 20,
+            y: 240,
+            visible: true,
+            name: 'Hero One',
+          },
+        ],
+        animationModel.animations,
+      ),
+    );
+
+    expect(oamFacts[0]).toMatchObject({
+      level: 'warning',
+      targetWorkspace: 'animation',
+      actionLabel: 'Animation Workspace',
+    });
+    expect(scanlineFacts[0]).toMatchObject({ targetWorkspace: 'animation' });
+    expect(visibilityFacts[0]).toMatchObject({ targetWorkspace: 'animation' });
+
+    const nametableFacts = convertNametableChrFactsToDeliveryItems([
+      {
+        id: 'nametable-unallocated-tile:pt0:0-0',
+        kind: 'nametable-unallocated-tile',
+        severity: 'warning',
+        patternTable: 0,
+        startIndex: 0,
+        endIndex: 0,
+        startColumn: 0,
+        startRow: 0,
+        endColumn: 0,
+        endRow: 0,
+        count: 1,
+        localTileIndices: [1],
+        physicalTileIndices: [1],
+      },
+    ]);
+    expect(nametableFacts[0]).toMatchObject({
+      level: 'warning',
+      targetWorkspace: 'chr',
+      actionLabel: 'CHR Memory Workspace',
+    });
+  });
+
+  it('deduplicates combined facts without changing severity or first-seen order', () => {
+    const items = deduplicateDeliveryDiagnosticItems([
+      { id: 'same', level: 'info', message: 'one' },
+      { id: 'same', level: 'error', message: 'regression' },
+      { level: 'warning', message: 'legacy' },
+      { level: 'warning', message: 'legacy' },
+    ]);
+
+    expect(items).toEqual([
+      { id: 'same', level: 'info', message: 'one' },
+      { level: 'warning', message: 'legacy' },
     ]);
   });
 });
