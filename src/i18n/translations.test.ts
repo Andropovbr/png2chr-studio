@@ -99,4 +99,22 @@ describe('translations', () => {
       translations['pt-BR'].chrRegionManagerDeleteReservationConfirm,
     ).toContain('Slots anteriormente protegidos contra alocação automática');
   });
+
+  it('uses canonical NES terminology in pt-BR', () => {
+    const pt = translations['pt-BR'];
+
+    expect(pt.chrMode).toBe('CHR ROM');
+    expect(pt.chrWorkspaceTitle).toContain('Pattern Tables');
+    expect(pt.chrWorkspaceViewerTitle).toBe('Pattern Tables ($0000..$1FFF)');
+    expect(pt.chrWorkspaceViewerHint).toContain('Pattern Table 0');
+    expect(pt.chrWorkspaceViewerHint).toContain('Pattern Table 1');
+    expect(pt.chrRegionManagerFieldPatternTable).toBe('Pattern Table');
+    expect(pt.chrTileInspectorPatternTable).toBe('Pattern Table');
+    expect(pt.chrWorkspacePt0Title).toContain('Pattern Table 0');
+    expect(pt.chrWorkspacePt1Title).toContain('Pattern Table 1');
+
+    for (const value of Object.values(pt)) {
+      expect(value).not.toMatch(/Tabela[s]? de Padrões|tabela[s]? de padrões/);
+    }
+  });
 });

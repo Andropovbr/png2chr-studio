@@ -60,6 +60,7 @@ A documentação técnica detalhada está estruturada nos seguintes tópicos:
 | [**Investigação: Sprite Sheet → CHR Integration**](./investigations/spritesheet-chr-integration.md)       | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 7 (Integração de Sprite Sheets com CHR e Metasprites).                                                |
 | [**Investigação: Background Pipeline**](./investigations/background-pipeline.md)                          | Desenho técnico, modelo de domínio e plano de implementação para a Milestone 8 (Pipeline de Background, Nametables e Attribute Tables).                                            |
 | [**Palette Manager**](./palette-manager.md)                                                               | Desenho técnico, modelo de domínio, compatibilidade de hardware PPU ($3F00..$3F1F) e plano de implementação para a Milestone 9 (Palette Manager).                                  |
+| [**Política de terminologia pt-BR**](./localizacao-pt-br.md)                                              | Convenções para localizar a interface sem traduzir mecanicamente termos canônicos do desenvolvimento NES.                                                                          |
 | [**Auditoria final: Scene & Multi-Entity Preview**](./investigations/scene-multi-entity-preview-audit.md) | Arquitetura final, fronteiras de estado, findings resolvidos, cobertura integrada, checklist de migração e responsabilidades adiadas da Milestone 10.                              |
 
 ---

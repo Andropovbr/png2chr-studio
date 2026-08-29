@@ -489,7 +489,7 @@ const en = {
   animationFlipDeduplication: 'Reuse tiles using H/V sprite flips',
   animationSpritePatternTable: 'Sprite pattern table',
   animationDestinationPatternTable: 'Base CHR placement table',
-  animationPatternTableOption: 'Pattern table {table}',
+  animationPatternTableOption: 'Pattern Table {table}',
   animationTransparencyHint:
     'Transparent source pixels map to universal color index 0. Fully empty 8 × 8 cells are still omitted from the metasprite.',
   animationDestinationTitle: 'Destination CHR',
@@ -1112,7 +1112,7 @@ const ptBr = {
   backgroundMode: 'Mapas de Background',
   animationMode: 'Sprite sheet / animação',
   palettesMode: 'Paletas',
-  chrMode: 'Memória CHR',
+  chrMode: 'CHR ROM',
   deliverMode: 'Entrega & Exportação',
   deliveryWorkspaceTitle: 'Entrega & Exportação',
   deliveryWorkspaceHint:
@@ -1132,7 +1132,7 @@ const ptBr = {
   deliveryLinkBackground: 'Workspace de Background',
   deliveryLinkAnimation: 'Workspace de Animação',
   deliveryLinkPalettes: 'Workspace de Paletas',
-  deliveryLinkChr: 'Workspace de Memória CHR',
+  deliveryLinkChr: 'Workspace de CHR ROM',
   backgroundWorkspaceTitle: 'Mapas de Background',
   backgroundWorkspaceHint:
     'Edite Nametables 32×30 do NES, pinte subpaletas da Attribute Table em blocos 16×16 e configure a Pattern Table de destino.',
@@ -1166,14 +1166,14 @@ const ptBr = {
   backgroundCellCoords: 'Célula',
   backgroundLogicalTile: 'Tile Lógico',
   backgroundPhysicalTile: 'Tile Físico',
-  backgroundInspectInChr: 'Inspecionar na Memória CHR',
+  backgroundInspectInChr: 'Inspecionar na CHR ROM',
   backgroundAttributeBlock: 'Bloco de Atributo (16×16)',
   backgroundEmptyCell: 'Célula Vazia',
   backgroundNoMapSelected: 'Nenhum mapa de background selecionado.',
   backgroundCreateFirstMap:
     'Crie seu primeiro mapa de background para começar a editar.',
   deliveryArtifactChr:
-    'Binário de Pattern Table CHR-ROM NES (8 KiB / 512 tiles)',
+    'Binário de Pattern Table CHR ROM NES (8 KiB / 512 tiles)',
   deliveryArtifactPalette: 'Binário de Paleta de Background NES (16 bytes)',
   deliveryArtifactSpritePalette: 'Binário de Paleta de Sprites NES (16 bytes)',
   deliveryArtifactFullPalette:
@@ -1211,14 +1211,14 @@ const ptBr = {
   paletteWorkspaceDownloadAsmSource: 'Código ca65 (.s)',
   paletteWorkspaceStats:
     '{count} definições de paleta · {active} slots ativos · {references} referências',
-  chrWorkspaceTitle: 'Memória CHR e Tabelas de Padrões',
+  chrWorkspaceTitle: 'CHR ROM e Pattern Tables',
   loadingStatus: 'Carregando…',
   chrWorkspaceHint:
-    'Visão de hardware projetada da ocupação física da CHR-ROM de 8 KiB, tabelas de padrões (PT0 / PT1), retenção de CHR-base e indexação local OAM.',
+    'Visão de hardware projetada da ocupação física da CHR ROM de 8 KiB, Pattern Tables (PT0 / PT1), retenção de CHR-base e indexação local OAM.',
   chrWorkspaceIntroTitle: 'Visão Geral',
-  chrWorkspaceViewerTitle: 'Tabelas de Padrões ($0000..$1FFF)',
+  chrWorkspaceViewerTitle: 'Pattern Tables ($0000..$1FFF)',
   chrWorkspaceViewerHint:
-    'Inspeção visual da memória CHR-ROM de 8 KiB. Tabela de Padrões 0 ($0000..$0FFF) e Tabela de Padrões 1 ($1000..$1FFF), 256 tiles cada.',
+    'Inspeção visual da CHR ROM de 8 KiB. Pattern Table 0 ($0000..$0FFF) e Pattern Table 1 ($1000..$1FFF), 256 tiles cada.',
   chrWorkspaceViewGroupLabel: 'Controles de visualização',
   chrWorkspaceContextGroupLabel: 'Controles de contexto e legenda',
   chrWorkspacePaletteLabel: 'Paleta',
@@ -1407,16 +1407,16 @@ const ptBr = {
   chrAssetMetricsEmpty: 'Nenhum asset ativo com alocações CHR.',
   deliveryResourceSummaryTitle: 'Contabilidade de Recursos CHR por Asset',
   deliveryResourceSummarySubtitle:
-    'Alocação física de slots na CHR-ROM de 8 KiB e compartilhamento entre assets.',
+    'Alocação física de slots na CHR ROM de 8 KiB e compartilhamento entre assets.',
   chrRegionFull:
     'A região "{name}" na PT{patternTable} está cheia ({occupied}/{total} tiles ocupados).',
   chrRegionManagerSectionTitle: 'Regiões e Reservas de CHR',
   chrRegionManagerSectionSubtitle:
-    'Organize tabelas de padrões em regiões nomeadas e proteja faixas de memória com reservas.',
+    'Organize Pattern Tables em regiões nomeadas e proteja faixas de memória com reservas.',
   chrRegionManagerCountBadge: '{count} configuradas',
   chrRegionManagerAddAction: '+ Nova Região',
   chrRegionManagerEmptyState:
-    'Nenhuma região ou reserva configurada ainda. Clique em "+ Nova Região" para particionar suas tabelas de padrões.',
+    'Nenhuma região ou reserva configurada ainda. Clique em "+ Nova Região" para particionar suas Pattern Tables.',
   chrRegionManagerTableHeaderColor: 'Cor',
   chrRegionManagerTableHeaderName: 'Nome',
   chrRegionManagerTableHeaderKind: 'Tipo',
@@ -1434,7 +1434,7 @@ const ptBr = {
   chrRegionManagerFieldName: 'Nome',
   chrRegionManagerFieldNamePlaceholder: 'ex.: Jogador, Inimigos, HUD...',
   chrRegionManagerFieldKind: 'Tipo',
-  chrRegionManagerFieldPatternTable: 'Tabela de Padrões',
+  chrRegionManagerFieldPatternTable: 'Pattern Table',
   chrRegionManagerFieldStart: 'Tile Inicial (Hex $00..$FF)',
   chrRegionManagerFieldEnd: 'Tile Final (Hex $00..$FF)',
   chrRegionManagerFieldColor: 'Cor de Destaque',
@@ -1474,7 +1474,7 @@ const ptBr = {
   chrWorkspaceTileTooltipReservationPart: ' · Reserva: {name}',
   chrWorkspaceTileAriaRegionPart: ', Região: {name}',
   chrWorkspaceTileAriaReservationPart: ', Reserva: {name}',
-  chrWorkspaceOccupancyTitle: 'Ocupação Física e Tabelas de Padrões',
+  chrWorkspaceOccupancyTitle: 'Ocupação Física e Pattern Tables',
   chrWorkspaceSpriteContextTitle: 'Capacidade de Sprites e Índices OAM',
   chrWorkspaceReuseTitle: 'Detalhamento de Tiles e Reúso',
   chrWorkspaceExportTitle: 'Exportação de CHR e Links',
@@ -1482,17 +1482,18 @@ const ptBr = {
     'Ocupação Total da CHR: {occupied} / {capacity} tiles ({percent}%)',
   chrWorkspaceFreeTiles: '{count} tiles livres',
   chrWorkspaceRomSize: 'Tamanho de saída: 8 KiB ({bytes} bytes)',
-  chrWorkspacePt0Title: 'Tabela de Padrões 0 (PT0 - $0000..$0FFF)',
-  chrWorkspacePt1Title: 'Tabela de Padrões 1 (PT1 - $1000..$1FFF)',
+  chrWorkspacePt0Title: 'Pattern Table 0 (PT0 - $0000..$0FFF)',
+  chrWorkspacePt1Title: 'Pattern Table 1 (PT1 - $1000..$1FFF)',
   chrWorkspacePtOccupancy: '{occupied} / 256 tiles ocupados',
   chrWorkspacePtBaseCount: '{count} tiles do CHR-base',
-  chrWorkspacePtRoleBackground: 'Tabela de Background (Padrão)',
-  chrWorkspacePtRoleSprite: 'Tabela Ativa de Sprites (Alvo OAM)',
+  chrWorkspacePtRoleBackground: 'Pattern Table de Background (Padrão)',
+  chrWorkspacePtRoleSprite: 'Pattern Table Ativa de Sprites (Alvo OAM)',
   chrWorkspaceOamIndexExplain:
-    'A PPU do NES endereça sprites usando um índice de tile de 8 bits (0..255). A seleção da tabela de padrões (PT0 / PT1) é controlada globalmente via registrador $2000 (PPUCTRL bit 3). O índice local OAM é sempre physicalIndex % 256.',
-  chrWorkspaceActiveSpritePt: 'Tabela Ativa de Sprites: PT{table} (${address})',
+    'A PPU do NES endereça sprites usando um índice de tile de 8 bits (0..255). A seleção da Pattern Table (PT0 / PT1) é controlada globalmente via registrador $2000 (PPUCTRL bit 3). O índice local OAM é sempre physicalIndex % 256.',
+  chrWorkspaceActiveSpritePt:
+    'Pattern Table Ativa de Sprites: PT{table} (${address})',
   chrWorkspaceSpriteCapacity:
-    'Capacidade da Tabela de Sprites: {occupied} / 256 tiles ({remaining} restantes)',
+    'Capacidade da Pattern Table de Sprites: {occupied} / 256 tiles ({remaining} restantes)',
   chrWorkspaceBaseTilesCount: 'CHR-Base Retido',
   chrWorkspaceReusedTilesCount: 'Tiles Reutilizados / Compartilhados',
   chrWorkspaceNewTilesCount: 'Novos Tiles Únicos',
@@ -1508,13 +1509,13 @@ const ptBr = {
   chrTileInspectorTitle: 'Inspetor de Tile',
   chrTileInspectorSubtitle: 'Endereçamento de Hardware e Metadados do Tile',
   chrTileInspectorEmpty:
-    'Selecione um slot de tile 8×8 na Tabela de Padrões 0 ou 1 para inspecionar endereçamento NES, offsets na CHR-ROM e metadados de pixels.',
+    'Selecione um slot de tile 8×8 na Pattern Table 0 ou 1 para inspecionar endereçamento NES, offsets na CHR ROM e metadados de pixels.',
   chrTileInspectorDeselect: 'Desmarcar Tile',
   chrTileInspectorGridToggle: 'Exibir Grade de Pixels',
   chrTileInspectorPhysicalIndex: 'Índice Físico Global',
   chrTileInspectorLocalIndex: 'Índice Local na Tabela',
-  chrTileInspectorPatternTable: 'Tabela de Padrões',
-  chrTileInspectorStartOffset: 'Offset Inicial na CHR-ROM',
+  chrTileInspectorPatternTable: 'Pattern Table',
+  chrTileInspectorStartOffset: 'Offset Inicial na CHR ROM',
   chrTileInspectorBitplane0: 'Offset do Bitplane 0 (+0)',
   chrTileInspectorBitplane1: 'Offset do Bitplane 1 (+8)',
   chrTileInspectorSlotState: 'Estado do Slot',
@@ -1527,7 +1528,7 @@ const ptBr = {
   chrTileInspectorBaseAttribution: 'CHR-Base: {name}',
   chrTileInspectorTilePos: 'Col {col}, Linha {row}',
   tilesetModeHint:
-    'Use um PNG, um arquivo CHR ou uma ROM iNES mapper 0 com 8 KB de CHR-ROM.',
+    'Use um PNG, um arquivo CHR ou uma ROM iNES mapper 0 com 8 KB de CHR ROM.',
   playfieldModeHint:
     'Um playfield deve ter exatamente 256 × 240 px (32 × 30 tiles).',
   animationModeHint:
@@ -1578,9 +1579,9 @@ const ptBr = {
   animationOriginX: 'Origem X',
   animationOriginY: 'Origem Y',
   animationFlipDeduplication: 'Reutilizar tiles usando flips H/V de sprite',
-  animationSpritePatternTable: 'Pattern table dos sprites',
-  animationDestinationPatternTable: 'Tabela para posicionar o CHR-base',
-  animationPatternTableOption: 'Pattern table {table}',
+  animationSpritePatternTable: 'Pattern Table dos sprites',
+  animationDestinationPatternTable: 'Pattern Table para posicionar o CHR-base',
+  animationPatternTableOption: 'Pattern Table {table}',
   animationTransparencyHint:
     'Pixels transparentes do PNG usam o índice universal 0. Células 8 × 8 totalmente vazias continuam omitidas do metasprite.',
   animationDestinationTitle: 'CHR de destino',
@@ -1620,7 +1621,7 @@ const ptBr = {
   animationFinalTiles: 'Tiles finais',
   animationTotalChr: 'CHR total',
   animationSpritePatternTableUsage: 'Pattern Table {table}',
-  animationRemainingTiles: 'Restante na pattern table de sprites',
+  animationRemainingTiles: 'Restante na Pattern Table de sprites',
   animationFinalChrSize: 'Tamanho final do CHR',
   animationExportsTitle: 'Exportações da animação',
   animationDownloadChr: 'Baixar CHR final',
@@ -1645,7 +1646,7 @@ const ptBr = {
   animationErrorDestination:
     'O CHR de destino deve ser múltiplo de 16 bytes e caber em 512 tiles (8 KiB).',
   animationErrorCapacity:
-    'O CHR resultante excede a capacidade de 256 tiles da pattern table de sprites.',
+    'O CHR resultante excede a capacidade de 256 tiles da Pattern Table de sprites.',
   oamCapacityPressure:
     'O frame {frame} da animação "{animation}" usa {sprites} entradas OAM. Isso indica pressão acima de 32 sprites, não um limite de hardware.',
   oamCapacityExceeded:
@@ -1940,7 +1941,7 @@ const ptBr = {
   dimensionsLabel: 'Dimensões',
   colorCountLabel: 'Índices de cor',
   tileCountLabel: 'Tiles',
-  chrSizeLabel: 'Tamanho do CHR',
+  chrSizeLabel: 'Tamanho da CHR ROM',
   nametableSizeLabel: 'Tamanho da nametable',
   attributeTableSizeLabel: 'Tamanho da Attribute Table',
   byteCount: '{count} bytes',
