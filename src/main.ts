@@ -3860,6 +3860,10 @@ function renderDeliveryWorkspace(): void {
     chr,
     nametable,
     backgroundPatternTable: project.animation.destinationPatternTable,
+    backgroundMap:
+      project.backgrounds?.maps.find(
+        (map) => map.id === project.backgrounds?.activeMapId,
+      ) ?? project.backgrounds?.maps[0],
     attributeTable,
     collisionMap,
     paletteState,

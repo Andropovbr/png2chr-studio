@@ -873,6 +873,8 @@ export interface ChrSlotClassification {
   readonly patternTable: SpritePatternTable;
   readonly occupancy: ChrSlotOccupancy;
   readonly attribution?: string;
+  /** Optional palette context required by a tile in a compiled Background. */
+  readonly paletteContext?: number;
 }
 
 export interface CollectChrHighlightOptions {

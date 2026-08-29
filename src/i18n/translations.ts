@@ -112,6 +112,8 @@ const en = {
     'Nametable cell (column {startColumn}, row {startRow}) references unallocated CHR slot PT{patternTable}:{tiles}. No Base CHR or Project CHR content backs this index.',
   nametableUnallocatedTileRange:
     '{count} consecutive Nametable cells, from (column {startColumn}, row {startRow}) through (column {endColumn}, row {endRow}), reference unallocated CHR slots PT{patternTable}:{tiles}. No Base CHR or Project CHR content backs these indices.',
+  attributePaletteContextMismatch:
+    'Background region at ({pixelX}, {pixelY}) is assigned palette {paletteIndex}, but referenced tiles require palette contexts {required}.',
   paletteWorkspaceTitle: 'Project Palettes',
   paletteWorkspaceHint:
     'Manage reusable NES palette definitions and configure active sprite palette slots for the project.',
@@ -1209,6 +1211,8 @@ const ptBr = {
     'A célula da Nametable (coluna {startColumn}, linha {startRow}) referencia o slot CHR não alocado PT{patternTable}:{tiles}. Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esse índice.',
   nametableUnallocatedTileRange:
     '{count} células consecutivas da Nametable, de (coluna {startColumn}, linha {startRow}) até (coluna {endColumn}, linha {endRow}), referenciam slots CHR não alocados PT{patternTable}:{tiles}. Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esses índices.',
+  attributePaletteContextMismatch:
+    'A região de Background em ({pixelX}, {pixelY}) usa a paleta {paletteIndex}, mas os Tiles referenciados exigem os contextos de paleta {required}.',
   paletteWorkspaceTitle: 'Paletas do Projeto',
   paletteWorkspaceHint:
     'Gerencie definições reutilizáveis de paletas NES e configure os slots de paletas de sprites do projeto.',

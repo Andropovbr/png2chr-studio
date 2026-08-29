@@ -49,9 +49,14 @@ import {
   formatSpriteScanlinePressureDiagnosticMessage,
 } from '../core/nes-sprite-diagnostics';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
-import type { BackgroundPatternTable } from '../core/background-model';
+import type {
+  BackgroundMapDefinition,
+  BackgroundPatternTable,
+} from '../core/background-model';
 import {
   analyzeNametableChrConsistency,
+  analyzeAttributeTableAssignments,
+  type AttributeTableAssignmentFact,
   type NametableChrConsistencyFact,
 } from '../core/nes-background-diagnostics';
 import { t, type TranslationKey } from '../i18n';
@@ -90,6 +95,7 @@ export interface DeliveryWorkspaceOptions {
   readonly chr: Uint8Array | null;
   readonly nametable: Uint8Array | null;
   readonly backgroundPatternTable: BackgroundPatternTable;
+  readonly backgroundMap?: BackgroundMapDefinition;
   readonly attributeTable: Uint8Array | null;
   readonly collisionMap: Uint8Array | null;
   readonly paletteState: DualBankPaletteState;
@@ -229,6 +235,30 @@ export function formatNametableChrConsistencyDiagnosticMessage(
     endRow: fact.endRow,
     count: fact.count,
   });
+}
+
+export function formatAttributeTableAssignmentDiagnosticMessage(
+  fact: AttributeTableAssignmentFact,
+): string {
+  return t('attributePaletteContextMismatch', {
+    mapName: fact.mapId,
+    pixelX: fact.pixelX,
+    pixelY: fact.pixelY,
+    paletteIndex: fact.paletteIndex,
+    required: fact.requiredPaletteContexts.join(', '),
+  });
+}
+
+export function convertAttributeTableAssignmentFactsToDeliveryItems(
+  facts: readonly AttributeTableAssignmentFact[],
+): readonly DeliveryDiagnosticItem[] {
+  return facts.map((fact) => ({
+    id: fact.id,
+    level: fact.severity,
+    message: formatAttributeTableAssignmentDiagnosticMessage(fact),
+    targetWorkspace: 'background',
+    actionLabel: t('deliveryLinkBackground'),
+  }));
 }
 
 export function convertChrRegionDiagnosticFactsToDeliveryItems(
@@ -478,6 +508,17 @@ export function createDeliveryWorkspace(
           actionLabel: t('deliveryLinkChr'),
         });
       }
+    }
+
+    if (options.backgroundMap && options.chrSlotClassifications) {
+      diagnostics.push(
+        ...convertAttributeTableAssignmentFactsToDeliveryItems(
+          analyzeAttributeTableAssignments(
+            options.backgroundMap,
+            options.chrSlotClassifications,
+          ),
+        ),
+      );
     }
   } else {
     // Tileset mode
