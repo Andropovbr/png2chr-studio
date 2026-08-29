@@ -368,7 +368,7 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 ### 6.6 Workspace de Entrega e Exportação (`src/ui/delivery-workspace.ts`)
 
 - Hub consolidado de validação de prontidão, diagnósticos de domínio e geração de artefatos de produção para todos os modos (Tileset, Playfield e Animação):
-  - **Prontidão do Projeto & Diagnósticos:** Avaliação visual unificada do status de exportação (`Pronto para Produção`, `Pronto com Avisos`, `Ação Necessária`), integrando diagnósticos de dimensões, redução de cores, consistência entre índices da Nametable e backing CHR no Playfield, saturação de Pattern Tables, slots de paleta não configurados e inconsistências de animação sem duplicar regras do hardware NES.
+  - **Prontidão do Projeto & Diagnósticos:** Avaliação visual unificada do status de exportação (`Pronto para Produção`, `Pronto com Avisos`, `Ação Necessária`), integrando fatos de OAM, pressão/limite por scanline, visibilidade e wrapping de coordenadas da Scene, consistência entre índices da Nametable e backing CHR no Playfield, granularidade da Attribute Table, saturação de Pattern Tables, slots de paleta não configurados e inconsistências de animação. Adaptadores preservam severidade, mensagens i18n, navegação por workspace e deduplicação por identidade do fato; somente erros bloqueiam readiness.
   - **Links Diretos para Correção:** Cada diagnóstico ou aviso oferece atalho direto de navegação para o workspace correspondente (Tileset, Playfield, Animação, Paletas ou Memória CHR).
   - **Artefatos de Produção Binários e Código-Fonte:** Disponibilização centralizada e consistente de todos os arquivos exportáveis mantendo 100% de compatibilidade byte-a-byte:
     - _Tileset:_ CHR de 8 KiB (`.chr`) e paleta binária (`.pal`).
