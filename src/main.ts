@@ -3859,6 +3859,7 @@ function renderDeliveryWorkspace(): void {
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
     chr,
     nametable,
+    backgroundPatternTable: project.animation.destinationPatternTable,
     attributeTable,
     collisionMap,
     paletteState,

@@ -368,7 +368,7 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 ### 6.6 Workspace de Entrega e Exportação (`src/ui/delivery-workspace.ts`)
 
 - Hub consolidado de validação de prontidão, diagnósticos de domínio e geração de artefatos de produção para todos os modos (Tileset, Playfield e Animação):
-  - **Prontidão do Projeto & Diagnósticos:** Avaliação visual unificada do status de exportação (`Pronto para Produção`, `Pronto com Avisos`, `Ação Necessária`), integrando diagnósticos de dimensões, redução de cores, saturação de tabelas de padrões, slots de paleta não configurados e inconsistências de animação sem duplicar regras do hardware NES.
+  - **Prontidão do Projeto & Diagnósticos:** Avaliação visual unificada do status de exportação (`Pronto para Produção`, `Pronto com Avisos`, `Ação Necessária`), integrando diagnósticos de dimensões, redução de cores, consistência entre índices da Nametable e backing CHR no Playfield, saturação de Pattern Tables, slots de paleta não configurados e inconsistências de animação sem duplicar regras do hardware NES.
   - **Links Diretos para Correção:** Cada diagnóstico ou aviso oferece atalho direto de navegação para o workspace correspondente (Tileset, Playfield, Animação, Paletas ou Memória CHR).
   - **Artefatos de Produção Binários e Código-Fonte:** Disponibilização centralizada e consistente de todos os arquivos exportáveis mantendo 100% de compatibilidade byte-a-byte:
     - _Tileset:_ CHR de 8 KiB (`.chr`) e paleta binária (`.pal`).
@@ -604,6 +604,13 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
 - **Atomicidade Transacional e Determinismo:**
   - O processo de alocação opera sobre uma cópia de trabalho (`workingSlots`). Qualquer falha por overflow de capacidade ou inconsistência de dados aborta a operação sem deixar mutações parciais no estado do projeto.
   - A ordem de alocação sequencial (da célula 0 até 959) garante repetibilidade bit-a-bit idêntica entre execuções.
+
+- **Validação de Consistência entre Nametable e CHR (`src/core/nes-background-diagnostics.ts`):**
+  - `analyzeNametableChrConsistency` é uma análise pura e determinística que resolve cada byte local da Nametable para o slot físico da Pattern Table selecionada (`physicalIndex = patternTable * 256 + nametableByte`).
+  - A análise reutiliza diretamente `ChrSlotClassification` como fonte canônica de ocupação: slots `project` e `base` possuem backing conhecido e não geram fatos; slots `reserved` geram `info`, pois o conteúdo de runtime é indeterminado; slots `empty` geram `warning`, pois não existe conteúdo de CHR-Base nem CHR do projeto sustentando o índice.
+  - Ausência de classificação não é interpretada como slot vazio. Isso evita afirmar uma violação quando o Studio não possui informação suficiente.
+  - Células consecutivas com o mesmo tipo de problema são consolidadas em intervalos de coordenadas da grade 32×30, evitando um diagnóstico por célula. Os fatos usam IDs próprios (`nametable-reserved-tile` e `nametable-unallocated-tile`) e não recriam diagnósticos de regiões, ownership ou reservations.
+  - O **Deliver & Export** executa essa validação somente no modo Playfield, usando a Pattern Table efetiva do background, e preserva Tileset e Animação fora desse diagnóstico.
 
 ### 11.3 Persistência de Backgrounds no Projeto e Lifecycle (`src/core/project.ts`, `src/core/asset-lifecycle.ts`, `src/core/asset-identity.ts`)
 

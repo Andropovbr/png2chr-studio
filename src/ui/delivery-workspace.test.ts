@@ -270,6 +270,7 @@ function createOptions(
     flipDeduplicationEnabled: false,
     chr: new Uint8Array(4096).fill(0xaa),
     nametable: null,
+    backgroundPatternTable: 0,
     attributeTable: null,
     collisionMap: null,
     paletteState,
@@ -281,6 +282,20 @@ function createOptions(
     onNavigateWorkspace: vi.fn(),
     ...overrides,
   };
+}
+
+function setChrSlotOccupancy(
+  classifications: ChrSlotClassification[],
+  physicalIndex: number,
+  occupancy: ChrSlotClassification['occupancy'],
+): void {
+  const classification = classifications[physicalIndex];
+  if (classification === undefined) {
+    throw new Error(
+      `Missing CHR classification for slot ${String(physicalIndex)}.`,
+    );
+  }
+  classifications[physicalIndex] = { ...classification, occupancy };
 }
 
 describe('Delivery Workspace', () => {
@@ -503,6 +518,82 @@ describe('Delivery Workspace', () => {
     colBtn?.click();
     expect(onDownloadBytes).toHaveBeenCalledWith(collisionMap, 'stage1.col');
   });
+
+  it('integrates Nametable to CHR diagnostics using the selected Background Pattern Table', () => {
+    const nametable = new Uint8Array(960).fill(1);
+    nametable.set([2, 2], 31);
+    nametable[65] = 3;
+    const classifications: ChrSlotClassification[] = Array.from(
+      { length: 512 },
+      (_, physicalIndex) => ({
+        physicalIndex,
+        localIndex: physicalIndex % 256,
+        patternTable: physicalIndex < 256 ? 0 : 1,
+        occupancy: 'empty',
+      }),
+    );
+    setChrSlotOccupancy(classifications, 1, 'project');
+    setChrSlotOccupancy(classifications, 2, 'project');
+    setChrSlotOccupancy(classifications, 3, 'project');
+    setChrSlotOccupancy(classifications, 257, 'project');
+    setChrSlotOccupancy(classifications, 258, 'reserved');
+
+    const el = createDeliveryWorkspace(
+      createOptions({
+        mode: 'playfield',
+        nametable,
+        backgroundPatternTable: 1,
+        chrSlotClassifications: classifications,
+        chrRegions: [],
+      }),
+    ) as unknown as MockElement;
+    const diagnostics = el.querySelectorAll('.delivery-diag-item');
+    const reserved = diagnostics.find((item) =>
+      item.textContent.includes('reserved CHR slots PT1:$02'),
+    );
+    const unallocated = diagnostics.find((item) =>
+      item.textContent.includes('unallocated CHR slot PT1:$03'),
+    );
+
+    expect(reserved).toBeDefined();
+    expect(reserved?.classList.contains('is-info')).toBe(true);
+    expect(reserved?.textContent).toContain('column 31, row 0');
+    expect(reserved?.textContent).toContain('column 0, row 1');
+    expect(unallocated).toBeDefined();
+    expect(unallocated?.classList.contains('is-warning')).toBe(true);
+    expect(
+      el
+        .querySelector('.delivery-status-card')
+        ?.classList.contains('status-warning'),
+    ).toBe(true);
+  });
+
+  it.each(['tileset', 'animation'] as const)(
+    'does not run Nametable to CHR validation in %s mode',
+    (mode) => {
+      const classifications: ChrSlotClassification[] = Array.from(
+        { length: 512 },
+        (_, physicalIndex) => ({
+          physicalIndex,
+          localIndex: physicalIndex % 256,
+          patternTable: physicalIndex < 256 ? 0 : 1,
+          occupancy: 'empty',
+        }),
+      );
+
+      const el = createDeliveryWorkspace(
+        createOptions({
+          mode,
+          nametable: new Uint8Array(960).fill(0),
+          backgroundPatternTable: 0,
+          chrSlotClassifications: classifications,
+          chrRegions: [],
+        }),
+      ) as unknown as MockElement;
+
+      expect(el.textContent).not.toContain('Nametable cell');
+    },
+  );
 
   it('renders all production artifacts for Animation mode with byte-for-byte exact data', () => {
     const onDownloadBytes = vi.fn();
