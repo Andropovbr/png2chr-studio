@@ -27,6 +27,8 @@ import type {
   ChrAssetMappingIndex,
   PhysicalSlotAttribution,
 } from '../core/chr-asset-mapping';
+import { analyzeSceneInstanceVisibility } from '../core/nes-sprite-diagnostics';
+import { setLocale } from '../i18n';
 
 class MockElement {
   public tagName: string;
@@ -283,6 +285,7 @@ function createOptions(
 
 describe('Delivery Workspace', () => {
   beforeEach(() => {
+    setLocale('en');
     (globalThis as unknown as { document: unknown }).document = {
       createElement: (tagName: string) => new MockElement(tagName),
     };
@@ -338,6 +341,86 @@ describe('Delivery Workspace', () => {
       expect(scanlineDiagnostic?.classList.contains(expectedClass)).toBe(true);
     },
   );
+
+  it('renders one warning for a fully offscreen Scene instance', () => {
+    const animationModel = createSampleAnimationModel();
+    const scenePreview = {
+      instances: [
+        {
+          id: 'scene-hero',
+          animationId: 'a1',
+          entityId: 'hero',
+          animationName: 'Hero_idle',
+          x: 20,
+          y: 240,
+          visible: true,
+          name: 'Hero One',
+        },
+      ],
+    } as const;
+    expect(
+      analyzeSceneInstanceVisibility(
+        scenePreview.instances,
+        animationModel.animations,
+      ),
+    ).toHaveLength(1);
+    const el = createDeliveryWorkspace(
+      createOptions({
+        mode: 'animation',
+        animationModel,
+        paletteAnimations: [],
+        scenePreview,
+      }),
+    );
+    const diagnostics = (el as unknown as MockElement).querySelectorAll(
+      '.delivery-diag-item',
+    );
+    const offscreenDiagnostic = diagnostics.find((item) =>
+      item.textContent.includes('every sprite outside the visible area'),
+    );
+
+    expect(offscreenDiagnostic).toBeDefined();
+    expect(offscreenDiagnostic?.textContent).toContain('Hero One');
+    expect(offscreenDiagnostic?.classList.contains('is-warning')).toBe(true);
+  });
+
+  it('renders coordinate wrapping as info while allowing partial clipping', () => {
+    const el = createDeliveryWorkspace(
+      createOptions({
+        mode: 'animation',
+        animationModel: createSampleAnimationModel(),
+        paletteAnimations: [],
+        scenePreview: {
+          instances: [
+            {
+              id: 'scene-hero',
+              animationId: 'a1',
+              entityId: 'hero',
+              animationName: 'Hero_idle',
+              x: -1,
+              y: 20,
+              visible: true,
+              name: 'Hero One',
+            },
+          ],
+        },
+      }),
+    );
+    const diagnostics = (el as unknown as MockElement).querySelectorAll(
+      '.delivery-diag-item',
+    );
+    const wrapDiagnostics = diagnostics.filter((item) =>
+      item.textContent.includes('outside the unsigned 8-bit range'),
+    );
+
+    expect(wrapDiagnostics).toHaveLength(1);
+    expect(wrapDiagnostics[0]?.classList.contains('is-info')).toBe(true);
+    expect(
+      diagnostics.some((item) =>
+        item.textContent.includes('every sprite outside the visible area'),
+      ),
+    ).toBe(false);
+  });
 
   it('renders readiness and artifacts for Tileset mode with exact byte downloads', () => {
     const onDownloadBytes = vi.fn();
