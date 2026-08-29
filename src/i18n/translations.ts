@@ -104,6 +104,14 @@ const en = {
   deliveryArtifactAsmSource: 'ca65 Assembly Source File (.s)',
   deliveryNoArtifacts:
     'No artifacts available. Check project diagnostics to resolve blocking errors.',
+  nametableReservedTileSingle:
+    'Nametable cell (column {startColumn}, row {startRow}) references reserved CHR slot PT{patternTable}:{tiles}. Runtime backing cannot be determined.',
+  nametableReservedTileRange:
+    '{count} consecutive Nametable cells, from (column {startColumn}, row {startRow}) through (column {endColumn}, row {endRow}), reference reserved CHR slots PT{patternTable}:{tiles}. Runtime backing cannot be determined.',
+  nametableUnallocatedTileSingle:
+    'Nametable cell (column {startColumn}, row {startRow}) references unallocated CHR slot PT{patternTable}:{tiles}. No Base CHR or Project CHR content backs this index.',
+  nametableUnallocatedTileRange:
+    '{count} consecutive Nametable cells, from (column {startColumn}, row {startRow}) through (column {endColumn}, row {endRow}), reference unallocated CHR slots PT{patternTable}:{tiles}. No Base CHR or Project CHR content backs these indices.',
   paletteWorkspaceTitle: 'Project Palettes',
   paletteWorkspaceHint:
     'Manage reusable NES palette definitions and configure active sprite palette slots for the project.',
@@ -1193,6 +1201,14 @@ const ptBr = {
   deliveryArtifactAsmSource: 'Arquivo de Código-Fonte Assembly ca65 (.s)',
   deliveryNoArtifacts:
     'Nenhum arquivo disponível. Verifique os diagnósticos do projeto para resolver bloqueios.',
+  nametableReservedTileSingle:
+    'A célula da Nametable (coluna {startColumn}, linha {startRow}) referencia o slot CHR reservado PT{patternTable}:{tiles}. O backing em runtime não pode ser determinado.',
+  nametableReservedTileRange:
+    '{count} células consecutivas da Nametable, de (coluna {startColumn}, linha {startRow}) até (coluna {endColumn}, linha {endRow}), referenciam slots CHR reservados PT{patternTable}:{tiles}. O backing em runtime não pode ser determinado.',
+  nametableUnallocatedTileSingle:
+    'A célula da Nametable (coluna {startColumn}, linha {startRow}) referencia o slot CHR não alocado PT{patternTable}:{tiles}. Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esse índice.',
+  nametableUnallocatedTileRange:
+    '{count} células consecutivas da Nametable, de (coluna {startColumn}, linha {startRow}) até (coluna {endColumn}, linha {endRow}), referenciam slots CHR não alocados PT{patternTable}:{tiles}. Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esses índices.',
   paletteWorkspaceTitle: 'Paletas do Projeto',
   paletteWorkspaceHint:
     'Gerencie definições reutilizáveis de paletas NES e configure os slots de paletas de sprites do projeto.',

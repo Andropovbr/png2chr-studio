@@ -50,6 +50,21 @@ describe('translations', () => {
     );
   });
 
+  it('provides translations for Nametable to CHR consistency diagnostics', () => {
+    expect(translations.en.nametableReservedTileRange).toContain(
+      'reference reserved CHR slots PT{patternTable}:{tiles}',
+    );
+    expect(translations.en.nametableUnallocatedTileSingle).toContain(
+      'No Base CHR or Project CHR content backs this index',
+    );
+    expect(translations['pt-BR'].nametableReservedTileRange).toContain(
+      'referenciam slots CHR reservados PT{patternTable}:{tiles}',
+    );
+    expect(translations['pt-BR'].nametableUnallocatedTileSingle).toContain(
+      'Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esse índice',
+    );
+  });
+
   it('provides translations for CHR region and reservation visualization in English and Portuguese', () => {
     expect(translations.en.chrTileInspectorRegionLabel).toBe('Region');
     expect(translations['pt-BR'].chrTileInspectorRegionLabel).toBe('Região');

@@ -49,6 +49,11 @@ import {
   formatSpriteScanlinePressureDiagnosticMessage,
 } from '../core/nes-sprite-diagnostics';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
+import type { BackgroundPatternTable } from '../core/background-model';
+import {
+  analyzeNametableChrConsistency,
+  type NametableChrConsistencyFact,
+} from '../core/nes-background-diagnostics';
 import { t, type TranslationKey } from '../i18n';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
@@ -84,6 +89,7 @@ export interface DeliveryWorkspaceOptions {
   readonly flipDeduplicationEnabled: boolean;
   readonly chr: Uint8Array | null;
   readonly nametable: Uint8Array | null;
+  readonly backgroundPatternTable: BackgroundPatternTable;
   readonly attributeTable: Uint8Array | null;
   readonly collisionMap: Uint8Array | null;
   readonly paletteState: DualBankPaletteState;
@@ -198,6 +204,31 @@ export function formatChrRegionDiagnosticMessage(
       });
     }
   }
+}
+
+export function formatNametableChrConsistencyDiagnosticMessage(
+  fact: NametableChrConsistencyFact,
+): string {
+  const tiles = formatConsecutiveTileRanges(fact.localTileIndices);
+  const isSingleCell = fact.count === 1;
+  const key =
+    fact.kind === 'nametable-reserved-tile'
+      ? isSingleCell
+        ? 'nametableReservedTileSingle'
+        : 'nametableReservedTileRange'
+      : isSingleCell
+        ? 'nametableUnallocatedTileSingle'
+        : 'nametableUnallocatedTileRange';
+
+  return t(key, {
+    patternTable: fact.patternTable,
+    tiles,
+    startColumn: fact.startColumn,
+    startRow: fact.startRow,
+    endColumn: fact.endColumn,
+    endRow: fact.endRow,
+    count: fact.count,
+  });
 }
 
 export function convertChrRegionDiagnosticFactsToDeliveryItems(
@@ -430,6 +461,23 @@ export function createDeliveryWorkspace(
         targetWorkspace: 'playfield',
         actionLabel: t('deliveryLinkPlayfield'),
       });
+    }
+
+    if (options.nametable !== null && options.chrSlotClassifications) {
+      const facts = analyzeNametableChrConsistency(
+        options.nametable,
+        options.chrSlotClassifications,
+        options.backgroundPatternTable,
+      );
+      for (const fact of facts) {
+        diagnostics.push({
+          id: fact.id,
+          level: fact.severity,
+          message: formatNametableChrConsistencyDiagnosticMessage(fact),
+          targetWorkspace: 'chr',
+          actionLabel: t('deliveryLinkChr'),
+        });
+      }
     }
   } else {
     // Tileset mode
