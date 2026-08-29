@@ -277,6 +277,10 @@ export function analyzeAnimationSpriteScanlinePressure(
   const facts: AnimationSpriteScanlinePressureFact[] = [];
 
   model.animations.forEach((animation, animationIndex) => {
+    // Generated horizontal mirrors preserve vertical geometry and therefore
+    // have identical scanline pressure to their canonical editable source.
+    if (animation.generatedByHorizontalFlip === true) return;
+
     animation.frames.forEach((frame, frameIndex) => {
       // Metasprite coordinates are origin-relative. Convert them back to the
       // frame-local coordinate space expected by the clipping analyzer.

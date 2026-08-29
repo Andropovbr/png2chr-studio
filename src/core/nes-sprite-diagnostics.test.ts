@@ -129,6 +129,36 @@ describe('metasprite scanline pressure diagnostics', () => {
       severity: 'warning',
     });
   });
+
+  it('does not duplicate pressure for generated horizontal mirror variants', () => {
+    const canonical = {
+      id: 'hero',
+      name: 'Hero Left',
+      originY: 0,
+      frames: [
+        {
+          sourceIndex: 0,
+          height: 8,
+          sprites: Array.from({ length: 6 }, () => ({ y: 0 })),
+        },
+      ],
+    };
+    const model = {
+      animations: [
+        canonical,
+        {
+          ...canonical,
+          name: 'Hero Right',
+          generatedByHorizontalFlip: true,
+        },
+      ],
+    } as unknown as AnimationProjectModel;
+
+    const facts = analyzeAnimationSpriteScanlinePressure(model);
+
+    expect(facts).toHaveLength(1);
+    expect(facts[0]?.animationName).toBe('Hero Left');
+  });
 });
 
 function sceneSprite(x: number, y: number): MetaspriteTile {

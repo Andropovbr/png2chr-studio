@@ -36,6 +36,8 @@ import { analyzeSceneInstanceVisibility } from '../core/nes-sprite-diagnostics';
 import { analyzeAnimationOamCapacity } from '../core/oam-diagnostics';
 import { analyzeAnimationSpriteScanlinePressure } from '../core/nes-sprite-diagnostics';
 import { setLocale } from '../i18n';
+import { createEmptyBackgroundMap } from '../core/background-model';
+import { buildBackgroundProjectModel } from '../core/chr-background-allocation';
 
 class MockElement {
   public tagName: string;
@@ -549,6 +551,8 @@ describe('Delivery Workspace', () => {
       createOptions({
         mode: 'playfield',
         nametable,
+        attributeTable: new Uint8Array(64),
+        collisionMap: new Uint8Array(480),
         backgroundPatternTable: 1,
         chrSlotClassifications: classifications,
         chrRegions: [],
@@ -709,7 +713,7 @@ describe('Delivery Workspace', () => {
     const mockEl = el as unknown as MockElement;
 
     const shortcutBtns = mockEl.querySelectorAll('.delivery-link-btn');
-    expect(shortcutBtns.length).toBe(5);
+    expect(shortcutBtns.length).toBe(6);
 
     // Click Tileset shortcut
     shortcutBtns[0]?.click();
@@ -719,16 +723,20 @@ describe('Delivery Workspace', () => {
     shortcutBtns[1]?.click();
     expect(onNavigateWorkspace).toHaveBeenCalledWith('playfield');
 
-    // Click Animation shortcut
+    // Click Background shortcut
     shortcutBtns[2]?.click();
+    expect(onNavigateWorkspace).toHaveBeenCalledWith('background');
+
+    // Click Animation shortcut
+    shortcutBtns[3]?.click();
     expect(onNavigateWorkspace).toHaveBeenCalledWith('animation');
 
     // Click Palette shortcut
-    shortcutBtns[3]?.click();
+    shortcutBtns[4]?.click();
     expect(onNavigateWorkspace).toHaveBeenCalledWith('palette');
 
     // Click CHR shortcut
-    shortcutBtns[4]?.click();
+    shortcutBtns[5]?.click();
     expect(onNavigateWorkspace).toHaveBeenCalledWith('chr');
   });
 
@@ -1075,7 +1083,7 @@ describe('Delivery Workspace', () => {
     });
   });
 
-  it('deduplicates combined facts without changing severity or first-seen order', () => {
+  it('deduplicates combined facts using highest severity in first-seen order', () => {
     const items = deduplicateDeliveryDiagnosticItems([
       { id: 'same', level: 'info', message: 'one' },
       { id: 'same', level: 'error', message: 'regression' },
@@ -1084,8 +1092,135 @@ describe('Delivery Workspace', () => {
     ]);
 
     expect(items).toEqual([
-      { id: 'same', level: 'info', message: 'one' },
+      { id: 'same', level: 'error', message: 'regression' },
       { level: 'warning', message: 'legacy' },
     ]);
   });
+
+  it.each([
+    ['info', 'status-ready'],
+    ['warning', 'status-warning'],
+    ['error', 'status-error'],
+  ] as const)('maps %s-only diagnostics to %s readiness', (level, status) => {
+    const el = createDeliveryWorkspace(
+      createOptions({
+        paletteDiagnostics: [
+          {
+            id: `palette-${level}`,
+            kind: 'dangling-palette-reference',
+            severity: level,
+            paletteId: 'pal-test',
+            referenceType: 'animation',
+            referenceId: 'test',
+          } as never,
+        ],
+      }),
+    ) as unknown as MockElement;
+
+    expect(
+      el.querySelector('.delivery-status-card')?.classList.contains(status),
+    ).toBe(true);
+  });
+
+  it.each([
+    { label: 'Tileset', overrides: { mode: 'tileset', chr: null } },
+    { label: 'Playfield', overrides: { mode: 'playfield', nametable: null } },
+    {
+      label: 'Animation',
+      overrides: { mode: 'animation', animationModel: null },
+    },
+  ] as const)(
+    'blocks $label readiness when its primary production model is absent',
+    ({ overrides }) => {
+      const el = createDeliveryWorkspace(
+        createOptions(overrides),
+      ) as unknown as MockElement;
+
+      expect(
+        el
+          .querySelector('.delivery-status-card')
+          ?.classList.contains('status-error'),
+      ).toBe(true);
+    },
+  );
+
+  it('integrates Attribute Table facts from compiled Background identity', () => {
+    const baseMap = createEmptyBackgroundMap({ id: 'bg-stage' });
+    const cells = [...baseMap.cells];
+    cells[0] = {
+      logicalKey: 'asset-playfield-default:0:0',
+      tileX: 0,
+      tileY: 0,
+    };
+    cells[1] = {
+      logicalKey: 'asset-playfield-default:1:0',
+      tileX: 1,
+      tileY: 0,
+    };
+    const map = { ...baseMap, cells };
+    const backgroundModel = buildBackgroundProjectModel({
+      map,
+      tileMap: new Map([
+        [
+          'asset-playfield-default:0:0',
+          { id: 0, column: 0, row: 0, pixels: new Uint8Array(64) },
+        ],
+        [
+          'asset-playfield-default:1:0',
+          { id: 1, column: 1, row: 0, pixels: new Uint8Array(64).fill(1) },
+        ],
+      ]),
+    });
+    const onNavigateWorkspace = vi.fn();
+    const el = createDeliveryWorkspace(
+      createOptions({
+        mode: 'playfield',
+        nametable: new Uint8Array(960),
+        attributeTable: new Uint8Array(64),
+        collisionMap: new Uint8Array(480),
+        backgroundModel,
+        backgroundPaletteContexts: new Map([
+          ['asset-playfield-default:0:0', 0],
+          ['asset-playfield-default:1:0', 2],
+        ]),
+        onNavigateWorkspace,
+      }),
+    ) as unknown as MockElement;
+    const diagnostic = el
+      .querySelectorAll('.delivery-diag-item')
+      .find((item) => item.textContent.includes('palette contexts 0, 2'));
+
+    expect(diagnostic?.classList.contains('is-info')).toBe(true);
+    expect(
+      el
+        .querySelector('.delivery-status-card')
+        ?.classList.contains('status-ready'),
+    ).toBe(true);
+    diagnostic?.querySelector('.delivery-diag-action')?.click();
+    expect(onNavigateWorkspace).toHaveBeenCalledWith('background');
+  });
+
+  it.each(['chr', 'nametable', 'attributeTable', 'collisionMap'] as const)(
+    'blocks Playfield readiness when %s is absent',
+    (field) => {
+      const complete = createOptions({
+        mode: 'playfield',
+        chr: new Uint8Array(8192),
+        nametable: new Uint8Array(960),
+        attributeTable: new Uint8Array(64),
+        collisionMap: new Uint8Array(480),
+      });
+      const el = createDeliveryWorkspace({
+        ...complete,
+        [field]: null,
+      }) as unknown as MockElement;
+
+      expect(
+        el
+          .querySelector('.delivery-status-card')
+          ?.classList.contains('status-error'),
+      ).toBe(true);
+      expect(el.textContent).toContain('Required production artifacts');
+    },
+  );
 });

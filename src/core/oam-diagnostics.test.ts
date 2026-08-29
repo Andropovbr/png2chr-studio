@@ -66,4 +66,21 @@ describe('OAM capacity diagnostics', () => {
     expect(facts.filter((fact) => fact.frameIndex === 0)).toHaveLength(1);
     expect(facts[0]?.kind).toBe('oam-capacity-exceeded');
   });
+
+  it('does not duplicate facts for generated horizontal mirror variants', () => {
+    const canonical = model([frame(33)]).animations[0];
+    if (canonical === undefined) throw new Error('Expected animation.');
+    const mirrored = {
+      ...canonical,
+      name: 'Hero Idle Right',
+      generatedByHorizontalFlip: true,
+    };
+    const facts = analyzeAnimationOamCapacity({
+      ...model([]),
+      animations: [canonical, mirrored],
+    });
+
+    expect(facts).toHaveLength(1);
+    expect(facts[0]?.animationName).toBe('Hero Idle');
+  });
 });

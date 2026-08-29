@@ -61,7 +61,18 @@ describe('translations', () => {
       'referenciam slots CHR reservados PT{patternTable}:{tiles}',
     );
     expect(translations['pt-BR'].nametableUnallocatedTileSingle).toContain(
-      'Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esse índice',
+      'Nenhum conteúdo de Base CHR ou CHR do projeto sustenta esse índice',
+    );
+  });
+
+  it('localizes Delivery actions and diagnostic counts', () => {
+    expect(translations.en.deliveryDownloadArtifact).toBe('Download {name}');
+    expect(translations['pt-BR'].deliveryDownloadArtifact).toBe(
+      'Baixar {name}',
+    );
+    expect(translations.en.deliveryStatusDetails).toContain('{infoCount} info');
+    expect(translations['pt-BR'].deliveryStatusDetails).toContain(
+      '{infoCount} informativos',
     );
   });
 

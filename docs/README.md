@@ -62,6 +62,7 @@ A documentação técnica detalhada está estruturada nos seguintes tópicos:
 | [**Palette Manager**](./palette-manager.md)                                                               | Desenho técnico, modelo de domínio, compatibilidade de hardware PPU ($3F00..$3F1F) e plano de implementação para a Milestone 9 (Palette Manager).                                  |
 | [**Política de terminologia pt-BR**](./localizacao-pt-br.md)                                              | Convenções para localizar a interface sem traduzir mecanicamente termos canônicos do desenvolvimento NES.                                                                          |
 | [**Auditoria final: Scene & Multi-Entity Preview**](./investigations/scene-multi-entity-preview-audit.md) | Arquitetura final, fronteiras de estado, findings resolvidos, cobertura integrada, checklist de migração e responsabilidades adiadas da Milestone 10.                              |
+| [**Auditoria final: validação NES**](./investigations/nes-validation-quality-pass.md)                     | Matriz de regras, severidades, gating, findings corrigidos e cobertura cruzada da Milestone 11.                                                                                    |
 
 ---
 

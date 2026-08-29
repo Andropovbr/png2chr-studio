@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ChrSlotClassification } from './chr-pattern-table';
 import { createEmptyBackgroundMap } from './background-model';
+import { buildBackgroundProjectModel } from './chr-background-allocation';
+import type { LogicalTileKey } from './asset-identity';
+import type { Tile } from './types';
 import {
   analyzeAttributeTableAssignments,
   analyzeNametableChrConsistency,
+  buildSourceTilePaletteContexts,
 } from './nes-background-diagnostics';
 
 function createClassifications(
@@ -203,8 +207,9 @@ describe('analyzeAttributeTableAssignments', () => {
   function createMap() {
     const map = createEmptyBackgroundMap({ id: 'bg-test' });
     const cells = [...map.cells];
-    for (const [index, sourceTileIndex] of [0, 1, 2, 3].entries()) {
-      cells[index] = {
+    const cellIndices = [0, 1, 32, 33];
+    for (const [sourceTileIndex, cellIndex] of cellIndices.entries()) {
+      cells[cellIndex] = {
         logicalKey: `asset:${String(sourceTileIndex)}:0`,
         tileX: sourceTileIndex,
         tileY: 0,
@@ -214,41 +219,108 @@ describe('analyzeAttributeTableAssignments', () => {
     return { ...map, cells };
   }
 
-  function classifications(contexts: readonly number[]) {
-    return contexts.map((paletteContext, physicalIndex) => ({
-      physicalIndex,
-      localIndex: physicalIndex,
-      patternTable: 0 as const,
-      occupancy: 'project' as const,
-      paletteContext,
-    }));
+  function createTile(index: number): Tile {
+    return {
+      id: index,
+      column: index,
+      row: 0,
+      pixels: new Uint8Array(64).fill(index % 4),
+    };
+  }
+
+  function compile(map: ReturnType<typeof createMap>) {
+    const tileMap = new Map<LogicalTileKey, Tile>();
+    for (const cell of map.cells) {
+      if (cell !== null) {
+        tileMap.set(cell.logicalKey, createTile(cell.sourceTileIndex ?? 0));
+      }
+    }
+    return buildBackgroundProjectModel({ map, tileMap });
+  }
+
+  function paletteContexts(
+    map: ReturnType<typeof createMap>,
+    contexts: readonly number[],
+  ): ReadonlyMap<LogicalTileKey, number> {
+    const result = new Map<LogicalTileKey, number>();
+    for (const cell of map.cells) {
+      const sourceTileIndex = cell?.sourceTileIndex;
+      if (cell === null || sourceTileIndex === undefined) continue;
+      const context = contexts[sourceTileIndex];
+      if (context !== undefined) result.set(cell.logicalKey, context);
+    }
+    return result;
   }
 
   it('accepts a region whose four tiles share assigned palette context', () => {
     const map = createMap();
     expect(
-      analyzeAttributeTableAssignments(map, classifications([0, 0, 0, 0])),
+      analyzeAttributeTableAssignments(
+        compile(map),
+        paletteContexts(map, [0, 0, 0, 0]),
+      ),
     ).toEqual([]);
   });
 
   it('reports info when one 16x16 region contains incompatible tile contexts', () => {
     const map = createMap();
     const facts = analyzeAttributeTableAssignments(
-      map,
-      classifications([0, 2, 0, 0]),
+      compile(map),
+      paletteContexts(map, [0, 2, 0, 0]),
     );
-    expect(facts).toEqual([
-      expect.objectContaining({
-        kind: 'attribute-palette-context-mismatch',
-        id: 'attribute-palette-context-mismatch:bg-test:0-0',
-        severity: 'info',
-        pixelX: 0,
-        pixelY: 0,
-        paletteIndex: 0,
-        requiredPaletteContexts: [0, 2],
-        physicalTileIndices: [0, 1],
-      }),
-    ]);
+    expect(facts).toHaveLength(1);
+    expect(facts[0]).toMatchObject({
+      kind: 'attribute-palette-context-mismatch',
+      id: 'attribute-palette-context-mismatch:bg-test:0-0',
+      severity: 'info',
+      pixelX: 0,
+      pixelY: 0,
+      paletteIndex: 0,
+      requiredPaletteContexts: [0, 2],
+    });
+    expect(Array.isArray(facts[0]?.physicalTileIndices)).toBe(true);
+  });
+
+  it('uses compiled physical assignments instead of source tile indexes', () => {
+    const map = createMap();
+    const baseChr = new Uint8Array(8192);
+    baseChr[0] = 0xff;
+    const model = buildBackgroundProjectModel({
+      map,
+      baseChr,
+      tileMap: new Map(
+        map.cells.flatMap((cell) =>
+          cell === null
+            ? []
+            : [
+                [
+                  cell.logicalKey,
+                  createTile(cell.sourceTileIndex ?? 0),
+                ] as const,
+              ],
+        ),
+      ),
+    });
+
+    const facts = analyzeAttributeTableAssignments(
+      model,
+      paletteContexts(map, [0, 2, 0, 0]),
+    );
+
+    expect(facts).toHaveLength(1);
+    expect(facts[0]?.physicalTileIndices).not.toEqual([0, 1]);
+    const regionCellIndices = new Set([0, 1, 32, 33]);
+    expect(facts[0]?.physicalTileIndices).toEqual(
+      [
+        ...new Set(
+          model.resolvedCells
+            .filter((cell) => regionCellIndices.has(cell.cellIndex))
+            .map((cell) => cell.physicalTileIndex),
+        ),
+      ]
+        .filter((index): index is number => index !== undefined)
+        .sort((a, b) => a - b),
+    );
   });
 
   it('handles bottom and right screen borders without inspecting outside 32x30 tiles', () => {
@@ -261,35 +333,36 @@ describe('analyzeAttributeTableAssignments', () => {
       sourceTileIndex: 4,
     };
     const borderMap = { ...map, cells };
-    const borderClassifications = [
-      ...classifications([0, 0, 0, 0]),
-      {
-        physicalIndex: 4,
-        localIndex: 4,
-        patternTable: 0 as const,
-        occupancy: 'project' as const,
-        paletteContext: 2,
-      },
-    ];
     expect(
-      analyzeAttributeTableAssignments(borderMap, borderClassifications),
+      analyzeAttributeTableAssignments(
+        compile(borderMap),
+        paletteContexts(borderMap, [0, 0, 0, 0, 2]),
+      ),
     ).toEqual([]);
   });
 
   it('reports independent mismatches in multiple regions deterministically', () => {
     const map = createMap();
     const cells = [...map.cells];
-    const cellTwo = cells[2];
-    if (!cellTwo) throw new Error('Expected test cell.');
     const cellOne = cells[1];
     if (!cellOne) throw new Error('Expected test cell.');
-    cells[1] = { ...cellOne, sourceTileIndex: 4 };
-    cells[2] = { ...cellTwo, sourceTileIndex: 4 };
-    cells[3] = {
-      logicalKey: 'asset:5:1',
+    cells[1] = {
+      ...cellOne,
+      logicalKey: 'asset:4:0',
+      tileX: 4,
+      sourceTileIndex: 4,
+    };
+    cells[2] = {
+      logicalKey: 'asset:5:0',
       tileX: 5,
-      tileY: 1,
+      tileY: 0,
       sourceTileIndex: 5,
+    };
+    cells[3] = {
+      logicalKey: 'asset:6:0',
+      tileX: 6,
+      tileY: 0,
+      sourceTileIndex: 6,
     };
     const multiMap = {
       ...map,
@@ -298,23 +371,10 @@ describe('analyzeAttributeTableAssignments', () => {
         index === 1 ? 1 : value,
       ),
     };
-    const facts = analyzeAttributeTableAssignments(multiMap, [
-      ...classifications([0, 0, 2, 0]),
-      {
-        physicalIndex: 4,
-        localIndex: 4,
-        patternTable: 0 as const,
-        occupancy: 'project' as const,
-        paletteContext: 2,
-      },
-      {
-        physicalIndex: 5,
-        localIndex: 5,
-        patternTable: 0 as const,
-        occupancy: 'project' as const,
-        paletteContext: 3,
-      },
-    ]);
+    const facts = analyzeAttributeTableAssignments(
+      compile(multiMap),
+      paletteContexts(multiMap, [0, 0, 0, 0, 2, 1, 3]),
+    );
     expect(facts.map((fact) => fact.regionColumn)).toEqual([0, 1]);
   });
 
@@ -322,7 +382,45 @@ describe('analyzeAttributeTableAssignments', () => {
     const map = createMap();
     const invalid = { ...map, paletteAssignments: [9] };
     expect(
-      analyzeAttributeTableAssignments(invalid, classifications([0, 0, 0, 0])),
+      analyzeAttributeTableAssignments(
+        { map: invalid, resolvedCells: compile(map).resolvedCells },
+        paletteContexts(map, [0, 0, 0, 0]),
+      ),
     ).toEqual([]);
+  });
+});
+
+describe('buildSourceTilePaletteContexts', () => {
+  it('keys source palette provenance by canonical asset and tile identity', () => {
+    const contexts = buildSourceTilePaletteContexts({
+      assetId: 'asset-playfield-default',
+      imageWidth: 32,
+      regionSize: 16,
+      paletteAssignments: new Uint8Array([0, 2, 1, 3]),
+      tiles: [
+        { id: 0, column: 0, row: 0, pixels: new Uint8Array(64) },
+        { id: 1, column: 2, row: 0, pixels: new Uint8Array(64) },
+        { id: 2, column: 0, row: 2, pixels: new Uint8Array(64) },
+      ],
+    });
+
+    expect([...contexts.entries()]).toEqual([
+      ['asset-playfield-default:0:0', 0],
+      ['asset-playfield-default:2:0', 2],
+      ['asset-playfield-default:0:2', 1],
+    ]);
+    expect(contexts.has('other-asset:0:0')).toBe(false);
+  });
+
+  it('keeps invalid or unavailable palette provenance unknown', () => {
+    expect(
+      buildSourceTilePaletteContexts({
+        assetId: 'asset',
+        imageWidth: 10,
+        regionSize: 8,
+        paletteAssignments: new Uint8Array([0]),
+        tiles: [{ id: 0, column: 0, row: 0, pixels: new Uint8Array(64) }],
+      }),
+    ).toEqual(new Map());
   });
 });

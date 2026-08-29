@@ -39,7 +39,7 @@ const en = {
   deliveryStatusWarning: 'Ready with Warnings',
   deliveryStatusError: 'Action Required before Export',
   deliveryStatusDetails:
-    '{readyCount} ready · {warnCount} warnings · {errorCount} blocking issues',
+    '{readyCount} ready · {infoCount} info · {warnCount} warnings · {errorCount} blocking issues',
   deliveryArtifactsTitle: 'Production Artifacts',
   deliveryArtifactsHint:
     'Download consolidated binary and source files ready for cc65, ca65, and NES hardware.',
@@ -50,6 +50,8 @@ const en = {
   deliveryLinkAnimation: 'Animation Workspace',
   deliveryLinkPalettes: 'Palette Workspace',
   deliveryLinkChr: 'CHR Memory Workspace',
+  deliveryFixAction: 'Fix',
+  deliveryDownloadArtifact: 'Download {name}',
   backgroundWorkspaceTitle: 'Background Maps',
   backgroundWorkspaceHint:
     'Edit NES 32×30 Nametables, paint 16×16 Attribute Table subpalettes, and configure Pattern Table targeting.',
@@ -104,6 +106,8 @@ const en = {
   deliveryArtifactAsmSource: 'ca65 Assembly Source File (.s)',
   deliveryNoArtifacts:
     'No artifacts available. Check project diagnostics to resolve blocking errors.',
+  deliveryMissingArtifacts:
+    'Required production artifacts are unavailable: {artifacts}.',
   nametableReservedTileSingle:
     'Nametable cell (column {startColumn}, row {startRow}) references reserved CHR slot PT{patternTable}:{tiles}. Runtime backing cannot be determined.',
   nametableReservedTileRange:
@@ -1136,7 +1140,7 @@ const ptBr = {
   deliveryStatusWarning: 'Pronto com Avisos',
   deliveryStatusError: 'Ação Necessária antes da Exportação',
   deliveryStatusDetails:
-    '{readyCount} prontos · {warnCount} avisos · {errorCount} bloqueios',
+    '{readyCount} prontos · {infoCount} informativos · {warnCount} avisos · {errorCount} bloqueios',
   deliveryArtifactsTitle: 'Arquivos de Exportação',
   deliveryArtifactsHint:
     'Baixe arquivos binários consolidados e código-fonte prontos para cc65, ca65 e hardware NES.',
@@ -1147,6 +1151,8 @@ const ptBr = {
   deliveryLinkAnimation: 'Workspace de Animação',
   deliveryLinkPalettes: 'Workspace de Paletas',
   deliveryLinkChr: 'Workspace de CHR ROM',
+  deliveryFixAction: 'Corrigir',
+  deliveryDownloadArtifact: 'Baixar {name}',
   backgroundWorkspaceTitle: 'Mapas de Background',
   backgroundWorkspaceHint:
     'Edite Nametables 32×30 do NES, pinte subpaletas da Attribute Table em blocos 16×16 e configure a Pattern Table de destino.',
@@ -1203,14 +1209,16 @@ const ptBr = {
   deliveryArtifactAsmSource: 'Arquivo de Código-Fonte Assembly ca65 (.s)',
   deliveryNoArtifacts:
     'Nenhum arquivo disponível. Verifique os diagnósticos do projeto para resolver bloqueios.',
+  deliveryMissingArtifacts:
+    'Arquivos de produção obrigatórios indisponíveis: {artifacts}.',
   nametableReservedTileSingle:
     'A célula da Nametable (coluna {startColumn}, linha {startRow}) referencia o slot CHR reservado PT{patternTable}:{tiles}. O backing em runtime não pode ser determinado.',
   nametableReservedTileRange:
     '{count} células consecutivas da Nametable, de (coluna {startColumn}, linha {startRow}) até (coluna {endColumn}, linha {endRow}), referenciam slots CHR reservados PT{patternTable}:{tiles}. O backing em runtime não pode ser determinado.',
   nametableUnallocatedTileSingle:
-    'A célula da Nametable (coluna {startColumn}, linha {startRow}) referencia o slot CHR não alocado PT{patternTable}:{tiles}. Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esse índice.',
+    'A célula da Nametable (coluna {startColumn}, linha {startRow}) referencia o slot CHR não alocado PT{patternTable}:{tiles}. Nenhum conteúdo de Base CHR ou CHR do projeto sustenta esse índice.',
   nametableUnallocatedTileRange:
-    '{count} células consecutivas da Nametable, de (coluna {startColumn}, linha {startRow}) até (coluna {endColumn}, linha {endRow}), referenciam slots CHR não alocados PT{patternTable}:{tiles}. Nenhum conteúdo de CHR-Base ou CHR do projeto sustenta esses índices.',
+    '{count} células consecutivas da Nametable, de (coluna {startColumn}, linha {startRow}) até (coluna {endColumn}, linha {endRow}), referenciam slots CHR não alocados PT{patternTable}:{tiles}. Nenhum conteúdo de Base CHR ou CHR do projeto sustenta esses índices.',
   attributePaletteContextMismatch:
     'A região de Background em ({pixelX}, {pixelY}) usa a paleta {paletteIndex}, mas os Tiles referenciados exigem os contextos de paleta {required}.',
   paletteWorkspaceTitle: 'Paletas do Projeto',

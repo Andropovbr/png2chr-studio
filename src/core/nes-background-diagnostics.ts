@@ -7,7 +7,59 @@ import {
   NES_PATTERN_TABLE_TILE_COUNT,
   type ChrSlotClassification,
 } from './chr-pattern-table';
-import type { BackgroundMapDefinition } from './background-model';
+import {
+  createLogicalTileKey,
+  type LogicalTileKey,
+  type ProjectAssetId,
+} from './asset-identity';
+import type { BackgroundProjectModel } from './chr-background-allocation';
+import type { Tile } from './types';
+
+export interface BuildSourceTilePaletteContextsOptions {
+  readonly assetId: ProjectAssetId;
+  readonly imageWidth: number;
+  readonly regionSize: number;
+  readonly paletteAssignments: Uint8Array;
+  readonly tiles: readonly Tile[];
+}
+
+/**
+ * Builds palette provenance keyed by logical source tile identity. This keeps
+ * palette context independent from later CHR allocation and deduplication.
+ */
+export function buildSourceTilePaletteContexts(
+  options: BuildSourceTilePaletteContextsOptions,
+): ReadonlyMap<LogicalTileKey, number> {
+  if (
+    options.imageWidth <= 0 ||
+    options.regionSize <= 0 ||
+    options.imageWidth % options.regionSize !== 0
+  ) {
+    return new Map();
+  }
+
+  const regionColumns = options.imageWidth / options.regionSize;
+  const contexts = new Map<LogicalTileKey, number>();
+  for (const tile of options.tiles) {
+    const regionColumn = Math.floor((tile.column * 8) / options.regionSize);
+    const regionRow = Math.floor((tile.row * 8) / options.regionSize);
+    const paletteContext =
+      options.paletteAssignments[regionRow * regionColumns + regionColumn];
+    if (
+      paletteContext === undefined ||
+      !Number.isInteger(paletteContext) ||
+      paletteContext < 0 ||
+      paletteContext > 3
+    ) {
+      continue;
+    }
+    contexts.set(
+      createLogicalTileKey(options.assetId, tile.column, tile.row),
+      paletteContext,
+    );
+  }
+  return contexts;
+}
 
 export type AttributeTableAssignmentFactKind =
   'attribute-palette-context-mismatch';
@@ -167,17 +219,22 @@ export function analyzeNametableChrConsistency(
  * re-encode the Attribute Table; those responsibilities remain in the
  * Background model and encoder.
  *
- * Missing tile context means the conflict cannot be established and produces
- * no fact. Context is optional because Base CHR and generic CHR classifiers
- * do not necessarily carry Background palette provenance.
+ * Physical identity comes only from the compiled Background model. Palette
+ * provenance remains keyed by logical tile identity, so CHR deduplication or
+ * Base CHR reuse cannot merge unrelated source palette contexts. Missing
+ * context means the conflict cannot be established and produces no fact.
  */
 export function analyzeAttributeTableAssignments(
-  map: BackgroundMapDefinition,
-  chrSlotClassifications: readonly ChrSlotClassification[],
+  model: Pick<BackgroundProjectModel, 'map' | 'resolvedCells'>,
+  paletteContexts: ReadonlyMap<LogicalTileKey, number>,
 ): readonly AttributeTableAssignmentFact[] {
+  const { map } = model;
   const facts: AttributeTableAssignmentFact[] = [];
   const maxRows = Math.min(15, Math.ceil(map.heightTiles / 2));
   const maxColumns = Math.min(16, Math.ceil(map.widthTiles / 2));
+  const resolvedCellsByIndex = new Map(
+    model.resolvedCells.map((cell) => [cell.cellIndex, cell] as const),
+  );
 
   for (let regionRow = 0; regionRow < maxRows; regionRow += 1) {
     for (let regionColumn = 0; regionColumn < maxColumns; regionColumn += 1) {
@@ -198,19 +255,29 @@ export function analyzeAttributeTableAssignments(
           const column = regionColumn * 2 + tileX;
           const row = regionRow * 2 + tileY;
           if (column >= map.widthTiles || row >= map.heightTiles) continue;
-          const cell = map.cells[row * 32 + column];
+          const cellIndex = row * BACKGROUND_WIDTH_TILES + column;
+          const cell = map.cells[cellIndex];
           if (!cell) continue;
+          const paletteContext = paletteContexts.get(cell.logicalKey);
+          if (
+            paletteContext === undefined ||
+            !Number.isInteger(paletteContext) ||
+            paletteContext < 0 ||
+            paletteContext > 3
+          ) {
+            continue;
+          }
 
-          const localIndex = cell.sourceTileIndex;
-          const physicalIndex =
-            localIndex !== undefined && localIndex >= 0 && localIndex <= 255
-              ? map.patternTable * NES_PATTERN_TABLE_TILE_COUNT + localIndex
-              : undefined;
-          if (physicalIndex === undefined) continue;
-          const classification = chrSlotClassifications[physicalIndex];
-          if (classification?.paletteContext === undefined) continue;
-          contexts.add(classification.paletteContext);
-          physicalTileIndices.push(physicalIndex);
+          const resolvedCell = resolvedCellsByIndex.get(cellIndex);
+          if (
+            resolvedCell?.logicalKey !== cell.logicalKey ||
+            resolvedCell.physicalTileIndex === undefined
+          ) {
+            continue;
+          }
+
+          contexts.add(paletteContext);
+          physicalTileIndices.push(resolvedCell.physicalTileIndex);
         }
       }
 
