@@ -36,6 +36,10 @@ export function analyzeAnimationOamCapacity(
   const facts: OamCapacityDiagnosticFact[] = [];
 
   model.animations.forEach((animation, animationIndex) => {
+    // Export-generated mirror variants share the canonical animation identity
+    // and sprite count. Reporting both would duplicate one editable problem.
+    if (animation.generatedByHorizontalFlip === true) return;
+
     animation.frames.forEach((frame, frameIndex) => {
       const spriteCount = countOamEntriesForFrame(frame);
       const kind: OamCapacityDiagnosticKind | null =

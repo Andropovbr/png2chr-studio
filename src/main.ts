@@ -145,6 +145,7 @@ import {
 import { reconcileAnimationGeometry } from './core/asset-lifecycle';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
+import { buildSourceTilePaletteContexts } from './core/nes-background-diagnostics';
 import {
   applyDerivedStatusUpdate,
   applyProjectUpdate,
@@ -3407,6 +3408,32 @@ function buildProjectBackgroundModels(
   return models;
 }
 
+function buildCurrentSourcePaletteContexts(
+  currentProject: ProjectView,
+): ReadonlyMap<LogicalTileKey, number> {
+  if (
+    currentProject.mode === 'animation' ||
+    currentProject.indexedImage === null
+  ) {
+    return new Map();
+  }
+
+  const assetKind =
+    currentProject.mode === 'playfield' ? 'playfield-image' : 'tileset-image';
+  const assetId = normalizeProjectAssetId(currentProject.assetId, assetKind);
+  const regionSize = paletteRegionSize(
+    currentProject.mode,
+    currentProject.indexedImage,
+  );
+  return buildSourceTilePaletteContexts({
+    assetId,
+    imageWidth: currentProject.indexedImage.width,
+    regionSize,
+    paletteAssignments: currentProject.paletteAssignments,
+    tiles: currentProject.tiles,
+  });
+}
+
 function renderChrWorkspace(): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
   const paletteState = resolveProjectPaletteState(project);
@@ -3487,7 +3514,6 @@ function renderChrWorkspace(): void {
       : undefined;
 
   const backgroundModels = buildProjectBackgroundModels(project);
-
   const chrAssetMappingIndex = buildChrAssetMappingIndex({
     mode: project.mode,
     animationModel: animModel,
@@ -3829,6 +3855,11 @@ function renderDeliveryWorkspace(): void {
       : null;
 
   const backgroundModels = buildProjectBackgroundModels(project);
+  const activeBackgroundMapId =
+    project.backgrounds?.activeMapId ?? project.backgrounds?.maps[0]?.id;
+  const activeBackgroundModel = backgroundModels.find(
+    (model) => model.map.id === activeBackgroundMapId,
+  );
 
   const chrAssetMappingIndex = buildChrAssetMappingIndex({
     mode: project.mode,
@@ -3860,10 +3891,8 @@ function renderDeliveryWorkspace(): void {
     chr,
     nametable,
     backgroundPatternTable: project.animation.destinationPatternTable,
-    backgroundMap:
-      project.backgrounds?.maps.find(
-        (map) => map.id === project.backgrounds?.activeMapId,
-      ) ?? project.backgrounds?.maps[0],
+    backgroundModel: activeBackgroundModel,
+    backgroundPaletteContexts: buildCurrentSourcePaletteContexts(project),
     attributeTable,
     collisionMap,
     paletteState,

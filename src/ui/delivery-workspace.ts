@@ -52,10 +52,9 @@ import {
   type SceneInstanceVisibilityFact,
 } from '../core/nes-sprite-diagnostics';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
-import type {
-  BackgroundMapDefinition,
-  BackgroundPatternTable,
-} from '../core/background-model';
+import type { BackgroundPatternTable } from '../core/background-model';
+import type { BackgroundProjectModel } from '../core/chr-background-allocation';
+import type { LogicalTileKey } from '../core/asset-identity';
 import {
   analyzeNametableChrConsistency,
   analyzeAttributeTableAssignments,
@@ -98,7 +97,11 @@ export interface DeliveryWorkspaceOptions {
   readonly chr: Uint8Array | null;
   readonly nametable: Uint8Array | null;
   readonly backgroundPatternTable: BackgroundPatternTable;
-  readonly backgroundMap?: BackgroundMapDefinition;
+  readonly backgroundModel?: Pick<
+    BackgroundProjectModel,
+    'map' | 'resolvedCells'
+  >;
+  readonly backgroundPaletteContexts?: ReadonlyMap<LogicalTileKey, number>;
   readonly attributeTable: Uint8Array | null;
   readonly collisionMap: Uint8Array | null;
   readonly paletteState: DualBankPaletteState;
@@ -334,12 +337,22 @@ export function convertChrRegionDiagnosticFactsToDeliveryItems(
   }));
 }
 
-/** Keep first occurrence; fact IDs are canonical, legacy items use a stable fallback key. */
+const DIAGNOSTIC_LEVEL_RANK: Readonly<
+  Record<DeliveryDiagnosticItem['level'], number>
+> = {
+  info: 0,
+  warning: 1,
+  error: 2,
+};
+
+/** Keep stable order while preserving the highest severity for duplicate facts. */
 export function deduplicateDeliveryDiagnosticItems(
   items: readonly DeliveryDiagnosticItem[],
 ): readonly DeliveryDiagnosticItem[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
+  const deduplicated: DeliveryDiagnosticItem[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (const item of items) {
     const key =
       item.id ??
       [
@@ -348,10 +361,23 @@ export function deduplicateDeliveryDiagnosticItems(
         item.targetWorkspace ?? '',
         item.actionLabel ?? '',
       ].join('|');
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex === undefined) {
+      indexByKey.set(key, deduplicated.length);
+      deduplicated.push(item);
+      continue;
+    }
+
+    const existing = deduplicated[existingIndex];
+    if (
+      existing !== undefined &&
+      DIAGNOSTIC_LEVEL_RANK[item.level] > DIAGNOSTIC_LEVEL_RANK[existing.level]
+    ) {
+      deduplicated[existingIndex] = item;
+    }
+  }
+
+  return deduplicated;
 }
 
 function createPaletteDeliveryArtifacts(
@@ -512,7 +538,7 @@ export function createDeliveryWorkspace(
       });
     } else if (options.animationModel === null) {
       diagnostics.push({
-        level: 'info',
+        level: 'error',
         message: t('animationPreviewEmpty'),
         targetWorkspace: 'animation',
         actionLabel: t('deliveryLinkAnimation'),
@@ -547,10 +573,18 @@ export function createDeliveryWorkspace(
       );
     }
   } else if (options.mode === 'playfield') {
-    if (options.nametable === null && options.error === null) {
+    const missingArtifacts = [
+      options.chr === null ? 'CHR' : null,
+      options.nametable === null ? 'Nametable' : null,
+      options.attributeTable === null ? 'Attribute Table' : null,
+      options.collisionMap === null ? t('collisionEditorTitle') : null,
+    ].filter((name): name is string => name !== null);
+    if (missingArtifacts.length > 0 && options.error === null) {
       diagnostics.push({
-        level: 'warning',
-        message: t('playfieldExportIncomplete'),
+        level: 'error',
+        message: t('deliveryMissingArtifacts', {
+          artifacts: missingArtifacts.join(', '),
+        }),
         targetWorkspace: 'playfield',
         actionLabel: t('deliveryLinkPlayfield'),
       });
@@ -565,12 +599,12 @@ export function createDeliveryWorkspace(
       diagnostics.push(...convertNametableChrFactsToDeliveryItems(facts));
     }
 
-    if (options.backgroundMap && options.chrSlotClassifications) {
+    if (options.backgroundModel) {
       diagnostics.push(
         ...convertAttributeTableAssignmentFactsToDeliveryItems(
           analyzeAttributeTableAssignments(
-            options.backgroundMap,
-            options.chrSlotClassifications,
+            options.backgroundModel,
+            options.backgroundPaletteContexts ?? new Map(),
           ),
         ),
       );
@@ -579,7 +613,7 @@ export function createDeliveryWorkspace(
     // Tileset mode
     if (options.chr === null && options.error === null) {
       diagnostics.push({
-        level: 'warning',
+        level: 'error',
         message: t('exportUnavailable'),
         targetWorkspace: 'tileset',
         actionLabel: t('deliveryLinkTileset'),
@@ -643,6 +677,7 @@ export function createDeliveryWorkspace(
 
   const errorCount = diagnostics.filter((d) => d.level === 'error').length;
   const warnCount = diagnostics.filter((d) => d.level === 'warning').length;
+  const infoCount = diagnostics.filter((d) => d.level === 'info').length;
   const isReady = errorCount === 0;
 
   // 2. Readiness & Diagnostics Section
@@ -674,6 +709,7 @@ export function createDeliveryWorkspace(
   statusDetails.className = 'delivery-status-details';
   statusDetails.textContent = t('deliveryStatusDetails', {
     readyCount: isReady ? 1 : 0,
+    infoCount,
     warnCount,
     errorCount,
   });
@@ -706,7 +742,7 @@ export function createDeliveryWorkspace(
         const actionBtn = document.createElement('button');
         actionBtn.type = 'button';
         actionBtn.className = 'button secondary-button delivery-diag-action';
-        actionBtn.textContent = diag.actionLabel ?? 'Fix';
+        actionBtn.textContent = diag.actionLabel ?? t('deliveryFixAction');
         actionBtn.addEventListener('click', () => {
           onNav(target);
         });
@@ -965,7 +1001,7 @@ export function createDeliveryWorkspace(
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `button ${art.isPrimary ? 'primary-button' : 'secondary-button'} delivery-download-btn`;
-      btn.textContent = `Download ${art.name}`;
+      btn.textContent = t('deliveryDownloadArtifact', { name: art.name });
       btn.addEventListener('click', art.onDownload);
 
       card.append(cardHeader, nameHeading, desc, btn);
@@ -1099,6 +1135,7 @@ export function createDeliveryWorkspace(
   const shortcuts: readonly [WorkspaceView, TranslationKey][] = [
     ['tileset', 'deliveryLinkTileset'],
     ['playfield', 'deliveryLinkPlayfield'],
+    ['background', 'deliveryLinkBackground'],
     ['animation', 'deliveryLinkAnimation'],
     ['palette', 'deliveryLinkPalettes'],
     ['chr', 'deliveryLinkChr'],
