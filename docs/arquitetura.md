@@ -611,6 +611,7 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
   - Ausência de classificação não é interpretada como slot vazio. Isso evita afirmar uma violação quando o Studio não possui informação suficiente.
   - Células consecutivas com o mesmo tipo de problema são consolidadas em intervalos de coordenadas da grade 32×30, evitando um diagnóstico por célula. Os fatos usam IDs próprios (`nametable-reserved-tile` e `nametable-unallocated-tile`) e não recriam diagnósticos de regiões, ownership ou reservations.
   - O **Deliver & Export** executa essa validação somente no modo Playfield, usando a Pattern Table efetiva do background, e preserva Tileset e Animação fora desse diagnóstico.
+  - `analyzeAttributeTableAssignments` verifica, por região canônica 16×16 px, se os Tiles com contexto de paleta conhecido concordam com o slot atribuído. Emite apenas fatos `info` quando há contexto incompatível; não repete validação de tamanho/faixa nem reempacota a Attribute Table. Contexto ausente permanece indeterminável.
 
 ### 11.3 Persistência de Backgrounds no Projeto e Lifecycle (`src/core/project.ts`, `src/core/asset-lifecycle.ts`, `src/core/asset-identity.ts`)
 
