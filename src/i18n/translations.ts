@@ -563,6 +563,10 @@ const en = {
     'Animation "{animation}" frame {frame} has {sprites} sprites on scanline {scanline}. This leaves little capacity below the NES limit of 8.',
   spriteScanlineLimitExceeded:
     'Animation "{animation}" frame {frame} has {sprites} sprites on scanline {scanline} and exceeds the NES limit of 8.',
+  sceneAllSpritesOffscreen:
+    'Scene instance "{instance}" using animation "{animation}" frame {frame} has every sprite outside the visible area. Metasprite bounds: X {x}, Y {y}, {width} x {height} px.',
+  sceneSpriteCoordinateWraps:
+    'Scene instance "{instance}" using animation "{animation}" frame {frame} has sprite coordinates outside the unsigned 8-bit range. NES byte values: {coordinates}.',
   animationAdd: '+ Add animation',
   animationDuplicate: 'Duplicate',
   animationRemove: 'Remove',
@@ -1654,6 +1658,10 @@ const ptBr = {
     'O frame {frame} da animação "{animation}" tem {sprites} sprites na scanline {scanline}. Isso deixa pouca capacidade abaixo do limite de 8 sprites do NES.',
   spriteScanlineLimitExceeded:
     'O frame {frame} da animação "{animation}" tem {sprites} sprites na scanline {scanline} e excede o limite de 8 sprites do NES.',
+  sceneAllSpritesOffscreen:
+    'A instância de cena "{instance}" usando o frame {frame} da animação "{animation}" tem todos os sprites fora da área visível. Limites do metasprite: X {x}, Y {y}, {width} x {height} px.',
+  sceneSpriteCoordinateWraps:
+    'A instância de cena "{instance}" usando o frame {frame} da animação "{animation}" tem coordenadas de sprites fora do intervalo de 8 bits sem sinal. Valores de byte do NES: {coordinates}.',
   animationAdd: '+ Adicionar animação',
   animationDuplicate: 'Duplicar',
   animationRemove: 'Remover',

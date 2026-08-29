@@ -44,8 +44,11 @@ import {
 } from '../core/oam-diagnostics';
 import {
   analyzeAnimationSpriteScanlinePressure,
+  analyzeSceneInstanceVisibility,
+  formatSceneInstanceVisibilityDiagnosticMessage,
   formatSpriteScanlinePressureDiagnosticMessage,
 } from '../core/nes-sprite-diagnostics';
+import type { ProjectScenePreviewConfig } from '../core/scene-preview';
 import { t, type TranslationKey } from '../i18n';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
@@ -98,16 +101,7 @@ export interface DeliveryWorkspaceOptions {
   readonly chrSlotClassifications?: readonly ChrSlotClassification[];
   readonly chrAssetMappingIndex?: ChrAssetMappingIndex;
   readonly activeAssets?: readonly ProjectAsset[];
-  readonly scenePreview?: {
-    readonly instances?: readonly {
-      readonly id: string;
-      readonly name?: string;
-      readonly entityId?: string;
-      readonly animationName?: string;
-      readonly paletteId?: string | null;
-      readonly visible?: boolean;
-    }[];
-  };
+  readonly scenePreview?: ProjectScenePreviewConfig;
   readonly paletteDiagnostics?: readonly PaletteDiagnosticFact[];
   readonly onDownloadBytes: (bytes: Uint8Array, fileName: string) => void;
   readonly onDownloadText: (text: string, fileName: string) => void;
@@ -410,6 +404,19 @@ export function createDeliveryWorkspace(
           id: fact.id,
           level: fact.severity,
           message: formatSpriteScanlinePressureDiagnosticMessage(fact),
+          targetWorkspace: 'animation',
+          actionLabel: t('deliveryLinkAnimation'),
+        });
+      }
+
+      for (const fact of analyzeSceneInstanceVisibility(
+        options.scenePreview?.instances ?? [],
+        model.animations,
+      )) {
+        diagnostics.push({
+          id: fact.id,
+          level: fact.severity,
+          message: formatSceneInstanceVisibilityDiagnosticMessage(fact),
           targetWorkspace: 'animation',
           actionLabel: t('deliveryLinkAnimation'),
         });
