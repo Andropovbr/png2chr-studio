@@ -342,6 +342,8 @@ function createMockBackgroundWorkspaceOptions(
     },
     onSelectMap: vi.fn(),
     onAddMap: vi.fn(),
+    onNewMapFromFile: vi.fn(),
+    onGenerateTestScreen: vi.fn(),
     onDeleteMap: vi.fn(),
     onRenameMap: vi.fn(),
     onPatternTableChange: vi.fn(),
@@ -377,6 +379,16 @@ describe('Background Workspace Component', () => {
   });
 
   describe('Toolbar & Map Lifecycle', () => {
+    it('exposes contextual screen creation actions', () => {
+      const options = createMockBackgroundWorkspaceOptions();
+      const element = createBackgroundWorkspace(options);
+
+      expect(element.querySelector('#bg-new-screen-png-input')).not.toBeNull();
+      expect(
+        element.querySelector('#bg-generate-test-screen-btn'),
+      ).not.toBeNull();
+    });
+
     it('renders map dropdown and calls onSelectMap on change', () => {
       const options = createMockBackgroundWorkspaceOptions();
       const element = createBackgroundWorkspace(options);

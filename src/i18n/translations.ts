@@ -23,6 +23,16 @@ const en = {
   projectLoadSuccess: 'Project "{name}" loaded.',
   projectSaveSuccess: 'Project "{name}" saved.',
   importTitle: 'Import PNG, CHR, or NROM',
+  graphicsAssetsMode: 'Graphics Assets',
+  graphicsAssetsTitle: 'Graphics assets',
+  graphicsAssetsHint:
+    'Add reusable PNG graphics, decode raw CHR tiles, or inspect NROM graphics sources.',
+  screenSourceTitle: 'Screen source',
+  screenSourceHint:
+    'Create a screen from a 256 × 240 PNG or choose a project graphics asset.',
+  addPngGraphicsAsset: 'Add PNG graphics asset',
+  importChrTileSource: 'Import CHR tile source',
+  inspectExtractNrom: 'Inspect / extract NROM CHR',
   imageModeLabel: 'Image purpose',
   tilesetMode: 'Tileset / graphics',
   playfieldMode: 'Playfield / game screen',
@@ -514,7 +524,7 @@ const en = {
   animationTransparencyHint:
     'Transparent source pixels map to universal color index 0. Fully empty 8 × 8 cells are still omitted from the metasprite.',
   animationDestinationTitle: 'Destination CHR',
-  animationChooseDestination: 'Choose base CHR',
+  animationChooseDestination: 'Import Base CHR',
   animationClearDestination: 'Remove base CHR',
   animationNoDestination:
     'No destination CHR selected; tile indexes start at $00.',
@@ -856,6 +866,8 @@ const en = {
   choosePng: 'Choose PNG',
   choosePngOrChr: 'Choose PNG, CHR, or NES ROM',
   generateRandomPlayfield: 'Generate random playfield',
+  backgroundNewFromPng: 'New screen from PNG',
+  backgroundGenerateTestScreen: 'Generate test screen',
   randomFeaturesTitle: 'Background elements',
   randomFeatureWalls: 'Walls',
   randomFeaturePlatforms: 'Platforms',
@@ -1062,6 +1074,8 @@ type TranslationTable = Record<TranslationKey, string>;
 const ptBr = {
   appTitle: 'PNG2CHR Studio',
   generateRandomPlayfield: 'Gerar playfield aleat\u00f3rio',
+  backgroundNewFromPng: 'Nova tela a partir de PNG',
+  backgroundGenerateTestScreen: 'Gerar tela de teste',
   randomFeaturesTitle: 'Elementos do background',
   randomFeatureWalls: 'Paredes',
   randomFeaturePlatforms: 'Plataformas',
@@ -1131,6 +1145,16 @@ const ptBr = {
   projectLoadSuccess: 'Projeto "{name}" carregado com sucesso.',
   projectSaveSuccess: 'Projeto "{name}" salvo com sucesso.',
   importTitle: 'Importar PNG, CHR ou NROM',
+  graphicsAssetsMode: 'Assets gráficos',
+  graphicsAssetsTitle: 'Assets gráficos',
+  graphicsAssetsHint:
+    'Adicione gráficos PNG reutilizáveis, decodifique tiles CHR ou inspecione fontes NROM.',
+  screenSourceTitle: 'Fonte da tela',
+  screenSourceHint:
+    'Crie uma tela a partir de um PNG 256 × 240 ou escolha um asset gráfico do projeto.',
+  addPngGraphicsAsset: 'Adicionar asset gráfico PNG',
+  importChrTileSource: 'Importar fonte de tiles CHR',
+  inspectExtractNrom: 'Inspecionar / extrair CHR NROM',
   imageModeLabel: 'Finalidade da imagem',
   tilesetMode: 'Tileset / gráficos',
   playfieldMode: 'Playfield / tela do jogo',
@@ -1631,7 +1655,7 @@ const ptBr = {
   animationTransparencyHint:
     'Pixels transparentes do PNG usam o índice universal 0. Células 8 × 8 totalmente vazias continuam omitidas do metasprite.',
   animationDestinationTitle: 'CHR de destino',
-  animationChooseDestination: 'Selecionar CHR-base',
+  animationChooseDestination: 'Importar Base CHR',
   animationClearDestination: 'Remover CHR-base',
   animationNoDestination:
     'Nenhum CHR de destino selecionado; os índices começam em $00.',

@@ -8,12 +8,12 @@ It is designed for retro game developers and pixel artists who need a transparen
 
 ## Features
 
-- **PNG, CHR & iNES ROM Import:** Drag-and-drop or file selection for PNG images, raw 2bpp `.chr` files, and iNES Mapper 0 (NROM) ROMs with 8 KiB CHR-ROM extraction.
+- **Contextual Graphics Sources:** Add PNG graphics assets, import raw 2bpp `.chr` tile sources, inspect/extract iNES Mapper 0 (NROM) CHR, and import Base CHR in the render configuration where it belongs.
 - **Strict NES Validation:** Dimension validation (multiples of 8, exact 256×240 for playfields), binary transparency validation (no partial alpha), and quantization to the 64 NES PPU color codes.
 - **Configurable Color Reduction & Dithering:** Nearest, Median Cut, and deterministic K-Means quantization with optional Floyd-Steinberg, Atkinson, and Bayer (4×4, 8×8) dithering, using Euclidean RGB or perceptual OKLab color distance.
 - **Studio Project Persistence (`.p2c`):** Save and load complete project states, including self-contained embedded image data, custom palettes, active slots, pixel overrides, animations, collisions, and scene preview configurations.
 - **Tileset Workflow:** 8×8 tile extraction in reading order, per-tile palette assignment, integrated 8×8 pixel editor, and exact or flip-aware (horizontal, vertical, combined) deduplication.
-- **Playfield & Collision Workflow:** 256×240 playfield conversion with 960-byte Nametable (`.nam`), 64-byte Attribute Table (`.atr`), 480-byte 11-type typed collision map (`.col`), 16-byte palette (`.pal`), and procedural test playfield generation.
+- **Background Maps / Screens:** Create empty screens, create a screen from a 256×240 PNG, generate a procedural test screen, select reusable source assets, and edit map-owned collision alongside the 960-byte Nametable (`.nam`) and 64-byte Attribute Table (`.atr`).
 - **Background Map Workspace:** Dedicated NES screen tilemap workspace for composing full 32×30 Nametables (256×240 px) with source image tile browser, brush tools (pencil, picker, eraser, palette), hardware-accurate 16×16 Attribute Table painting, canonical BG 0..3 slot previews with logical palette names and the universal `$3F00` color, Pattern Table selection (PT0 / PT1), 1×–4× zoom controls, grid/attribute overlays, cell inspector with direct physical CHR slot tracking and _Inspect in CHR Memory_ navigation, and live integrity diagnostics.
 - **Sprite Sheet & Animation Workflow:**
   - Decoupled workspace layout with a compact entity/animation list, single focused animation editor, responsive multi-column palette grids, and a collapsible, sticky live preview column.
@@ -40,6 +40,15 @@ It is designed for retro game developers and pixel artists who need a transparen
 - **Internationalization:** Full bilingual user interface in Portuguese (Brazil) and English.
 
 All graphics processing happens locally in the browser. PNG, CHR, and ROM files are never uploaded to any server or external service.
+
+## Workflow overview
+
+Use **Graphics Assets** to add reusable PNG artwork or inspect raw CHR/NROM
+sources. Use **Background Maps** to compose screens: start with an empty map,
+create one from a 256×240 PNG, or generate a test screen, then choose its source
+asset and configure its Background **Pattern Table** in the screen workspace.
+The former Playfield screen flow is available through Background Maps, so screen
+composition, source selection, and map-owned collision stay together.
 
 ---
 

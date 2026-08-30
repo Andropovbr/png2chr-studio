@@ -27,7 +27,7 @@ import {
   type QuantizationPreview,
 } from './quantization-panel';
 import { createTileGrid } from './tile-grid';
-import type { DisplayError, PreviewTool, ProjectMode } from './types';
+import type { DisplayError, PreviewTool } from './types';
 import {
   toAttributeTableFileName,
   toChrFileName,
@@ -61,7 +61,6 @@ export interface TilesetWorkspaceOptions {
   readonly paletteColorTarget: PaletteColorTarget;
   readonly loading: boolean;
   readonly error: DisplayError | null;
-  readonly onModeChange: (mode: ProjectMode) => void;
   readonly onFile: (file: File) => void;
   readonly onToggleQuantizationCollapse: () => void;
   readonly onQuantizationSettingsChange: (
@@ -163,7 +162,6 @@ export function createTilesetWorkspace(
     options.loading,
     'tileset',
     [],
-    options.onModeChange,
     noop,
     options.onFile,
     noop,

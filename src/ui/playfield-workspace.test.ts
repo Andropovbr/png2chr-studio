@@ -305,7 +305,6 @@ describe('PlayfieldWorkspace composition and byte-compatibility', () => {
       paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
       loading: false,
       error: null,
-      onModeChange: vi.fn(),
       onFile: vi.fn(),
       onRandomPlayfieldFeaturesChange: vi.fn(),
       onGeneratePlayfield: vi.fn(),

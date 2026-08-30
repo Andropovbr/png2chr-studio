@@ -36,6 +36,8 @@ export interface BackgroundWorkspaceOptions {
   readonly state: BackgroundWorkspaceState;
   readonly onSelectMap: (mapId: string) => void;
   readonly onAddMap: () => void;
+  readonly onNewMapFromFile?: (file: File) => void;
+  readonly onGenerateTestScreen?: () => void;
   readonly onDeleteMap: (mapId: string) => void;
   readonly onRenameMap: (mapId: string, name: string) => void;
   readonly onPatternTableChange: (
@@ -204,6 +206,41 @@ function createToolbar(
     options.onAddMap();
   });
   toolbarGroupLeft.append(newMapBtn);
+
+  if (options.onNewMapFromFile || options.onGenerateTestScreen) {
+    const workflowGroup = document.createElement('div');
+    workflowGroup.className =
+      'contextual-file-actions background-workflow-actions';
+
+    if (options.onNewMapFromFile) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.png,image/png';
+      input.id = 'bg-new-screen-png-input';
+      input.className = 'visually-hidden';
+      input.addEventListener('change', () => {
+        const file = input.files?.[0];
+        if (file) options.onNewMapFromFile?.(file);
+        input.value = '';
+      });
+      const label = document.createElement('label');
+      label.htmlFor = input.id;
+      label.className = 'btn btn-secondary contextual-file-action';
+      label.textContent = t('backgroundNewFromPng');
+      workflowGroup.append(input, label);
+    }
+
+    if (options.onGenerateTestScreen) {
+      const generateButton = document.createElement('button');
+      generateButton.type = 'button';
+      generateButton.className = 'btn btn-secondary contextual-file-action';
+      generateButton.id = 'bg-generate-test-screen-btn';
+      generateButton.textContent = t('backgroundGenerateTestScreen');
+      generateButton.addEventListener('click', options.onGenerateTestScreen);
+      workflowGroup.append(generateButton);
+    }
+    toolbarGroupLeft.append(workflowGroup);
+  }
 
   if (activeMap) {
     // Delete Map Button

@@ -110,7 +110,7 @@ Conforme documentado em [`docs/project-state-boundaries.md`](./project-state-bou
 A interface é orquestrada por um `AppShell` persistente que hospeda os principais marcos de interação:
 
 - **Project Header (`headerHost`):** Metadados do projeto, nome editável, indicador de dirty, botões de ação (Novo, Abrir, Salvar, Salvar Como) e seletor de idioma.
-- **Sidebar (`sidebarHost`):** Navegação entre workspaces (Tileset, Playfield, Animação, Paletas, Memória CHR, Exportação e Diagnósticos), âncoras de seção, arquivo ativo e seletor rápido de quantização.
+- **Sidebar (`sidebarHost`):** Navegação entre workspaces (Graphics Assets, Background Maps, Animação, Paletas, Memória CHR, Exportação e Diagnósticos), âncoras de seção, arquivo ativo e seletor rápido de quantização. O fluxo de tela legado Playfield é acessado por Background Maps.
 - **Workspace Host (`workspaceHost`):** Hospeda os editores e painéis ativos do modo de trabalho atual. O layout principal reivindica toda a largura horizontal disponível quando o inspetor não possui conteúdo contextual ativo.
 - **Inspector Host (`inspectorHost`):** Região lateral complementar para propriedades contextuais. Quando vazio, não reserva coluna vazia desnecessária no desktop; quando ativo, exibe controles contextuais e botão de fechar.
 - **Diagnostics/Status Host (`diagnosticsHost`):** Painel de métricas, diagnósticos NES, erros de validação e status.
@@ -198,7 +198,14 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 - Suporte a deduplicação com reconhecimento de rotações/flips (H, V, HV).
 - Editor de pixels integrado para retoques rápidos nos tiles.
 
-### 6.2 Modo Playfield
+### 6.2 Fluxo de telas em Background Maps
+
+O workspace canônico de telas oferece operações contextuais para criar um mapa
+vazio, criar uma tela a partir de PNG 256×240 ou gerar uma tela de teste. A
+seleção de asset, a edição da Nametable/Attribute Table, a configuração de
+Background **Pattern Table** e a camada de colisão pertencem ao mapa ativo.
+O rótulo Playfield permanece apenas na documentação de compatibilidade e nas
+projeções legadas; não é uma segunda navegação de tela.
 
 - Processa telas estáticas completas de **256×240 pixels** (32 colunas × 30 linhas de tiles).
 - Gera a **Nametable (`.nam`)** com 960 bytes representando a grade de índices de tiles.

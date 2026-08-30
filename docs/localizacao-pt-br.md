@@ -4,7 +4,7 @@ Esta política mantém a localização brasileira natural sem traduzir nomes can
 
 ## Termos canônicos
 
-Manter em inglês, com capitalização técnica quando aplicável: `NES`, `PPU`, `OAM`, `ROM`, `RAM`, `PRG`, `CHR ROM`, `Pattern Table`/`Pattern Tables`, `Nametable`, `Attribute Table`, `Sprite`, `Tile`, `Metasprite`, `Bank`, `Mapper`, `Tileset`, `Playfield`, `Spritesheet`, `Frame`, `Flip`, `Asset` e `Workspace`.
+Manter em inglês, com capitalização técnica quando aplicável: `NES`, `PPU`, `OAM`, `ROM`, `RAM`, `PRG`, `CHR ROM`, `Pattern Table`/`Pattern Tables`, `Nametable`, `Attribute Table`, `Sprite`, `Tile`, `Metasprite`, `Bank`, `Mapper`, `Tileset`, `Playfield` (somente compatibilidade), `Spritesheet`, `Frame`, `Flip`, `Asset` e `Workspace`. Na interface, prefira `Assets gráficos` e `Mapas de Background` para os workspaces canônicos.
 
 `CHR ROM` descreve armazenamento ou conteúdo físico de CHR. `CHR` sozinho pode descrever o formato, editor ou recurso quando o contexto não trata de armazenamento.
 

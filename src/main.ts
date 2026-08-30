@@ -125,7 +125,9 @@ import { createBackgroundWorkspace } from './ui/background-workspace';
 import { createChrWorkspace } from './ui/chr-workspace';
 import {
   buildBackgroundProjectModel,
+  createBackgroundMapFromPlayfield,
   createEmptyBackgroundMap,
+  generateBackgroundMapId,
   encodeBackgroundAttributeTable,
   reconcileBackgroundMaps,
   type BackgroundProjectModel,
@@ -2954,7 +2956,6 @@ function renderTilesetWorkspace(): void {
     paletteColorTarget: workspace.paletteColorTarget,
     loading: derivedStatus.loading,
     error: derivedStatus.error,
-    onModeChange: changeMode,
     onFile: (file) => void loadFile(file),
     onToggleQuantizationCollapse: () => {
       updateWorkspace({
@@ -3091,7 +3092,6 @@ function renderPlayfieldWorkspace(): void {
     paletteColorTarget: workspace.paletteColorTarget,
     loading: derivedStatus.loading,
     error: derivedStatus.error,
-    onModeChange: changeMode,
     onFile: (file) => void loadFile(file),
     onRandomPlayfieldFeaturesChange: (randomPlayfieldFeatures) => {
       updateProject({ ...project, randomPlayfieldFeatures });
@@ -3977,6 +3977,10 @@ function renderBackgroundWorkspace(): void {
       });
       render();
     },
+    onNewMapFromFile: (file) => {
+      void loadBackgroundScreenFile(file);
+    },
+    onGenerateTestScreen: generateBackgroundTestScreen,
     onDeleteMap: (mapId) => {
       const newMaps = backgrounds.maps.filter((m) => m.id !== mapId);
       const nextActiveId = newMaps[0]?.id ?? null;
@@ -4148,6 +4152,125 @@ async function decodeImage(file: File): Promise<ImageData> {
   const result = await readAndDecodePng(file, decodePngBlob);
   if (result.success) return result.image;
   throw new PngLoadError(result.failure);
+}
+
+function addBackgroundScreen(
+  fileName: string,
+  sourceImage: ImageData,
+  indexedImage: IndexedImage,
+): void {
+  if (sourceImage.width !== 256 || sourceImage.height !== 240) {
+    setDerivedStatus({
+      error: { key: 'invalidPlayfieldDimensions' },
+      loading: false,
+    });
+    render();
+    return;
+  }
+
+  const mapId = generateBackgroundMapId();
+  const assetId = normalizeProjectAssetId(
+    undefined,
+    'background-image',
+    mapId,
+  );
+  const paletteAssignments = assignmentsForImage(indexedImage, 'playfield');
+  const pixelOverrides = createPixelOverrides(
+    indexedImage.width,
+    indexedImage.height,
+  );
+  const assetReference = {
+    id: assetId,
+    path: fileName,
+    name: fileName,
+    sourceKind: 'png' as const,
+    dataUrl: imageDataToDataUrl(sourceImage),
+  };
+  const map = createBackgroundMapFromPlayfield({
+    id: mapId,
+    name: fileName,
+    assetId,
+    paletteAssignments,
+  });
+  const graphicsAsset = {
+    id: assetId,
+    kind: 'background-image' as const,
+    name: fileName,
+    source: assetReference,
+    logicalTiles: {
+      decoding: 'png-indexed' as const,
+      quantization: project.quantizationSettings,
+      paletteBank: 'background' as const,
+      paletteAssignments: Array.from(paletteAssignments),
+      pixelOverrides: {
+        kind: 'indexed-image' as const,
+        values: Array.from(pixelOverrides),
+      },
+    },
+  };
+  const backgrounds = project.backgrounds ?? { maps: [] };
+  const mapWithSource = { ...map, asset: assetReference };
+  updateProject({
+    ...project,
+    graphics: {
+      ...project.graphics,
+      assets: [
+        ...project.graphics.assets.filter((asset) => asset.id !== assetId),
+        graphicsAsset,
+      ],
+    },
+    backgrounds: {
+      ...backgrounds,
+      activeMapId: map.id,
+      maps: [...backgrounds.maps, mapWithSource],
+    },
+  });
+  restoredGraphicsAssetSources.set(assetId, {
+    assetId,
+    indexedImage,
+  });
+  updateWorkspace({
+    ...workspace,
+    activeWorkspace: 'background',
+    background: { ...workspace.background, selectedMapId: map.id },
+  });
+  setDerivedStatus({ error: null, loading: false });
+  render();
+}
+
+async function loadBackgroundScreenFile(file: File): Promise<void> {
+  cacheAssetFile(file);
+  setDerivedStatus({ error: null, loading: true });
+  render();
+  try {
+    const image = await decodeImage(file);
+    const indexed = quantizePngSource(
+      image,
+      'playfield',
+      project.quantizationSettings,
+    );
+    addBackgroundScreen(file.name, image, indexed);
+  } catch (error: unknown) {
+    setDerivedStatus({
+      error:
+        error instanceof PngLoadError
+          ? displayPngLoadError(error.failure)
+          : { key: 'imageProcessingFailed' },
+      loading: false,
+    });
+    render();
+  }
+}
+
+function generateBackgroundTestScreen(): void {
+  const indexed = generateRandomPlayfield(Math.random, {
+    features: project.randomPlayfieldFeatures,
+  });
+  addBackgroundScreen(
+    'generated-background.png',
+    indexedImageToImageData(indexed),
+    indexed,
+  );
 }
 
 async function loadFile(file: File): Promise<void> {

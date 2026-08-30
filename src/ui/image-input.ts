@@ -1,15 +1,13 @@
 import { t } from '../i18n';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
-import type { ProjectMode } from './types';
 
 export function createImageInput(
   fileName: string | null,
   width: number | null,
   height: number | null,
   loading: boolean,
-  mode: ProjectMode,
+  mode: 'tileset' | 'playfield',
   randomPlayfieldFeatures: readonly RandomPlayfieldFeature[],
-  onModeChange: (mode: ProjectMode) => void,
   onRandomPlayfieldFeaturesChange: (
     features: readonly RandomPlayfieldFeature[],
   ) => void,
@@ -19,46 +17,44 @@ export function createImageInput(
   const section = document.createElement('section');
   section.className = 'panel import-panel';
   const heading = document.createElement('h2');
-  heading.textContent = t('importTitle');
+  heading.textContent =
+    mode === 'tileset' ? t('graphicsAssetsTitle') : t('screenSourceTitle');
 
-  const modeSelector = document.createElement('fieldset');
-  modeSelector.className = 'mode-selector';
-  const modeLegend = document.createElement('legend');
-  modeLegend.textContent = t('imageModeLabel');
-  modeSelector.append(modeLegend);
-  const modes: readonly [
-    ProjectMode,
-    'tilesetMode' | 'playfieldMode' | 'animationMode',
-  ][] = [
-    ['tileset', 'tilesetMode'],
-    ['playfield', 'playfieldMode'],
-    ['animation', 'animationMode'],
-  ];
-  modes.forEach(([value, labelKey]) => {
-    const label = document.createElement('label');
-    const radio = document.createElement('input');
-    radio.type = 'radio';
-    radio.name = 'image-mode';
-    radio.value = value;
-    radio.checked = mode === value;
-    radio.addEventListener('change', () => {
-      if (radio.checked) {
-        onModeChange(value);
-      }
+  const contextualHint = document.createElement('p');
+  contextualHint.className = 'workflow-hint';
+  contextualHint.textContent =
+    mode === 'tileset' ? t('graphicsAssetsHint') : t('screenSourceHint');
+
+  const actionGroup = document.createElement('div');
+  actionGroup.className = 'contextual-file-actions';
+
+  const addFileAction = (
+    id: string,
+    labelText: string,
+    accept: string,
+  ): void => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.id = id;
+    input.accept = accept;
+    input.className = 'visually-hidden';
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (file !== undefined) onFile(file);
+      input.value = '';
     });
-    const text = document.createElement('span');
-    text.textContent = t(labelKey);
-    label.append(radio, text);
-    modeSelector.append(label);
-  });
-  const modeHint = document.createElement('small');
-  modeHint.textContent =
-    mode === 'playfield'
-      ? t('playfieldModeHint')
-      : mode === 'animation'
-        ? t('animationModeHint')
-        : t('tilesetModeHint');
-  modeSelector.append(modeHint);
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.className = 'button secondary-button contextual-file-action';
+    label.textContent = labelText;
+    actionGroup.append(input, label);
+  };
+
+  if (mode === 'tileset') {
+    addFileAction('graphics-png-input', t('addPngGraphicsAsset'), '.png');
+    addFileAction('graphics-chr-input', t('importChrTileSource'), '.chr');
+    addFileAction('graphics-nes-input', t('inspectExtractNrom'), '.nes');
+  }
 
   const randomGenerator = document.createElement('div');
   randomGenerator.className = 'random-playfield-generator';
@@ -139,10 +135,9 @@ export function createImageInput(
   const label = document.createElement('label');
   label.htmlFor = input.id;
   label.className = 'button primary-button';
-  label.textContent = mode === 'tileset' ? t('choosePngOrChr') : t('choosePng');
+  label.textContent = t('choosePng');
   const prompt = document.createElement('span');
-  prompt.textContent =
-    mode === 'tileset' ? t('dropPrompt') : t('dropPngPrompt');
+  prompt.textContent = t('dropPngPrompt');
   const privacy = document.createElement('small');
   privacy.textContent = t('processingLocal');
 
@@ -168,7 +163,8 @@ export function createImageInput(
   });
 
   dropZone.append(input, label, prompt, privacy);
-  section.append(heading, modeSelector);
+  section.append(heading, contextualHint);
+  if (actionGroup.children.length > 0) section.append(actionGroup);
   if (mode === 'playfield') {
     section.append(randomGenerator);
   }
