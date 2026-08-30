@@ -467,5 +467,21 @@ describe('Milestone 8 (Issue #108): Background Domain Model & Attribute Table Pa
         true,
       );
     });
+
+    it('reports cells whose logical asset does not match map source', () => {
+      const map = {
+        ...createEmptyBackgroundMap({ id: 'bg-a', assetId: 'asset-a' }),
+        cells: createEmptyBackgroundMap().cells.map((cell, index) =>
+          index === 0
+            ? { logicalKey: 'asset-b:0:0', tileX: 0, tileY: 0 }
+            : cell,
+        ),
+      };
+      const result = reconcileBackgroundMaps([map]);
+      expect(result.valid).toBe(false);
+      expect(result.facts).toContainEqual(
+        expect.objectContaining({ kind: 'incompatible-logical-asset' }),
+      );
+    });
   });
 });

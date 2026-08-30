@@ -74,6 +74,18 @@ byte, or OAM byte. Matching numbers do not establish identity.
 tiles by `LogicalTileKey` and contains no physical allocation. Source images,
 decoded pixels, and previews remain disposable runtime data.
 
+Every catalog asset is decoded independently using its own stable asset ID and
+persisted logical-tile inputs. Runtime code must never project one active
+`project.tiles` array onto every asset ID. A missing source or incompatible
+decode mode is unresolved and surfaces explicitly. Background Map cells must
+use keys belonging to the map's declared `assetId`; no fallback chooses another
+asset.
+
+Tileset, Background Maps, and Animation provide logical tile demands only.
+Project compiler determines production CHR placement. A raw CHR tile-pack is a
+developer utility containing one decoded asset's tiles in source order; it is
+not compiled project CHR and has no physical-slot semantics.
+
 ## Base CHR
 
 `graphics.baseChr` is project-level state. Animation does not own it. It keeps:

@@ -571,6 +571,7 @@ export interface BackgroundMapReconciliationFact {
   readonly mapId: string;
   readonly kind:
     | 'missing-asset'
+    | 'incompatible-logical-asset'
     | 'malformed-logical-key'
     | 'out-of-bounds-tile-coordinate'
     | 'duplicate-map-id'
@@ -690,6 +691,21 @@ export function reconcileBackgroundMaps(
           severity: 'error',
           message: `Cell ${String(i)} has malformed logical key "${cell.logicalKey}".`,
           details: { cellIndex: i, logicalKey: cell.logicalKey },
+        });
+      } else if (
+        effectiveAssetId !== undefined &&
+        parsed.assetId !== effectiveAssetId
+      ) {
+        facts.push({
+          mapId: map.id,
+          kind: 'incompatible-logical-asset',
+          severity: 'error',
+          message: `Cell ${String(i)} references asset "${parsed.assetId}" but map declares "${effectiveAssetId}".`,
+          details: {
+            cellIndex: i,
+            assetId: effectiveAssetId,
+            logicalAssetId: parsed.assetId,
+          },
         });
       } else if (options.assetDimensions) {
         const dims = options.assetDimensions.get(parsed.assetId);

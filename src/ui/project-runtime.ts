@@ -13,6 +13,10 @@ import {
   type ProjectTilesetConfig,
   type StudioProject,
 } from '../core/project';
+import type {
+  ProjectGraphicsAsset,
+  ProjectGraphicsConfiguration,
+} from '../core/project-graphics';
 import { DEFAULT_RANDOM_PLAYFIELD_FEATURES } from '../core/random-playfield';
 import type { SourceKind, ProjectView, AnimationSettings } from './types';
 
@@ -176,6 +180,111 @@ function buildAnimation(
   };
 }
 
+function upsertGraphicsAsset(
+  graphics: ProjectGraphicsConfiguration,
+  asset: ProjectGraphicsAsset,
+): ProjectGraphicsConfiguration {
+  const existingIndex = graphics.assets.findIndex(
+    (item) => item.id === asset.id,
+  );
+  const assets =
+    existingIndex < 0
+      ? [...graphics.assets, asset]
+      : graphics.assets.map((item, index) =>
+          index === existingIndex ? asset : item,
+        );
+  return { ...graphics, assets };
+}
+
+function synchronizeRuntimeGraphicsCatalog(
+  project: ProjectView,
+  tileset: ProjectTilesetConfig | undefined,
+  playfield: ProjectPlayfieldConfig | undefined,
+  animation: ProjectAnimationSettingsConfig,
+): ProjectGraphicsConfiguration {
+  let graphics = project.graphics;
+  const pngAsset = (
+    id: string,
+    kind: 'tileset-image' | 'playfield-image' | 'spritesheet',
+    name: string,
+    source: ProjectGraphicsAsset['source'],
+    paletteBank: 'background' | 'sprite',
+    paletteAssignments?: readonly number[],
+    pixelOverrides?: ProjectGraphicsAsset['logicalTiles']['pixelOverrides'],
+  ) => {
+    graphics = upsertGraphicsAsset(graphics, {
+      id,
+      kind,
+      name,
+      source,
+      logicalTiles: {
+        decoding: 'png-indexed',
+        quantization: project.quantizationSettings,
+        paletteBank,
+        ...(paletteAssignments ? { paletteAssignments } : {}),
+        ...(pixelOverrides ? { pixelOverrides } : {}),
+      },
+    });
+  };
+  if (tileset?.asset?.id) {
+    pngAsset(
+      tileset.asset.id,
+      'tileset-image',
+      tileset.asset.name ?? 'Tileset Image',
+      tileset.asset,
+      'background',
+      tileset.paletteAssignments,
+      tileset.pixelOverrides
+        ? { kind: 'indexed-image', values: tileset.pixelOverrides }
+        : undefined,
+    );
+  }
+  if (playfield?.asset?.id) {
+    pngAsset(
+      playfield.asset.id,
+      'playfield-image',
+      playfield.asset.name ?? 'Playfield Image',
+      playfield.asset,
+      'background',
+      playfield.paletteAssignments,
+      playfield.pixelOverrides
+        ? { kind: 'indexed-image', values: playfield.pixelOverrides }
+        : undefined,
+    );
+  }
+  for (const map of project.backgrounds?.maps ?? []) {
+    const id = map.assetId ?? map.asset?.id;
+    if (!id || graphics.assets.some((asset) => asset.id === id)) continue;
+    graphics = upsertGraphicsAsset(graphics, {
+      id,
+      kind: 'background-image',
+      name: map.asset?.name ?? map.name,
+      source: map.asset ?? null,
+      logicalTiles: {
+        decoding: 'png-indexed',
+        quantization: project.quantizationSettings,
+        paletteBank: 'background',
+        paletteAssignments: map.paletteAssignments,
+      },
+    });
+  }
+  for (const item of animation.animations) {
+    if (!item.asset?.id) continue;
+    pngAsset(
+      item.asset.id,
+      'spritesheet',
+      item.asset.name ?? item.name,
+      item.asset,
+      'sprite',
+      undefined,
+      item.pixelOverrides
+        ? { kind: 'sparse-tiles', values: item.pixelOverrides }
+        : undefined,
+    );
+  }
+  return graphics;
+}
+
 /** Runtime-to-persistence projection used by application save boundary. */
 export function buildStudioProjectFromRuntime(
   projectName: string,
@@ -184,10 +293,27 @@ export function buildStudioProjectFromRuntime(
   encodeBytes: (bytes: Uint8Array) => string,
 ): StudioProject {
   const paletteState = resolveProjectPaletteState(project);
+  const tileset =
+    project.mode === 'tileset'
+      ? buildActiveTileset(project, encodeImageData)
+      : (project.tileset ?? { asset: null });
+  const playfield =
+    project.mode === 'playfield'
+      ? buildActivePlayfield(project, encodeImageData)
+      : (project.playfield ?? {
+          asset: null,
+          randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
+        });
+  const animation = buildAnimation(project, encodeImageData, encodeBytes);
 
   return {
     formatVersion: CURRENT_PROJECT_FORMAT_VERSION,
-    graphics: project.graphics,
+    graphics: synchronizeRuntimeGraphicsCatalog(
+      project,
+      tileset,
+      playfield,
+      animation,
+    ),
     name: projectName,
     mode: project.mode,
     settings: {
@@ -206,19 +332,10 @@ export function buildStudioProjectFromRuntime(
       activeSpritePaletteSlots: paletteState.activeSpriteSlots,
     },
     chrRegions: project.chrRegions ?? [],
-    tileset:
-      project.mode === 'tileset'
-        ? buildActiveTileset(project, encodeImageData)
-        : (project.tileset ?? { asset: null }),
-    playfield:
-      project.mode === 'playfield'
-        ? buildActivePlayfield(project, encodeImageData)
-        : (project.playfield ?? {
-            asset: null,
-            randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
-          }),
+    tileset,
+    playfield,
     backgrounds: project.backgrounds ?? { activeMapId: null, maps: [] },
-    animation: buildAnimation(project, encodeImageData, encodeBytes),
+    animation,
     scenePreview: project.scenePreview ?? { instances: [] },
   };
 }
