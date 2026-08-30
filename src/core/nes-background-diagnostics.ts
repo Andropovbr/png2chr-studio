@@ -13,6 +13,8 @@ import {
   type ProjectAssetId,
 } from './asset-identity';
 import type { BackgroundProjectModel } from './chr-background-allocation';
+import type { BackgroundPhysicalAssignment } from './chr-background-allocation';
+import type { BackgroundMapDefinition } from './background-model';
 import type { Tile } from './types';
 
 export interface BuildSourceTilePaletteContextsOptions {
@@ -224,16 +226,25 @@ export function analyzeNametableChrConsistency(
  * Base CHR reuse cannot merge unrelated source palette contexts. Missing
  * context means the conflict cannot be established and produces no fact.
  */
+export type AttributeTableCompiledInput =
+  | Pick<BackgroundProjectModel, 'map' | 'resolvedCells'>
+  | {
+      readonly map: BackgroundMapDefinition;
+      readonly assignments: readonly BackgroundPhysicalAssignment[];
+    };
+
 export function analyzeAttributeTableAssignments(
-  model: Pick<BackgroundProjectModel, 'map' | 'resolvedCells'>,
+  model: AttributeTableCompiledInput,
   paletteContexts: ReadonlyMap<LogicalTileKey, number>,
 ): readonly AttributeTableAssignmentFact[] {
   const { map } = model;
   const facts: AttributeTableAssignmentFact[] = [];
   const maxRows = Math.min(15, Math.ceil(map.heightTiles / 2));
   const maxColumns = Math.min(16, Math.ceil(map.widthTiles / 2));
+  const resolvedCells =
+    'resolvedCells' in model ? model.resolvedCells : model.assignments;
   const resolvedCellsByIndex = new Map(
-    model.resolvedCells.map((cell) => [cell.cellIndex, cell] as const),
+    resolvedCells.map((cell) => [cell.cellIndex, cell] as const),
   );
 
   for (let regionRow = 0; regionRow < maxRows; regionRow += 1) {

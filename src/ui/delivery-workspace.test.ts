@@ -20,14 +20,12 @@ import { createDefaultDualBankPaletteState } from '../core/palette-manager';
 import type { IndexedImage } from '../core/types';
 import {
   createDeliveryWorkspace,
-  convertNametableChrFactsToDeliveryItems,
   convertOamCapacityFactsToDeliveryItems,
   convertSceneVisibilityFactsToDeliveryItems,
   convertSpriteScanlineFactsToDeliveryItems,
   deduplicateDeliveryDiagnosticItems,
   type DeliveryWorkspaceOptions,
 } from './delivery-workspace';
-import type { ChrSlotClassification } from '../core/chr-pattern-table';
 import type {
   ChrAssetMappingIndex,
   PhysicalSlotAttribution,
@@ -38,6 +36,7 @@ import { analyzeAnimationSpriteScanlinePressure } from '../core/nes-sprite-diagn
 import { setLocale } from '../i18n';
 import { createEmptyBackgroundMap } from '../core/background-model';
 import { buildBackgroundProjectModel } from '../core/chr-background-allocation';
+import type { CompiledProjectGraphics } from '../core/project-graphics-compiler';
 
 class MockElement {
   public tagName: string;
@@ -277,9 +276,9 @@ function createOptions(
     originalTileCount: 256,
     deduplicationEnabled: true,
     flipDeduplicationEnabled: false,
+    compilation: { kind: 'compiled', compiled: createCompiledGraphics() },
     chr: new Uint8Array(4096).fill(0xaa),
     nametable: null,
-    backgroundPatternTable: 0,
     attributeTable: null,
     collisionMap: null,
     paletteState,
@@ -293,18 +292,54 @@ function createOptions(
   };
 }
 
-function setChrSlotOccupancy(
-  classifications: ChrSlotClassification[],
-  physicalIndex: number,
-  occupancy: ChrSlotClassification['occupancy'],
-): void {
-  const classification = classifications[physicalIndex];
-  if (classification === undefined) {
-    throw new Error(
-      `Missing CHR classification for slot ${String(physicalIndex)}.`,
-    );
-  }
-  classifications[physicalIndex] = { ...classification, occupancy };
+function createCompiledGraphics(): CompiledProjectGraphics {
+  return {
+    success: true,
+    finalChr: new Uint8Array(8192),
+    allocationManifest: [],
+    logicalTilePlacements: [],
+    backgrounds: [],
+    animations: [],
+    capacity: [
+      {
+        patternTable: 0,
+        capacitySlots: 256,
+        baseChrSlots: 0,
+        projectSlots: 0,
+        reservedAvailableSlots: 0,
+        lockedAvailableSlots: 0,
+        availableSlots: 256,
+      },
+      {
+        patternTable: 1,
+        capacitySlots: 256,
+        baseChrSlots: 0,
+        projectSlots: 0,
+        reservedAvailableSlots: 0,
+        lockedAvailableSlots: 0,
+        availableSlots: 256,
+      },
+    ],
+    requiredPatternTableConfigurations: [],
+  };
+}
+
+function compilationFailure(
+  code: 'pattern-table-capacity-overflow' | 'unresolved-logical-tile',
+) {
+  return {
+    kind: 'failed-compilation' as const,
+    result: {
+      success: false as const,
+      failures: [
+        {
+          code,
+          message: `Compiler failure: ${code}`,
+          details: {},
+        },
+      ],
+    },
+  };
 }
 
 describe('Delivery Workspace', () => {
@@ -528,84 +563,6 @@ describe('Delivery Workspace', () => {
     expect(onDownloadBytes).toHaveBeenCalledWith(collisionMap, 'stage1.col');
   });
 
-  it('integrates Nametable to CHR diagnostics using the selected Background Pattern Table', () => {
-    const nametable = new Uint8Array(960).fill(1);
-    nametable.set([2, 2], 31);
-    nametable[65] = 3;
-    const classifications: ChrSlotClassification[] = Array.from(
-      { length: 512 },
-      (_, physicalIndex) => ({
-        physicalIndex,
-        localIndex: physicalIndex % 256,
-        patternTable: physicalIndex < 256 ? 0 : 1,
-        occupancy: 'empty',
-      }),
-    );
-    setChrSlotOccupancy(classifications, 1, 'project');
-    setChrSlotOccupancy(classifications, 2, 'project');
-    setChrSlotOccupancy(classifications, 3, 'project');
-    setChrSlotOccupancy(classifications, 257, 'project');
-    setChrSlotOccupancy(classifications, 258, 'reserved');
-
-    const el = createDeliveryWorkspace(
-      createOptions({
-        mode: 'playfield',
-        nametable,
-        attributeTable: new Uint8Array(64),
-        collisionMap: new Uint8Array(480),
-        backgroundPatternTable: 1,
-        chrSlotClassifications: classifications,
-        chrRegions: [],
-      }),
-    ) as unknown as MockElement;
-    const diagnostics = el.querySelectorAll('.delivery-diag-item');
-    const reserved = diagnostics.find((item) =>
-      item.textContent.includes('reserved CHR slots PT1:$02'),
-    );
-    const unallocated = diagnostics.find((item) =>
-      item.textContent.includes('unallocated CHR slot PT1:$03'),
-    );
-
-    expect(reserved).toBeDefined();
-    expect(reserved?.classList.contains('is-info')).toBe(true);
-    expect(reserved?.textContent).toContain('column 31, row 0');
-    expect(reserved?.textContent).toContain('column 0, row 1');
-    expect(unallocated).toBeDefined();
-    expect(unallocated?.classList.contains('is-warning')).toBe(true);
-    expect(
-      el
-        .querySelector('.delivery-status-card')
-        ?.classList.contains('status-warning'),
-    ).toBe(true);
-  });
-
-  it.each(['tileset', 'animation'] as const)(
-    'does not run Nametable to CHR validation in %s mode',
-    (mode) => {
-      const classifications: ChrSlotClassification[] = Array.from(
-        { length: 512 },
-        (_, physicalIndex) => ({
-          physicalIndex,
-          localIndex: physicalIndex % 256,
-          patternTable: physicalIndex < 256 ? 0 : 1,
-          occupancy: 'empty',
-        }),
-      );
-
-      const el = createDeliveryWorkspace(
-        createOptions({
-          mode,
-          nametable: new Uint8Array(960).fill(0),
-          backgroundPatternTable: 0,
-          chrSlotClassifications: classifications,
-          chrRegions: [],
-        }),
-      ) as unknown as MockElement;
-
-      expect(el.textContent).not.toContain('Nametable cell');
-    },
-  );
-
   it('renders all production artifacts for Animation mode with byte-for-byte exact data', () => {
     const onDownloadBytes = vi.fn();
     const onDownloadText = vi.fn();
@@ -742,15 +699,6 @@ describe('Delivery Workspace', () => {
 
   it('renders CHR region overlap and reservation diagnostics with navigation to CHR workspace', () => {
     const onNavigateWorkspace = vi.fn();
-    const classifications: ChrSlotClassification[] = Array.from(
-      { length: 512 },
-      (_, i) => ({
-        physicalIndex: i,
-        localIndex: i % 256,
-        patternTable: i < 256 ? 0 : 1,
-        occupancy: i === 32 ? 'base' : 'empty',
-      }),
-    );
 
     const options = createOptions({
       chrRegions: [
@@ -779,7 +727,6 @@ describe('Delivery Workspace', () => {
           kind: 'reservation',
         },
       ],
-      chrSlotClassifications: classifications,
       onNavigateWorkspace,
     });
 
@@ -796,12 +743,6 @@ describe('Delivery Workspace', () => {
     );
     expect(overlapDiag).toBeDefined();
     expect(overlapDiag?.textContent).toContain('Enemy Area');
-
-    // Reservation occupied diagnostic should be present
-    const resOccupiedDiag = diagItems.find((item) =>
-      item.textContent.includes('Runtime FX'),
-    );
-    expect(resOccupiedDiag).toBeDefined();
 
     // Clicking action button on region diagnostic navigates to 'chr'
     const actionBtn = overlapDiag?.querySelector('.delivery-diag-action');
@@ -864,6 +805,7 @@ describe('Delivery Workspace', () => {
     };
 
     const options = createOptions({
+      compilation: { kind: 'compiled', compiled: createCompiledGraphics() },
       chrAssetMappingIndex: mockMappingIndex,
       activeAssets: [
         {
@@ -1058,29 +1000,6 @@ describe('Delivery Workspace', () => {
     });
     expect(scanlineFacts[0]).toMatchObject({ targetWorkspace: 'animation' });
     expect(visibilityFacts[0]).toMatchObject({ targetWorkspace: 'animation' });
-
-    const nametableFacts = convertNametableChrFactsToDeliveryItems([
-      {
-        id: 'nametable-unallocated-tile:pt0:0-0',
-        kind: 'nametable-unallocated-tile',
-        severity: 'warning',
-        patternTable: 0,
-        startIndex: 0,
-        endIndex: 0,
-        startColumn: 0,
-        startRow: 0,
-        endColumn: 0,
-        endRow: 0,
-        count: 1,
-        localTileIndices: [1],
-        physicalTileIndices: [1],
-      },
-    ]);
-    expect(nametableFacts[0]).toMatchObject({
-      level: 'warning',
-      targetWorkspace: 'chr',
-      actionLabel: 'CHR Memory Workspace',
-    });
   });
 
   it('deduplicates combined facts using highest severity in first-seen order', () => {
@@ -1144,6 +1063,104 @@ describe('Delivery Workspace', () => {
     },
   );
 
+  it('blocks compiled artifacts after allocation failure while keeping collision download available', () => {
+    const onDownloadBytes = vi.fn();
+    const chr = new Uint8Array(8192).fill(0x33);
+    const nametable = new Uint8Array(960);
+    const attributeTable = new Uint8Array(64);
+    const collisionMap = new Uint8Array(480);
+    const element = createDeliveryWorkspace(
+      createOptions({
+        mode: 'playfield',
+        chr,
+        nametable,
+        attributeTable,
+        collisionMap,
+        compilation: compilationFailure('pattern-table-capacity-overflow'),
+        onDownloadBytes,
+      }),
+    ) as unknown as MockElement;
+
+    expect(element.textContent).toContain('pattern-table-capacity-overflow');
+    const cards = element.querySelectorAll('.delivery-artifact-card');
+    const chrButton = cards[0]?.querySelector('.delivery-download-btn');
+    chrButton?.click();
+    expect(onDownloadBytes).not.toHaveBeenCalled();
+
+    cards[4]?.querySelector('.delivery-download-btn')?.click();
+    expect(onDownloadBytes).toHaveBeenCalledWith(
+      collisionMap,
+      'demo_graphics.col',
+    );
+  });
+
+  it('surfaces missing and unsupported asset sources without asserting placement facts', () => {
+    const missing = createDeliveryWorkspace(
+      createOptions({
+        compilation: { kind: 'missing-assets', assetId: 'asset-missing' },
+      }),
+    ) as unknown as MockElement;
+    const unsupported = createDeliveryWorkspace(
+      createOptions({
+        compilation: { kind: 'unsupported-source', assetId: 'asset-legacy' },
+      }),
+    ) as unknown as MockElement;
+
+    expect(missing.textContent).toContain('asset-missing');
+    expect(unsupported.textContent).toContain('unsupported runtime source');
+    expect(missing.textContent).not.toContain('Nametable cell');
+  });
+
+  it('keeps valid graphics downloads enabled when only collision encoding is invalid', () => {
+    const onDownloadBytes = vi.fn();
+    const chr = new Uint8Array(8192).fill(0x33);
+    const nametable = new Uint8Array(960);
+    const attributeTable = new Uint8Array(64);
+    const element = createDeliveryWorkspace(
+      createOptions({
+        mode: 'playfield',
+        chr,
+        nametable,
+        attributeTable,
+        collisionMap: null,
+        compilation: { kind: 'compiled', compiled: createCompiledGraphics() },
+        onDownloadBytes,
+      }),
+    ) as unknown as MockElement;
+
+    const cards = element.querySelectorAll('.delivery-artifact-card');
+    cards[0]?.querySelector('.delivery-download-btn')?.click();
+    cards[2]?.querySelector('.delivery-download-btn')?.click();
+    cards[3]?.querySelector('.delivery-download-btn')?.click();
+    expect(onDownloadBytes.mock.calls).toEqual([
+      [chr, 'demo_graphics.chr'],
+      [nametable, 'demo_graphics.nam'],
+      [attributeTable, 'demo_graphics.atr'],
+    ]);
+  });
+
+  it('shows failed Background compilation explicitly and blocks its graphics downloads', () => {
+    const onDownloadBytes = vi.fn();
+    const element = createDeliveryWorkspace(
+      createOptions({
+        mode: 'playfield',
+        chr: new Uint8Array(8192),
+        nametable: new Uint8Array(960),
+        attributeTable: new Uint8Array(64),
+        collisionMap: new Uint8Array(480),
+        compilation: compilationFailure('unresolved-logical-tile'),
+        onDownloadBytes,
+      }),
+    ) as unknown as MockElement;
+
+    expect(element.textContent).toContain('unresolved-logical-tile');
+    element
+      .querySelector('.delivery-artifact-card')
+      ?.querySelector('.delivery-download-btn')
+      ?.click();
+    expect(onDownloadBytes).not.toHaveBeenCalled();
+  });
+
   it('integrates Attribute Table facts from compiled Background identity', () => {
     const baseMap = createEmptyBackgroundMap({ id: 'bg-stage' });
     const cells = [...baseMap.cells];
@@ -1178,7 +1195,26 @@ describe('Delivery Workspace', () => {
         nametable: new Uint8Array(960),
         attributeTable: new Uint8Array(64),
         collisionMap: new Uint8Array(480),
-        backgroundModel,
+        compilation: { kind: 'compiled', compiled: createCompiledGraphics() },
+        compiledBackground: {
+          map,
+          assignments: backgroundModel.resolvedCells.flatMap((cell) =>
+            cell.physicalTileIndex === undefined
+              ? []
+              : [
+                  {
+                    cellIndex: cell.cellIndex,
+                    column: cell.column,
+                    row: cell.row,
+                    logicalKey: cell.logicalKey,
+                    physicalTileIndex: cell.physicalTileIndex,
+                    localTileIndex: cell.physicalTileIndex % 256,
+                    patternTable: 0 as const,
+                    reuse: 'new' as const,
+                  },
+                ],
+          ),
+        },
         backgroundPaletteContexts: new Map([
           ['asset-playfield-default:0:0', 0],
           ['asset-playfield-default:1:0', 2],
@@ -1200,7 +1236,7 @@ describe('Delivery Workspace', () => {
     expect(onNavigateWorkspace).toHaveBeenCalledWith('background');
   });
 
-  it.each(['chr', 'nametable', 'attributeTable', 'collisionMap'] as const)(
+  it.each(['chr', 'nametable', 'attributeTable'] as const)(
     'blocks Playfield readiness when %s is absent',
     (field) => {
       const complete = createOptions({
@@ -1223,4 +1259,22 @@ describe('Delivery Workspace', () => {
       expect(el.textContent).toContain('Required production artifacts');
     },
   );
+
+  it('warns about an absent collision artifact without blocking graphics readiness', () => {
+    const complete = createOptions({
+      mode: 'playfield',
+      chr: new Uint8Array(8192),
+      nametable: new Uint8Array(960),
+      attributeTable: new Uint8Array(64),
+      collisionMap: null,
+    });
+    const el = createDeliveryWorkspace(complete) as unknown as MockElement;
+
+    expect(
+      el
+        .querySelector('.delivery-status-card')
+        ?.classList.contains('status-warning'),
+    ).toBe(true);
+    expect(el.textContent).toContain('Required production artifacts');
+  });
 });

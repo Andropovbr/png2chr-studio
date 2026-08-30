@@ -92,6 +92,9 @@ render context.
 ## Scope boundary
 
 This compiler supports only NROM, static 8 KiB CHR-ROM, 8×8 Sprites, and fixed
-Pattern Table configuration per render context. It does not replace CHR Memory
-or Delivery projections, redesign exporters, support 8×16
-Sprites, model mapper banks, or model CHR-RAM streaming.
+Pattern Table configuration per render context. Delivery readiness, physical
+placement diagnostics, and graphics artifact gating consume this result; failed
+or unavailable compilation never falls back to a second allocator. Collision is
+map-owned gameplay data and can remain downloadable independently. The compiler
+does not redesign Delivery exporters, support 8×16 Sprites, model mapper banks,
+or model CHR-RAM streaming.
