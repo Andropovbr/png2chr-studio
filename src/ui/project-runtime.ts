@@ -212,14 +212,19 @@ function synchronizeRuntimeGraphicsCatalog(
     paletteAssignments?: readonly number[],
     pixelOverrides?: ProjectGraphicsAsset['logicalTiles']['pixelOverrides'],
   ) => {
+    const decoding =
+      source?.sourceKind === 'chr' || source?.sourceKind === 'nes'
+        ? ('nes-2bpp' as const)
+        : ('png-indexed' as const);
     graphics = upsertGraphicsAsset(graphics, {
       id,
       kind,
       name,
       source,
       logicalTiles: {
-        decoding: 'png-indexed',
-        quantization: project.quantizationSettings,
+        decoding,
+        quantization:
+          decoding === 'png-indexed' ? project.quantizationSettings : null,
         paletteBank,
         ...(paletteAssignments ? { paletteAssignments } : {}),
         ...(pixelOverrides ? { pixelOverrides } : {}),

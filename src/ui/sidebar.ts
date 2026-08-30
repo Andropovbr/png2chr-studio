@@ -37,8 +37,7 @@ export function createSidebar(options: SidebarOptions): HTMLElement {
   workspaceNav.setAttribute('aria-label', t('sidebarWorkspaces'));
 
   const workspaces: readonly [WorkspaceView, TranslationKey][] = [
-    ['tileset', 'tilesetMode'],
-    ['playfield', 'playfieldMode'],
+    ['tileset', 'graphicsAssetsMode'],
     ['background', 'backgroundMode'],
     ['animation', 'animationMode'],
     ['palette', 'palettesMode'],

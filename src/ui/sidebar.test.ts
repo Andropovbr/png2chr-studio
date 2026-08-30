@@ -107,7 +107,7 @@ describe('Sidebar component', () => {
   it('renders workspace navigation buttons with correct active states and accessibility', () => {
     const onWorkspaceChange = vi.fn();
     const sidebar = createSidebar({
-      activeWorkspace: 'playfield',
+      activeWorkspace: 'background',
       fileName: null,
       onWorkspaceChange,
     });
@@ -118,7 +118,7 @@ describe('Sidebar component', () => {
     const buttons = (sidebar as unknown as MockElement).querySelectorAll(
       '.sidebar-nav-item',
     );
-    expect(buttons.length).toBe(7);
+    expect(buttons.length).toBe(6);
 
     const btn0 = buttons[0];
     const btn1 = buttons[1];
@@ -126,68 +126,61 @@ describe('Sidebar component', () => {
     const btn3 = buttons[3];
     const btn4 = buttons[4];
     const btn5 = buttons[5];
-    const btn6 = buttons[6];
     expect(btn0).toBeDefined();
     expect(btn1).toBeDefined();
     expect(btn2).toBeDefined();
     expect(btn3).toBeDefined();
     expect(btn4).toBeDefined();
     expect(btn5).toBeDefined();
-    expect(btn6).toBeDefined();
-    if (!btn0 || !btn1 || !btn2 || !btn3 || !btn4 || !btn5 || !btn6) return;
+    if (!btn0 || !btn1 || !btn2 || !btn3 || !btn4 || !btn5) return;
 
     // Tileset
     expect(btn0.classList.contains('is-active')).toBe(false);
     expect(btn0.getAttribute('aria-pressed')).toBe('false');
 
-    // Playfield (active)
+    // Background (active)
     expect(btn1.classList.contains('is-active')).toBe(true);
     expect(btn1.getAttribute('aria-pressed')).toBe('true');
     expect(btn1.getAttribute('aria-current')).toBe('page');
 
-    // Background
+    // Animation
     expect(btn2.classList.contains('is-active')).toBe(false);
     expect(btn2.getAttribute('aria-pressed')).toBe('false');
-    expect(btn2.getAttribute('aria-current')).toBeNull();
 
-    // Animation
+    // Palette
     expect(btn3.classList.contains('is-active')).toBe(false);
     expect(btn3.getAttribute('aria-pressed')).toBe('false');
 
-    // Palette
+    // CHR
     expect(btn4.classList.contains('is-active')).toBe(false);
     expect(btn4.getAttribute('aria-pressed')).toBe('false');
 
-    // CHR
+    // Deliver
     expect(btn5.classList.contains('is-active')).toBe(false);
     expect(btn5.getAttribute('aria-pressed')).toBe('false');
-
-    // Deliver
-    expect(btn6.classList.contains('is-active')).toBe(false);
-    expect(btn6.getAttribute('aria-pressed')).toBe('false');
 
     // Click tileset button
     btn0.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('tileset');
 
     // Click background button
-    btn2.click();
+    btn1.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('background');
 
     // Click animation button
-    btn3.click();
+    btn2.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('animation');
 
     // Click palette button
-    btn4.click();
+    btn3.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('palette');
 
     // Click CHR button
-    btn5.click();
+    btn4.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('chr');
 
     // Click Deliver button
-    btn6.click();
+    btn5.click();
     expect(onWorkspaceChange).toHaveBeenCalledWith('deliver');
   });
 

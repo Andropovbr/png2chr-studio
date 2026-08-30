@@ -29,7 +29,7 @@ import {
   type QuantizationPreview,
 } from './quantization-panel';
 import { createTileGrid } from './tile-grid';
-import { type DisplayError, type PreviewTool, type ProjectMode } from './types';
+import { type DisplayError, type PreviewTool } from './types';
 import {
   toAttributeTableFileName,
   toChrFileName,
@@ -66,7 +66,6 @@ export interface PlayfieldWorkspaceOptions {
   readonly paletteColorTarget: PaletteColorTarget;
   readonly loading: boolean;
   readonly error: DisplayError | null;
-  readonly onModeChange: (mode: ProjectMode) => void;
   readonly onFile: (file: File) => void;
   readonly onRandomPlayfieldFeaturesChange: (
     features: readonly RandomPlayfieldFeature[],
@@ -194,7 +193,6 @@ export function createPlayfieldWorkspace(
     options.loading,
     'playfield',
     options.randomPlayfieldFeatures,
-    options.onModeChange,
     options.onRandomPlayfieldFeaturesChange,
     options.onFile,
     options.onGeneratePlayfield,

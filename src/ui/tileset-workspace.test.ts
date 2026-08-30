@@ -297,7 +297,6 @@ describe('TilesetWorkspace composition and byte-compatibility', () => {
       paletteColorTarget: { paletteIndex: 0, colorIndex: 1 },
       loading: false,
       error: null,
-      onModeChange: vi.fn(),
       onFile: vi.fn(),
       onToggleQuantizationCollapse: vi.fn(),
       onQuantizationSettingsChange: vi.fn(),
@@ -325,6 +324,10 @@ describe('TilesetWorkspace composition and byte-compatibility', () => {
 
     const mockRoot = workspace as unknown as MockElement;
     expect(mockRoot.querySelector('#section-image')).not.toBeNull();
+    expect(mockRoot.querySelector('#graphics-png-input')).not.toBeNull();
+    expect(mockRoot.querySelector('#graphics-chr-input')).not.toBeNull();
+    expect(mockRoot.querySelector('#graphics-nes-input')).not.toBeNull();
+    expect(mockRoot.querySelector('.mode-selector')).toBeNull();
     expect(mockRoot.querySelector('#section-quantization')).not.toBeNull();
     expect(
       mockRoot.querySelector('.playfield-editing-workspace'),
