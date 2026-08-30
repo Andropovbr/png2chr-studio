@@ -549,7 +549,7 @@ describe('Milestone 7 Quality Pass (Issue #99): End-to-End Spritesheet-to-CHR In
     // 1. Create a project in Tileset mode
     const tilesetProject = createDefaultProject('Dungeon Tiles', 'tileset');
     expect(tilesetProject.mode).toBe('tileset');
-    expect(tilesetProject.formatVersion).toBe(1);
+    expect(tilesetProject.formatVersion).toBe(2);
 
     // 2. Create a project in Playfield mode
     const playfieldProject = createDefaultProject(

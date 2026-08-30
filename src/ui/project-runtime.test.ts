@@ -111,6 +111,7 @@ function createCompleteProject(mode: StudioProject['mode']): StudioProject {
     ...base,
     mode,
     tileset: {
+      assetId: 'asset-tileset-stable',
       asset: {
         id: 'asset-tileset-stable',
         path: 'graphics/tiles.png',
@@ -122,6 +123,7 @@ function createCompleteProject(mode: StudioProject['mode']): StudioProject {
       pixelOverrides: [2, 3],
     },
     playfield: {
+      assetId: 'asset-playfield-stable',
       asset: {
         id: 'asset-playfield-stable',
         path: 'graphics/level.png',
@@ -173,6 +175,7 @@ function createCompleteProject(mode: StudioProject['mode']): StudioProject {
           ...animationItem,
           id: 'anim-hero-idle',
           entity: 'hero',
+          assetId: 'asset-hero-stable',
           asset: {
             id: 'asset-hero-stable',
             path: 'sprites/hero.png',

@@ -5,6 +5,7 @@ import {
 import { normalizeProjectAssetId } from '../core/asset-identity';
 import { resolveProjectPaletteState } from '../core/palette-manager';
 import {
+  CURRENT_PROJECT_FORMAT_VERSION,
   type ProjectAnimationItemConfig,
   type ProjectAnimationSettingsConfig,
   type ProjectAssetReference,
@@ -42,12 +43,14 @@ function buildActiveTileset(
   project: ProjectView,
   encodeImageData: ImageDataEncoder,
 ): ProjectTilesetConfig {
+  const asset = buildActiveAssetReference(
+    project,
+    project.tileset?.asset,
+    encodeImageData,
+  );
   return {
-    asset: buildActiveAssetReference(
-      project,
-      project.tileset?.asset,
-      encodeImageData,
-    ),
+    assetId: asset?.id ?? null,
+    asset,
     paletteAssignments:
       project.paletteAssignments.length > 0
         ? Array.from(project.paletteAssignments)
@@ -63,12 +66,14 @@ function buildActivePlayfield(
   project: ProjectView,
   encodeImageData: ImageDataEncoder,
 ): ProjectPlayfieldConfig {
+  const asset = buildActiveAssetReference(
+    project,
+    project.playfield?.asset,
+    encodeImageData,
+  );
   return {
-    asset: buildActiveAssetReference(
-      project,
-      project.playfield?.asset,
-      encodeImageData,
-    ),
+    assetId: asset?.id ?? null,
+    asset,
     collisionCells: Array.from(project.collisionCells),
     activeCollisionType: project.activeCollisionType,
     randomPlayfieldFeatures: [...project.randomPlayfieldFeatures],
@@ -93,6 +98,7 @@ function buildAnimation(
       id: animation.id,
       name: animation.name,
       entity: animation.entity ?? 'entity',
+      assetId: animation.source?.assetId ?? animation.asset?.id ?? null,
       asset:
         animation.source !== null
           ? {
@@ -180,7 +186,8 @@ export function buildStudioProjectFromRuntime(
   const paletteState = resolveProjectPaletteState(project);
 
   return {
-    formatVersion: 1,
+    formatVersion: CURRENT_PROJECT_FORMAT_VERSION,
+    graphics: project.graphics,
     name: projectName,
     mode: project.mode,
     settings: {
@@ -237,6 +244,7 @@ export function restoreProjectView(
   animation: AnimationSettings,
 ): ProjectView {
   return {
+    graphics: loaded.graphics,
     ...source,
     mode: loaded.mode,
     deduplicationEnabled: loaded.settings.deduplicationEnabled,
@@ -300,11 +308,14 @@ export function beginGraphicsSourceImport(
     collisionCells,
     paletteAssignments: new Uint8Array(),
     pixelOverrides: new Uint8Array(),
-    ...(current.mode === 'tileset' ? { tileset: { asset } } : {}),
+    ...(current.mode === 'tileset'
+      ? { tileset: { assetId: asset?.id ?? null, asset } }
+      : {}),
     ...(current.mode === 'playfield'
       ? {
           playfield: {
             ...current.playfield,
+            assetId: asset?.id ?? null,
             asset,
             collisionCells: Array.from(collisionCells),
           },

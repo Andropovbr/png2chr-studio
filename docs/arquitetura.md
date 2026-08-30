@@ -101,7 +101,7 @@ Conforme documentado em [`docs/project-state-boundaries.md`](./project-state-bou
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
-1. **`StudioProject` (Persistente):** Estado canônico de criação (modo selecionado, fontes gráficas com dataUrl, definições de paleta, slots ativos, pixel overrides, mapa de colisão, animações, instâncias de cena, base CHR, regiões e reservas de CHR `chrRegions`). Qualquer alteração gera uma nova identidade de objeto e marca o projeto como não-salvo (`isDirty = true`).
+1. **`StudioProject` (Persistente):** Estado canônico de criação. Em `formatVersion: 2`, `graphics` possui catálogo de assets e inputs de tiles lógicos, Base CHR em nível de projeto e contextos de renderização do perfil NROM estático. Paletas, mapas, colisão, animações, Scene, CHR Regions e Reservations completam o estado durável. Qualquer alteração gera nova identidade de objeto e marca o projeto como não-salvo (`isDirty = true`). O contrato completo está em [`project-graphics-architecture.md`](./project-graphics-architecture.md).
 2. **`WorkspaceState` (Transiente):** Estado de layout e navegação da interface (área de trabalho ativa, ferramenta ativa no preview, zoom de edição, painéis colapsados, overlays numéricos de paleta).
 3. **`DerivedStatus` (Status):** Estado volátil de carregamento e diagnósticos de erro recuperáveis.
 
@@ -419,8 +419,10 @@ No hardware do NES, onde 256 slots por Pattern Table exigem deduplicação inten
 
 ### 9.3 Proveniência de Base CHR
 
-- Slots ocupados da Base CHR (com bytes diferentes de zero) recebem origem do tipo `'base-chr'` vinculada ao asset de Base CHR (`asset-base-chr`).
-- Slots preenchidos com zero (livres) na Base CHR **não** recebem origem de Base CHR.
+- O schema v2 separa bytes, ocupação semântica, writability, owner e provenance em `graphics.baseChr.slotPolicies`.
+- Todos os slots cobertos por bytes importados são semanticamente ocupados e bloqueados por default, inclusive tiles preenchidos com zero. Zero é conteúdo gráfico válido e não prova disponibilidade.
+- Base CHR externa ainda não resolvida permanece `unknown` e bloqueada; nenhum consumidor novo pode inferir slots livres.
+- As classificações runtime antigas baseadas somente em bytes continuam uma limitação dos workspaces atuais até consumirem o futuro resultado compilado; elas não alteram a semântica persistida v2.
 - Quando o projeto reutiliza um tile da Base CHR por deduplicação, a origem permanece como Base CHR e o consumidor é registrado em `usages`.
 
 ### 9.4 Índice Derivado e Não-Persistido (`ChrAssetMappingIndex`)
@@ -632,7 +634,7 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
   - `ProjectPlayfieldConfig` (`project.playfield`) é mantido intacto no schema e funcional lado a lado.
   - Não há migração destrutiva ou remoção do formato legado de playfield de imagem única nesta milestone, garantindo retrocompatibilidade total.
 - **Formato do Projeto e Backward Compatibility:**
-  - Mantido `formatVersion: 1`. Projetos mais antigos sem o campo `backgrounds` continuam desserializando perfeitamente sem falhas ou mutações inesperadas.
+  - Backgrounds nasceram como extensão aditiva de `formatVersion: 1`. O schema atual v2 preserva esses projetos pela migração determinística v1 para v2.
 - **Projeção Runtime Completa (`src/ui/project-runtime.ts`):**
   - O carregamento restaura Background Maps, CHR Regions/Reservations, Animation, Scene, Palette Manager e as configurações persistidas de Tileset/Playfield independentemente do modo ativo.
   - A projeção de salvamento atualiza o domínio legado ativo a partir da imagem reconstruída e preserva os demais domínios e referências originais, inclusive quando um asset externo não pôde ser decodificado.

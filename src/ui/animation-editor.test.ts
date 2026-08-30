@@ -1091,8 +1091,14 @@ describe('Animation Editor Split Architecture', () => {
     if (defaultAnimation === undefined || defaults.animation === undefined) {
       return;
     }
+    const legacyDefaults = JSON.parse(JSON.stringify(defaults)) as Record<
+      string,
+      unknown
+    >;
+    delete legacyDefaults.graphics;
+    legacyDefaults.formatVersion = 1;
     const legacyJson = JSON.stringify({
-      ...defaults,
+      ...legacyDefaults,
       animation: {
         ...defaults.animation,
         animations: [

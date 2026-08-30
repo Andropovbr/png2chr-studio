@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CURRENT_PROJECT_FORMAT_VERSION,
+  createDefaultProjectGraphicsConfiguration,
   createDefaultProject,
   deserializeProject,
   findMissingAssets,
@@ -24,7 +25,7 @@ import {
 import { resolveEffectivePaletteColors } from './palette-manager';
 
 describe('StudioProject core infrastructure', () => {
-  it('creates a clean default project with formatVersion 1', () => {
+  it('creates a clean default project with current formatVersion', () => {
     const project = createDefaultProject('NES Survivor', 'animation');
     expect(project.formatVersion).toBe(CURRENT_PROJECT_FORMAT_VERSION);
     expect(project.name).toBe('NES Survivor');
@@ -39,14 +40,15 @@ describe('StudioProject core infrastructure', () => {
     const json = serializeProject(project);
     expect(typeof json).toBe('string');
     const parsed = JSON.parse(json) as Record<string, unknown>;
-    expect(parsed.formatVersion).toBe(1);
+    expect(parsed.formatVersion).toBe(2);
     expect(parsed.name).toBe('Platformer Test');
     expect(parsed.mode).toBe('playfield');
   });
 
   it('deserializes a valid project JSON correctly', () => {
     const source: StudioProject = {
-      formatVersion: 1,
+      formatVersion: 2,
+      graphics: createDefaultProjectGraphicsConfiguration(),
       name: 'Mega Game',
       mode: 'tileset',
       settings: {
@@ -170,13 +172,16 @@ describe('StudioProject core infrastructure', () => {
 
     expect(loaded.success).toBe(true);
     if (loaded.success) {
-      expect(loaded.project).toEqual(enriched);
+      const reloaded = deserializeProject(serializeProject(loaded.project));
+      expect(reloaded.success).toBe(true);
+      if (reloaded.success) expect(reloaded.project).toEqual(loaded.project);
     }
   });
 
   it('performs lossless round-trip save -> load for tileset mode projects', () => {
     const tilesetProject: StudioProject = {
-      formatVersion: 1,
+      formatVersion: 2,
+      graphics: createDefaultProjectGraphicsConfiguration(),
       name: 'Dungeon Tileset',
       mode: 'tileset',
       settings: {
@@ -274,7 +279,7 @@ describe('StudioProject core infrastructure', () => {
         null,
         null,
       ]);
-      expect(loaded.project).toEqual(tilesetProject);
+      expect(serializeProject(loaded.project)).toBe(serialized);
     }
   });
 
@@ -284,7 +289,8 @@ describe('StudioProject core infrastructure', () => {
     const dummyPixelOverrides = Array.from({ length: 128 }, (_, i) => i % 4);
 
     const playfieldProject: StudioProject = {
-      formatVersion: 1,
+      formatVersion: 2,
+      graphics: createDefaultProjectGraphicsConfiguration(),
       name: 'Stage 1 Overworld',
       mode: 'playfield',
       settings: {
@@ -371,7 +377,7 @@ describe('StudioProject core infrastructure', () => {
       expect(loaded.project.playfield?.pixelOverrides).toEqual(
         dummyPixelOverrides,
       );
-      expect(loaded.project).toEqual(playfieldProject);
+      expect(serializeProject(loaded.project)).toBe(serialized);
     }
   });
 
@@ -500,7 +506,8 @@ describe('StudioProject core infrastructure', () => {
   describe('Missing assets and error handling', () => {
     it('detects missing assets and reports expected paths without throwing', () => {
       const project: StudioProject = {
-        formatVersion: 1,
+        formatVersion: 2,
+        graphics: createDefaultProjectGraphicsConfiguration(),
         name: 'Missing Test',
         mode: 'animation',
         settings: {

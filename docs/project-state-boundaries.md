@@ -85,6 +85,13 @@ Playfield, and Animation modes. It also verifies focused source replacement,
 stable asset/map IDs, Background/Animation coexistence, CHR Regions and
 Reservations, Scene state, and palette-manager state.
 
+`StudioProject.graphics` is the canonical version 2 graphics configuration.
+Existing editor fields are compatibility projections: project loading derives
+them from `graphics`, while the single runtime-to-persistence boundary captures
+their edits back into the catalog, project-level Base CHR, and render contexts.
+Raw version 2 aliases never override conflicting canonical graphics state. See
+[`project-graphics-architecture.md`](./project-graphics-architecture.md).
+
 The existing project, animation, palette, CHR, and exporter tests continue to
 protect the persisted schema and NES-domain semantics. Use the full validation
 commands documented in the README and stabilization smoke test after changing

@@ -273,21 +273,24 @@ Seguindo o invariante fundamental do Studio ($Logical \neq Physical$):
 
 ## 10. Persistência, Schema e Compatibilidade
 
-### 10.1 Decisão sobre `formatVersion: 1`
+### 10.1 Compatibilidade após `formatVersion: 2`
 
-A persistência do novo modelo dual-bank permanece em `formatVersion: 1`.
+O modelo dual-bank nasceu como uma extensão aditiva de `formatVersion: 1`.
+O schema atual é v2 por causa da arquitetura gráfica canônica; a migração v1
+preserva integralmente o estado de paletas e continua projetando os aliases
+legados no carregamento.
 
 **Por que isso é seguro e retrocompatível:**
 
 1. **Compatibilidade para frente:** Deserializadores mais novos leem arquivos legados que contenham apenas `paletteSet` e realizam migração determinística e transparente.
-2. **Compatibilidade para trás:** Deserializadores mais antigos ignoram chaves JSON adicionais desconhecidas (`universalBackgroundColor`, `activeBackgroundSlots`, `activeSpriteSlots`) e continuam lendo os campos preservados `paletteSet` e `activeSpritePaletteSlots`. `serializeProject` projeta esses aliases a partir dos bancos canônicos no momento do save, sem transformá-los em fontes de verdade de runtime.
+2. **Aliases determinísticos:** `serializeProject` projeta `paletteSet` e `activeSpritePaletteSlots` a partir dos bancos canônicos no momento do save, sem transformá-los em fontes de verdade de runtime.
 3. **Padrão do repositório:** Segue o mesmo padrão estabelecido nas Milestones anteriores para `chrRegions`, `asset` IDs e `backgrounds`.
 
 ### 10.2 Schema `.p2c.json` Canônico
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "name": "Megaman Project",
   "mode": "animation",
   "palette": {
