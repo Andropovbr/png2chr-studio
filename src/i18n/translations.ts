@@ -108,6 +108,13 @@ const en = {
     'No artifacts available. Check project diagnostics to resolve blocking errors.',
   deliveryMissingArtifacts:
     'Required production artifacts are unavailable: {artifacts}.',
+  deliveryCompilerMissingAsset:
+    'Graphics compilation cannot start because asset "{assetId}" is missing.',
+  deliveryCompilerUnsupportedSource:
+    'Graphics asset "{assetId}" has an unsupported runtime source.',
+  deliveryCompilerFailure: 'Graphics compilation failed ({code}): {message}',
+  deliveryCompilerUnknown:
+    'CHR placement and runtime backing are UNKNOWN because no compiler result is available.',
   nametableReservedTileSingle:
     'Nametable cell (column {startColumn}, row {startRow}) references reserved CHR slot PT{patternTable}:{tiles}. Runtime backing cannot be determined.',
   nametableReservedTileRange:
@@ -1211,6 +1218,13 @@ const ptBr = {
     'Nenhum arquivo disponível. Verifique os diagnósticos do projeto para resolver bloqueios.',
   deliveryMissingArtifacts:
     'Arquivos de produção obrigatórios indisponíveis: {artifacts}.',
+  deliveryCompilerMissingAsset:
+    'A compilação gráfica não pode iniciar porque o asset "{assetId}" está ausente.',
+  deliveryCompilerUnsupportedSource:
+    'O asset gráfico "{assetId}" possui uma fonte de runtime não suportada.',
+  deliveryCompilerFailure: 'A compilação gráfica falhou ({code}): {message}',
+  deliveryCompilerUnknown:
+    'O placement de CHR e o backing em runtime são DESCONHECIDOS porque não há resultado do compilador.',
   nametableReservedTileSingle:
     'A célula da Nametable (coluna {startColumn}, linha {startRow}) referencia o slot CHR reservado PT{patternTable}:{tiles}. O backing em runtime não pode ser determinado.',
   nametableReservedTileRange:

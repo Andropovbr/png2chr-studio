@@ -9,11 +9,11 @@ import {
 } from '../core/animation-model';
 import {
   analyzeChrRegionDiagnostics,
+  CHR_LOW_CAPACITY_THRESHOLD,
   formatConsecutiveTileRanges,
   formatTileRangeHex,
   type ChrRegion,
   type ChrRegionDiagnosticFact,
-  type ChrSlotClassification,
 } from '../core/chr-pattern-table';
 import {
   analyzeChrOwnershipDiagnostics,
@@ -52,15 +52,17 @@ import {
   type SceneInstanceVisibilityFact,
 } from '../core/nes-sprite-diagnostics';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
-import type { BackgroundPatternTable } from '../core/background-model';
-import type { BackgroundProjectModel } from '../core/chr-background-allocation';
+import type { BackgroundMapDefinition } from '../core/background-model';
+import type { BackgroundPhysicalAssignment } from '../core/chr-background-allocation';
 import type { LogicalTileKey } from '../core/asset-identity';
 import {
-  analyzeNametableChrConsistency,
   analyzeAttributeTableAssignments,
   type AttributeTableAssignmentFact,
-  type NametableChrConsistencyFact,
 } from '../core/nes-background-diagnostics';
+import type {
+  CompiledProjectGraphics,
+  ProjectGraphicsCompilationResult,
+} from '../core/project-graphics-compiler';
 import { t, type TranslationKey } from '../i18n';
 import type { DisplayError, ProjectMode } from './types';
 import type { WorkspaceView } from './workspace-state';
@@ -72,8 +74,23 @@ export interface DeliveryArtifact {
   readonly description: string;
   readonly sizeBytes: number;
   readonly isPrimary: boolean;
+  readonly blocked?: boolean;
   readonly onDownload: () => void;
 }
+
+/** Explicit state of the one canonical project graphics compilation. */
+export type DeliveryCompilationStatus =
+  | { readonly kind: 'compiled'; readonly compiled: CompiledProjectGraphics }
+  | { readonly kind: 'missing-assets'; readonly assetId: string }
+  | { readonly kind: 'unsupported-source'; readonly assetId: string }
+  | {
+      readonly kind: 'failed-compilation';
+      readonly result: Exclude<
+        ProjectGraphicsCompilationResult,
+        { success: true }
+      >;
+    }
+  | { readonly kind: 'unknown' };
 
 export interface DeliveryDiagnosticItem {
   readonly id?: string;
@@ -94,13 +111,15 @@ export interface DeliveryWorkspaceOptions {
   readonly originalTileCount: number;
   readonly deduplicationEnabled: boolean;
   readonly flipDeduplicationEnabled: boolean;
+  /** Placement-dependent facts and graphics artifact authority. */
+  readonly compilation: DeliveryCompilationStatus;
   readonly chr: Uint8Array | null;
   readonly nametable: Uint8Array | null;
-  readonly backgroundPatternTable: BackgroundPatternTable;
-  readonly backgroundModel?: Pick<
-    BackgroundProjectModel,
-    'map' | 'resolvedCells'
-  >;
+  /** Compiler-owned placements for the selected map. */
+  readonly compiledBackground?: {
+    readonly map: BackgroundMapDefinition;
+    readonly assignments: readonly BackgroundPhysicalAssignment[];
+  };
   readonly backgroundPaletteContexts?: ReadonlyMap<LogicalTileKey, number>;
   readonly attributeTable: Uint8Array | null;
   readonly collisionMap: Uint8Array | null;
@@ -116,7 +135,6 @@ export interface DeliveryWorkspaceOptions {
   readonly animationModelError: AnimationModelError | null;
   readonly error: DisplayError | null;
   readonly chrRegions?: readonly ChrRegion[];
-  readonly chrSlotClassifications?: readonly ChrSlotClassification[];
   readonly chrAssetMappingIndex?: ChrAssetMappingIndex;
   readonly activeAssets?: readonly ProjectAsset[];
   readonly scenePreview?: ProjectScenePreviewConfig;
@@ -218,31 +236,6 @@ export function formatChrRegionDiagnosticMessage(
   }
 }
 
-export function formatNametableChrConsistencyDiagnosticMessage(
-  fact: NametableChrConsistencyFact,
-): string {
-  const tiles = formatConsecutiveTileRanges(fact.localTileIndices);
-  const isSingleCell = fact.count === 1;
-  const key =
-    fact.kind === 'nametable-reserved-tile'
-      ? isSingleCell
-        ? 'nametableReservedTileSingle'
-        : 'nametableReservedTileRange'
-      : isSingleCell
-        ? 'nametableUnallocatedTileSingle'
-        : 'nametableUnallocatedTileRange';
-
-  return t(key, {
-    patternTable: fact.patternTable,
-    tiles,
-    startColumn: fact.startColumn,
-    startRow: fact.startRow,
-    endColumn: fact.endColumn,
-    endRow: fact.endRow,
-    count: fact.count,
-  });
-}
-
 export function formatAttributeTableAssignmentDiagnosticMessage(
   fact: AttributeTableAssignmentFact,
 ): string {
@@ -301,18 +294,6 @@ export function convertSceneVisibilityFactsToDeliveryItems(
   );
 }
 
-export function convertNametableChrFactsToDeliveryItems(
-  facts: readonly NametableChrConsistencyFact[],
-): readonly DeliveryDiagnosticItem[] {
-  return facts.map((fact) => ({
-    id: fact.id,
-    level: fact.severity,
-    message: formatNametableChrConsistencyDiagnosticMessage(fact),
-    targetWorkspace: 'chr' as const,
-    actionLabel: t('deliveryLinkChr'),
-  }));
-}
-
 export function convertAttributeTableAssignmentFactsToDeliveryItems(
   facts: readonly AttributeTableAssignmentFact[],
 ): readonly DeliveryDiagnosticItem[] {
@@ -335,6 +316,45 @@ export function convertChrRegionDiagnosticFactsToDeliveryItems(
     targetWorkspace: 'chr',
     actionLabel: t('deliveryLinkChr'),
   }));
+}
+
+function compiledCapacityDiagnostics(
+  compiled: CompiledProjectGraphics | undefined,
+): readonly ChrRegionDiagnosticFact[] {
+  if (!compiled) return [];
+  return compiled.capacity.flatMap(
+    (capacity): readonly ChrRegionDiagnosticFact[] => {
+      const totalOccupied = capacity.baseChrSlots + capacity.projectSlots;
+      if (capacity.availableSlots === 0) {
+        return [
+          {
+            kind: 'pattern-table-exhausted' as const,
+            id: `chr-pattern-table-exhausted:${String(capacity.patternTable)}`,
+            patternTable: capacity.patternTable,
+            capacityTiles: capacity.capacitySlots,
+            totalOccupied,
+            totalReservedEmpty: capacity.reservedAvailableSlots,
+            severity: 'error' as const,
+          },
+        ];
+      }
+      if (capacity.availableSlots <= CHR_LOW_CAPACITY_THRESHOLD) {
+        return [
+          {
+            kind: 'pattern-table-low-capacity' as const,
+            id: `chr-pattern-table-low-capacity:${String(capacity.patternTable)}`,
+            patternTable: capacity.patternTable,
+            capacityTiles: capacity.capacitySlots,
+            availableSlots: capacity.availableSlots,
+            totalOccupied,
+            totalReservedEmpty: capacity.reservedAvailableSlots,
+            severity: 'warning' as const,
+          },
+        ];
+      }
+      return [];
+    },
+  );
 }
 
 const DIAGNOSTIC_LEVEL_RANK: Readonly<
@@ -513,8 +533,52 @@ export function createDeliveryWorkspace(
   headerPanel.append(heading, hint, modeBadge);
   container.append(headerPanel);
 
-  // Collect Diagnostics & Readiness
+  // Collect Diagnostics & Readiness. Physical placement facts come only from
+  // the compiler result; unavailable compilation leaves runtime backing UNKNOWN.
   const diagnostics: DeliveryDiagnosticItem[] = [];
+  const compilation = options.compilation;
+  const compiled =
+    compilation.kind === 'compiled' ? compilation.compiled : undefined;
+
+  if (compilation.kind === 'missing-assets') {
+    diagnostics.push({
+      level: 'error',
+      message: t('deliveryCompilerMissingAsset', {
+        assetId: compilation.assetId,
+      }),
+      targetWorkspace: 'tileset',
+      actionLabel: t('deliveryLinkTileset'),
+    });
+  } else if (compilation.kind === 'unsupported-source') {
+    diagnostics.push({
+      level: 'error',
+      message: t('deliveryCompilerUnsupportedSource', {
+        assetId: compilation.assetId,
+      }),
+      targetWorkspace: 'tileset',
+      actionLabel: t('deliveryLinkTileset'),
+    });
+  } else if (compilation.kind === 'failed-compilation') {
+    for (const failure of compilation.result.failures) {
+      diagnostics.push({
+        id: `compiler:${failure.code}`,
+        level: 'error',
+        message: t('deliveryCompilerFailure', {
+          code: failure.code,
+          message: failure.message,
+        }),
+        targetWorkspace: 'chr',
+        actionLabel: t('deliveryLinkChr'),
+      });
+    }
+  } else if (compilation.kind === 'unknown') {
+    diagnostics.push({
+      level: 'info',
+      message: t('deliveryCompilerUnknown'),
+      targetWorkspace: 'chr',
+      actionLabel: t('deliveryLinkChr'),
+    });
+  }
 
   if (options.error !== null) {
     diagnostics.push({
@@ -574,10 +638,13 @@ export function createDeliveryWorkspace(
     }
   } else if (options.mode === 'playfield') {
     const missingArtifacts = [
-      options.chr === null ? 'CHR' : null,
+      compiled === undefined
+        ? 'compiled graphics'
+        : options.chr === null
+          ? 'CHR'
+          : null,
       options.nametable === null ? 'Nametable' : null,
       options.attributeTable === null ? 'Attribute Table' : null,
-      options.collisionMap === null ? t('collisionEditorTitle') : null,
     ].filter((name): name is string => name !== null);
     if (missingArtifacts.length > 0 && options.error === null) {
       diagnostics.push({
@@ -589,21 +656,22 @@ export function createDeliveryWorkspace(
         actionLabel: t('deliveryLinkPlayfield'),
       });
     }
-
-    if (options.nametable !== null && options.chrSlotClassifications) {
-      const facts = analyzeNametableChrConsistency(
-        options.nametable,
-        options.chrSlotClassifications,
-        options.backgroundPatternTable,
-      );
-      diagnostics.push(...convertNametableChrFactsToDeliveryItems(facts));
+    if (options.collisionMap === null) {
+      diagnostics.push({
+        level: 'warning',
+        message: t('deliveryMissingArtifacts', {
+          artifacts: t('collisionEditorTitle'),
+        }),
+        targetWorkspace: 'playfield',
+        actionLabel: t('deliveryLinkPlayfield'),
+      });
     }
 
-    if (options.backgroundModel) {
+    if (options.compiledBackground) {
       diagnostics.push(
         ...convertAttributeTableAssignmentFactsToDeliveryItems(
           analyzeAttributeTableAssignments(
-            options.backgroundModel,
+            options.compiledBackground,
             options.backgroundPaletteContexts ?? new Map(),
           ),
         ),
@@ -611,7 +679,10 @@ export function createDeliveryWorkspace(
     }
   } else {
     // Tileset mode
-    if (options.chr === null && options.error === null) {
+    if (
+      (compiled === undefined || options.chr === null) &&
+      options.error === null
+    ) {
       diagnostics.push({
         level: 'error',
         message: t('exportUnavailable'),
@@ -622,15 +693,20 @@ export function createDeliveryWorkspace(
   }
 
   // 1.4 CHR Regions & Reservations Conflicts / Capacity Diagnostics
-  if (options.chrRegions || options.chrSlotClassifications) {
+  if (options.chrRegions) {
     const facts = analyzeChrRegionDiagnostics({
       chrRegions: options.chrRegions,
-      classifications: options.chrSlotClassifications,
+      checkPatternTableCapacity: false,
     });
     const regionDiagnostics =
       convertChrRegionDiagnosticFactsToDeliveryItems(facts);
     diagnostics.push(...regionDiagnostics);
   }
+  diagnostics.push(
+    ...convertChrRegionDiagnosticFactsToDeliveryItems(
+      compiledCapacityDiagnostics(compiled),
+    ),
+  );
 
   // 1.5 CHR Ownership & Mapping Diagnostics
   if (options.chrAssetMappingIndex) {
@@ -759,6 +835,7 @@ export function createDeliveryWorkspace(
 
   // 3. Artifacts Collection
   const artifacts: DeliveryArtifact[] = [];
+  const compiledArtifactsAvailable = compiled !== undefined;
   const baseName = options.fileName
     ? options.fileName.replace(/\.[^/.]+$/, '')
     : 'graphics';
@@ -974,7 +1051,12 @@ export function createDeliveryWorkspace(
 
     artifacts.forEach((art) => {
       const card = document.createElement('article');
-      card.className = `delivery-artifact-card${art.isPrimary ? ' is-primary' : ''}`;
+      const blocked =
+        art.blocked === true ||
+        (!compiledArtifactsAvailable &&
+          art.category !== 'Palette' &&
+          art.category !== 'Collision Map');
+      card.className = `delivery-artifact-card${art.isPrimary ? ' is-primary' : ''}${blocked ? ' is-blocked' : ''}`;
       card.setAttribute('data-artifact-id', art.id);
 
       const cardHeader = document.createElement('div');
@@ -1002,7 +1084,8 @@ export function createDeliveryWorkspace(
       btn.type = 'button';
       btn.className = `button ${art.isPrimary ? 'primary-button' : 'secondary-button'} delivery-download-btn`;
       btn.textContent = t('deliveryDownloadArtifact', { name: art.name });
-      btn.addEventListener('click', art.onDownload);
+      btn.disabled = blocked;
+      if (!blocked) btn.addEventListener('click', art.onDownload);
 
       card.append(cardHeader, nameHeading, desc, btn);
       artifactsGrid.append(card);
