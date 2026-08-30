@@ -9,7 +9,7 @@
 import { AnimationModelError } from './animation-error';
 import {
   findNextAvailableChrSlot,
-  localPatternTableTileIndex,
+  localPatternTableTileIndexFor,
   NES_PATTERN_TABLE_TILE_COUNT,
   patternTablePhysicalRange,
   type PatternTableSlot,
@@ -290,7 +290,10 @@ export function allocateSpritesheetChr(
         transform = 'none';
       }
 
-      const localTileIndex = localPatternTableTileIndex(physicalTileIndex);
+      const localTileIndex = localPatternTableTileIndexFor(
+        physicalTileIndex,
+        patternTable,
+      );
       if (localTileIndex > 0xff) {
         throw new AnimationModelError('tile-index-overflow', {
           tileIndex: localTileIndex,

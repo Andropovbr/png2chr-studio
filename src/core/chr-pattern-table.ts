@@ -974,6 +974,19 @@ export function localPatternTableTileIndex(physicalIndex: number): number {
   return physicalIndex % NES_PATTERN_TABLE_TILE_COUNT;
 }
 
+/** Validates required Pattern Table membership before reducing to an 8-bit index. */
+export function localPatternTableTileIndexFor(
+  physicalIndex: number,
+  requiredPatternTable: SpritePatternTable,
+): number {
+  if (patternTableForPhysicalTile(physicalIndex) !== requiredPatternTable) {
+    throw new RangeError(
+      `Physical CHR tile ${String(physicalIndex)} does not belong to required Pattern Table ${String(requiredPatternTable)}.`,
+    );
+  }
+  return localPatternTableTileIndex(physicalIndex);
+}
+
 export function patternTableForPhysicalTile(
   physicalIndex: number,
 ): SpritePatternTable {

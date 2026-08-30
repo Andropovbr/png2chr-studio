@@ -66,6 +66,7 @@ export * from './chr-spritesheet-allocation';
 export * from './background-model';
 export * from './background-exporters';
 export * from './project-graphics';
+export * from './project-graphics-compiler';
 export type {
   ActivePaletteSlots,
   AnalyzePaletteDiagnosticsOptions,

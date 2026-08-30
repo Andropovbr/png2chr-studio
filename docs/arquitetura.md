@@ -185,6 +185,7 @@ A PPU do NES endereça graficamente até **8 KiB de CHR-ROM**, organizados como 
 - **Alocação de Sprites e Pattern Table Selecionada:** No modo animação, o usuário seleciona explicitamente a pattern table de sprites (PT0 ou PT1) que o jogo ativará no registro `PPUCTRL` (bit 3).
 - **Indexação Local OAM (8 bits):** O hardware de sprites do NES (OAM) armazena um índice de tile de 8 bits (`$00–$FF`). O Studio traduz o índice físico (0 a 511 na CHR física) para o índice local correspondente da tabela ativa (`tileIndex = physicalIndex - tableOffset`).
 - **Reutilização e Concatenação com Base CHR:** O Studio permite importar um arquivo base `.chr` de até 8 KiB. Os slots ocupados pela base são respeitados, e novos tiles do projeto são alocados nos primeiros slots livres da pattern table selecionada, evitando colisões ou substituições indevidas.
+- **Compilação Canônica do Projeto:** `compileProjectGraphics` coordena os alocadores focados de Background e Animation sobre um único estado físico de 512 slots. O resultado atômico contém a CHR-ROM final, manifesto de alocação, placements, usos, índices locais de Nametable/OAM e capacidade por Pattern Table. Background e Sprites configurados para a mesma tabela compartilham os mesmos 256 slots; falta de capacidade na tabela exigida nunca transborda silenciosamente para a outra. Contrato detalhado em [`project-graphics-compiler.md`](./project-graphics-compiler.md).
 
 ---
 
