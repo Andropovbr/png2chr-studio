@@ -230,7 +230,16 @@ describe('runtime project persistence boundary', () => {
       const original = createCompleteProject(mode);
       const loaded = roundTripRuntime(original);
 
-      expect(loaded.backgrounds).toEqual(original.backgrounds);
+      expect(loaded.backgrounds?.maps.slice(0, 2)).toEqual(
+        original.backgrounds?.maps,
+      );
+      const migratedMap = loaded.backgrounds?.maps[2];
+      expect(migratedMap).toMatchObject({
+        id: 'background-playfield-default',
+        assetId: 'asset-playfield-stable',
+        collision: { activeType: 3 },
+        procedural: { features: ['platforms'] },
+      });
       expect(loaded.chrRegions).toEqual(original.chrRegions);
       expect(loaded.animation).toEqual(original.animation);
       expect(loaded.scenePreview).toEqual(original.scenePreview);
@@ -243,6 +252,7 @@ describe('runtime project persistence boundary', () => {
       expect(loaded.backgrounds?.maps.map((map) => map.id)).toEqual([
         'bg-overworld',
         'bg-castle',
+        'background-playfield-default',
       ]);
     },
   );
@@ -317,7 +327,7 @@ describe('runtime project persistence boundary', () => {
     const loadedIds = loaded.backgrounds?.maps.map((map) => map.id);
 
     expect(new Set(originalIds)).toHaveLength(2);
-    expect(loadedIds).toEqual(originalIds);
+    expect(loadedIds).toEqual([...originalIds, 'background-playfield-default']);
     expect(loaded.backgrounds?.activeMapId).toBe(secondMap.id);
   });
 });

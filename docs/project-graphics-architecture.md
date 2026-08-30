@@ -42,12 +42,13 @@ graphics
 Version 1 is accepted only as migration input. Deserialization always returns a
 version 2 project; serialization always writes version 2.
 
-The older Tileset, Playfield, Background, and Animation fields remain temporary
-compatibility projections for existing editors. At the load boundary they are
-derived from `graphics`. At the save boundary one canonical adapter captures
-legacy-editor changes into `graphics` before writing. A version 2 file cannot
-use those aliases to override conflicting catalog, Base CHR, or render-context
-state.
+Tileset and Animation editor fields remain temporary compatibility projections.
+Playfield is also a runtime-only compatibility workflow: its full-screen PNG,
+procedural, palette, pixel-override, and collision editors create or update a
+Background Map. Persisted screen semantics live only in `backgrounds.maps`.
+At the save boundary one canonical adapter captures legacy-editor changes into
+`graphics` and the map. A version 2 file cannot use aliases to override
+conflicting catalog, Base CHR, render-context, or Background Map state.
 
 ## Graphics assets and logical tiles
 
@@ -144,8 +145,12 @@ Migration performs these operations without compiling CHR:
   short-file placement preserves `destinationPatternTable` for any file of at
   most 256 tiles.
 - CHR Regions and Reservations are preserved unchanged.
-- Playfield collision data and procedural settings are preserved unchanged.
-  Playfield-to-Background/collision-layer migration is later milestone work.
+- A legacy Playfield screen becomes one deterministic Background Map with 960
+  logical cells, its 240 palette assignments, source asset identity, and pixel
+  overrides in the catalog. Collision becomes optional map-owned gameplay data
+  and procedural settings become optional map-owned generation inputs. The
+  persisted `migratedFromPlayfield: true` provenance is explicit; map IDs never
+  determine compatibility identity.
 - Missing legacy asset IDs receive existing deterministic fallback IDs.
 - Conflicting `map.assetId`, `asset.id`, duplicate consumer IDs, or incompatible
   definitions under one asset ID produce a structured schema error. Migration
@@ -155,8 +160,8 @@ Version 1 did not record map/animation coexistence. Migration therefore applies
 a declared conservative Studio policy, not a recovered fact: one context per
 Background map, preserving that map's Background PT, using the legacy global
 Sprite PT, and including all animations. Without Background maps, migration
-creates one default/sprite-only context. Playfield is not converted into a map
-in this issue.
+creates one default/sprite-only context. A migrated Playfield adds one map
+context using its selected Background Pattern Table.
 
 ## Compiler boundary
 

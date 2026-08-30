@@ -156,15 +156,24 @@ describe('project graphics architecture', () => {
     ]);
     expect(result.project.playfield?.collisionCells).toEqual([3, 0]);
     expect(result.project.chrRegions?.[0]?.id).toBe('reserved-engine');
-    expect(result.project.graphics.renderContexts).toEqual([
-      expect.objectContaining({
-        id: 'render-context-map-town',
-        backgroundPatternTable: 1,
-        spritePatternTable: 0,
-        mapIds: ['map-town'],
-        animationIds: ['anim-hero'],
-      }),
-    ]);
+    expect(result.project.graphics.renderContexts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'render-context-map-town',
+          backgroundPatternTable: 1,
+          spritePatternTable: 0,
+          mapIds: ['map-town'],
+          animationIds: ['anim-hero'],
+        }),
+        expect.objectContaining({
+          id: 'render-context-background-playfield-default',
+          backgroundPatternTable: 1,
+          spritePatternTable: 0,
+          mapIds: ['background-playfield-default'],
+          animationIds: ['anim-hero'],
+        }),
+      ]),
+    );
   });
 
   it('keeps an unresolved external Base CHR unknown and locked', () => {

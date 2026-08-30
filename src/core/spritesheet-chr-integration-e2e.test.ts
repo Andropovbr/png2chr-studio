@@ -570,10 +570,8 @@ describe('Milestone 7 Quality Pass (Issue #99): End-to-End Spritesheet-to-CHR In
 
     if (deserializedPlayfield.success) {
       expect(deserializedPlayfield.project.mode).toBe('playfield');
-      expect(
-        deserializedPlayfield.project.playfield?.randomPlayfieldFeatures
-          ?.length,
-      ).toBe(playfieldProject.playfield?.randomPlayfieldFeatures?.length);
+      expect(deserializedPlayfield.project.backgrounds?.maps).toEqual([]);
+      expect(deserializedPlayfield.project.playfield).toBeUndefined();
     }
   });
 
