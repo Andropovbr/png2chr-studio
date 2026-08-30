@@ -113,6 +113,7 @@ import type { QuantizationPreview } from './ui/quantization-panel';
 import { encodeChr } from './core/chr-encoder';
 import { padChrRom } from './core/chr-rom';
 import { encodePlayfield } from './core/playfield-encoder';
+import { compilePlayfieldBackground } from './core/playfield-background';
 import {
   deduplicateTiles,
   deduplicateTilesConsideringFlips,
@@ -2987,6 +2988,7 @@ function renderPlayfieldWorkspace(): void {
   ensureQuantizationPreviews();
   const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
   const workspaceElement = createPlayfieldWorkspace({
+    assetId: project.assetId,
     fileName: project.fileName,
     sourceKind: project.sourceKind,
     width: project.width,
@@ -3636,14 +3638,54 @@ function renderDeliveryWorkspace(): void {
   let attributeTable: Uint8Array | null = null;
   let collisionMap: Uint8Array | null = null;
 
-  if (
-    project.mode !== 'animation' &&
+  if (project.mode === 'playfield' && project.indexedImage !== null) {
+    const mappedImage = mapImageToNesPalettes(
+      project.indexedImage,
+      backgroundPaletteSet,
+      project.paletteAssignments,
+      PLAYFIELD_PALETTE_REGION_SIZE,
+      project.pixelOverrides,
+      false,
+      project.quantizationSettings.colorDistanceMode,
+    );
+    const mappedTiles = extractTiles(mappedImage).slice(
+      0,
+      project.tiles.length,
+    );
+    const activeMap =
+      project.backgrounds?.maps.find(
+        (map) => map.id === project.backgrounds?.activeMapId,
+      ) ?? project.backgrounds?.maps[0];
+    const compiled = compilePlayfieldBackground({
+      assetId: project.assetId ?? 'asset-playfield-default',
+      mapId: activeMap?.id,
+      name: activeMap?.name,
+      tiles: mappedTiles,
+      paletteAssignments: project.paletteAssignments,
+      patternTable: activeMap?.patternTable ?? 0,
+      baseChr: project.graphics.baseChr,
+      baseChrBytes:
+        project.animation.destinationChr.length > 0
+          ? project.animation.destinationChr
+          : undefined,
+      chrRegions: project.chrRegions,
+    });
+    if (compiled.graphics.success) {
+      chr = compiled.graphics.finalChr;
+      nametable = compiled.graphics.backgrounds[0]?.nametable ?? null;
+      attributeTable = compiled.attributeTable;
+    }
+    try {
+      collisionMap = encodeCollisionMap(project.collisionCells);
+    } catch {
+      collisionMap = null;
+    }
+  } else if (
+    project.mode === 'tileset' &&
     (tiles.length > 0 || project.animation.destinationChr.length > 0)
   ) {
     const tilesToEncode =
-      project.mode === 'playfield' ||
-      project.deduplicationEnabled ||
-      project.flipDeduplicationEnabled
+      project.deduplicationEnabled || project.flipDeduplicationEnabled
         ? activeDeduplicatedTiles
         : tiles;
     chr =
@@ -3662,41 +3704,6 @@ function renderDeliveryWorkspace(): void {
               project.chrRegions,
             )
           : padChrRom(encodeChr(tilesToEncode));
-
-    if (project.mode === 'playfield' && project.indexedImage !== null) {
-      const regionSize = PLAYFIELD_PALETTE_REGION_SIZE;
-      const mappedImage = mapImageToNesPalettes(
-        project.indexedImage,
-        backgroundPaletteSet,
-        project.paletteAssignments,
-        regionSize,
-        project.pixelOverrides,
-        false,
-        project.quantizationSettings.colorDistanceMode,
-      );
-      const mappedTiles = extractTiles(mappedImage).slice(
-        0,
-        project.tiles.length,
-      );
-      try {
-        const encodedPlayfield = encodePlayfield(
-          mappedImage,
-          mappedTiles,
-          project.deduplicationEnabled,
-          project.paletteAssignments,
-        );
-        nametable = encodedPlayfield.nametable;
-        attributeTable = encodedPlayfield.attributeTable;
-      } catch {
-        nametable = null;
-        attributeTable = null;
-      }
-      try {
-        collisionMap = encodeCollisionMap(project.collisionCells);
-      } catch {
-        collisionMap = null;
-      }
-    }
   }
 
   const paletteState = resolveProjectPaletteState(project);

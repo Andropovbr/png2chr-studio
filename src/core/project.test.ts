@@ -18,13 +18,275 @@ import {
 import { createDefaultNesPaletteSet } from './nes-palette';
 import { extractProjectAssets } from './asset-identity';
 import {
+  createBackgroundMapFromPlayfield,
   createEmptyBackgroundMap,
   reconcileBackgroundMaps,
   type BackgroundMapDefinition,
 } from './background-model';
+import { compileProjectGraphics } from './project-graphics-compiler';
 import { resolveEffectivePaletteColors } from './palette-manager';
 
 describe('StudioProject core infrastructure', () => {
+  describe('Playfield to canonical Background Map migration', () => {
+    it('migrates legacy screen, palette, collision, and procedural data deterministically', () => {
+      const collisionCells = Array.from({ length: 960 }, (_, index) =>
+        index === 33 ? 2 : 0,
+      );
+      const paletteAssignments = Array.from(
+        { length: 240 },
+        (_, index) => index % 4,
+      );
+      const legacy = JSON.stringify({
+        formatVersion: 1,
+        name: 'Legacy Stage',
+        mode: 'playfield',
+        settings: {
+          deduplicationEnabled: true,
+          flipDeduplicationEnabled: false,
+          quantization: {
+            quantizationMode: 'median-cut',
+            ditheringMode: 'none',
+            colorDistanceMode: 'rgb',
+          },
+        },
+        palette: { paletteSet: createDefaultNesPaletteSet() },
+        playfield: {
+          asset: {
+            id: 'asset-playfield-stage',
+            path: 'stage.png',
+            name: 'stage.png',
+            sourceKind: 'png',
+            dataUrl: 'data:image/png;base64,c3RhZ2U=',
+          },
+          paletteAssignments,
+          pixelOverrides: [0, 1, 2, 3],
+          collisionCells,
+          activeCollisionType: 2,
+          randomPlayfieldFeatures: ['walls', 'clouds'],
+        },
+      });
+
+      const first = deserializeProject(legacy);
+      const second = deserializeProject(legacy);
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      if (!first.success || !second.success) return;
+
+      const map = first.project.backgrounds?.maps[0];
+      expect(map).toMatchObject({
+        id: 'background-playfield-default',
+        assetId: 'asset-playfield-stage',
+        collision: { cells: collisionCells, activeType: 2 },
+        procedural: { features: ['walls', 'clouds'] },
+      });
+      expect(map?.paletteAssignments).toEqual(paletteAssignments);
+      expect(map?.cells[33]).toEqual({
+        logicalKey: 'asset-playfield-stage:1:1',
+        tileX: 1,
+        tileY: 1,
+        sourceTileIndex: 33,
+      });
+      expect(second.project.backgrounds).toEqual(first.project.backgrounds);
+      expect(
+        first.project.graphics.assets[0]?.logicalTiles.pixelOverrides,
+      ).toEqual({ kind: 'indexed-image', values: [0, 1, 2, 3] });
+    });
+
+    it('saves and reloads only canonical Background Maps with independent collision layers', () => {
+      const source = createDefaultProject('Two Rooms', 'playfield');
+      const firstMap = {
+        ...createEmptyBackgroundMap({ id: 'room-a' }),
+        collision: { cells: new Array(960).fill(1), activeType: 1 as const },
+      };
+      const secondMap = {
+        ...createEmptyBackgroundMap({ id: 'room-b' }),
+        collision: { cells: new Array(960).fill(2), activeType: 2 as const },
+      };
+      const json = serializeProject({
+        ...source,
+        backgrounds: { activeMapId: 'room-b', maps: [firstMap, secondMap] },
+      });
+      const raw = JSON.parse(json) as Record<string, unknown>;
+      expect(raw).not.toHaveProperty('playfield');
+
+      const loaded = deserializeProject(json);
+      expect(loaded.success).toBe(true);
+      if (!loaded.success) return;
+      expect(loaded.project.backgrounds?.maps[0]?.collision?.cells[0]).toBe(1);
+      expect(loaded.project.backgrounds?.maps[1]?.collision?.cells[0]).toBe(2);
+      expect(serializeProject(loaded.project)).toBe(json);
+    });
+
+    it('creates a full logical Background Map for imported or procedural screens', () => {
+      const map = createBackgroundMapFromPlayfield({
+        id: 'generated-stage',
+        name: 'Generated Stage',
+        assetId: 'asset-generated-stage',
+        paletteAssignments: new Uint8Array(240).fill(3),
+        collisionCells: new Uint8Array(960).fill(1),
+        activeCollisionType: 1,
+        randomPlayfieldFeatures: ['platforms'],
+      });
+
+      expect(map.cells).toHaveLength(960);
+      expect(map.cells[959]).toEqual({
+        logicalKey: 'asset-generated-stage:31:29',
+        tileX: 31,
+        tileY: 29,
+        sourceTileIndex: 959,
+      });
+      expect(map.paletteAssignments).toEqual(new Array(240).fill(3));
+      expect(map.collision?.cells).toEqual(new Array(960).fill(1));
+      expect(map.procedural?.features).toEqual(['platforms']);
+    });
+
+    it('keeps invalid collision data outside canonical graphics compilation validity', () => {
+      const source = createDefaultProject('Collision Separation');
+      const map = {
+        ...createBackgroundMapFromPlayfield({
+          id: 'collision-map',
+          assetId: 'asset-collision-map',
+        }),
+        collision: { cells: [99], activeType: 1 as const },
+      };
+      const tile = {
+        id: 0,
+        column: 0,
+        row: 0,
+        pixels: new Uint8Array(64).fill(1),
+      };
+      const logicalTiles = new Map(
+        map.cells.map((cell) => [cell?.logicalKey ?? '', tile] as const),
+      );
+      const compiled = compileProjectGraphics({
+        graphics: {
+          ...source.graphics,
+          assets: [
+            {
+              id: 'asset-collision-map',
+              kind: 'background-image',
+              name: 'Map',
+              source: null,
+              logicalTiles: {
+                decoding: 'png-indexed',
+                quantization: null,
+                paletteBank: 'background',
+              },
+            },
+          ],
+          renderContexts: [
+            {
+              id: 'context-collision-map',
+              name: 'Map',
+              backgroundPatternTable: 0,
+              spriteMode: '8x8',
+              spritePatternTable: 1,
+              mapIds: ['collision-map'],
+              animationIds: [],
+            },
+          ],
+        },
+        decodedAssets: [
+          {
+            assetId: 'asset-collision-map',
+            widthTiles: 32,
+            heightTiles: 30,
+            tiles: [tile],
+            tilesByLogicalKey: logicalTiles,
+          },
+        ],
+        backgroundMaps: [map],
+        animationDemands: [],
+      });
+
+      expect(compiled.success).toBe(true);
+      if (compiled.success) {
+        expect(compiled.backgrounds[0]?.nametable).toHaveLength(960);
+        expect(compiled.finalChr).toHaveLength(8192);
+      }
+    });
+
+    it('preserves an ordinary canonical active Background Map across save and reload', () => {
+      const source = createDefaultProject('Canonical Map');
+      const map = {
+        ...createEmptyBackgroundMap({
+          id: 'background-playfield-default-town',
+          assetId: 'asset-canonical',
+        }),
+        cells: createEmptyBackgroundMap().cells.map((cell, index) =>
+          index === 0
+            ? {
+                logicalKey: 'asset-canonical:7:4',
+                tileX: 7,
+                tileY: 4,
+              }
+            : cell,
+        ),
+      };
+      const project: StudioProject = {
+        ...source,
+        backgrounds: { activeMapId: map.id, maps: [map] },
+        graphics: {
+          ...source.graphics,
+          assets: [
+            {
+              id: 'asset-canonical',
+              kind: 'background-image',
+              name: 'Canonical',
+              source: null,
+              logicalTiles: {
+                decoding: 'png-indexed',
+                quantization: null,
+                paletteBank: 'background',
+              },
+            },
+          ],
+          renderContexts: [
+            {
+              id: 'context-canonical',
+              name: 'Canonical',
+              backgroundPatternTable: 0,
+              spriteMode: '8x8',
+              spritePatternTable: 1,
+              mapIds: [map.id],
+              animationIds: [],
+            },
+          ],
+        },
+      };
+
+      const saved = serializeProject(project);
+      const loaded = deserializeProject(saved);
+      expect(loaded.success).toBe(true);
+      if (!loaded.success) return;
+      expect(loaded.project.backgrounds?.maps).toEqual([
+        { ...map, asset: null },
+      ]);
+      expect(serializeProject(loaded.project)).toBe(saved);
+    });
+
+    it('migrates source-less legacy collision into an asset-less map', () => {
+      const loaded = deserializeProject(
+        JSON.stringify({
+          formatVersion: 1,
+          name: 'Collision Only',
+          mode: 'playfield',
+          palette: { paletteSet: createDefaultNesPaletteSet() },
+          playfield: { collisionCells: [3, 0], activeCollisionType: 3 },
+        }),
+      );
+      expect(loaded.success).toBe(true);
+      if (!loaded.success) return;
+      const map = loaded.project.backgrounds?.maps[0];
+      expect(map?.assetId).toBeUndefined();
+      expect(map?.cells.every((cell) => cell === null)).toBe(true);
+      expect(map?.collision).toEqual({ cells: [3, 0], activeType: 3 });
+      expect(deserializeProject(serializeProject(loaded.project)).success).toBe(
+        true,
+      );
+    });
+  });
+
   it('creates a clean default project with current formatVersion', () => {
     const project = createDefaultProject('NES Survivor', 'animation');
     expect(project.formatVersion).toBe(CURRENT_PROJECT_FORMAT_VERSION);
@@ -1652,8 +1914,8 @@ describe('StudioProject core infrastructure', () => {
       if (result.success) {
         expect(result.project.name).toBe('Legacy v1 Project');
         expect(result.project.mode).toBe('playfield');
-        expect(result.project.playfield).toBeDefined();
-        // Missing backgrounds field parses cleanly as undefined without error
+        expect(result.project.playfield).toBeUndefined();
+        // No legacy screen data means no canonical map is fabricated.
         expect(result.project.backgrounds).toBeUndefined();
       }
     });

@@ -13,11 +13,14 @@ import {
   type BackgroundModelErrorCode,
 } from './background-error';
 import {
+  createLogicalTileKey,
   parseLogicalTileKey,
   type LogicalTileKey,
   type ProjectAssetId,
 } from './asset-identity';
 import type { ProjectAssetReference } from './project';
+import type { CollisionType } from './collision-encoder';
+import type { RandomPlayfieldFeature } from './random-playfield';
 
 export { BackgroundModelError, type BackgroundModelErrorCode };
 
@@ -74,6 +77,17 @@ export interface BackgroundMapCell {
   readonly sourceTileIndex?: number;
 }
 
+/** Optional gameplay collision layer owned by one map, outside NES PPU validity. */
+export interface BackgroundCollisionLayer {
+  readonly cells: readonly number[];
+  readonly activeType?: CollisionType;
+}
+
+/** Inputs retained for regenerating a procedural screen. */
+export interface BackgroundProceduralSource {
+  readonly features: readonly RandomPlayfieldFeature[];
+}
+
 /**
  * Canonical configuration and logical data definition of a Background Map.
  */
@@ -82,6 +96,8 @@ export interface BackgroundMapDefinition {
   readonly id: string;
   /** Display name of the map. */
   readonly name: string;
+  /** Explicit persisted provenance for the legacy Playfield compatibility projection. */
+  readonly migratedFromPlayfield?: true;
   /** Width in 8x8 tiles (Must be 32 in Milestone 8 MVP). */
   readonly widthTiles: number;
   /** Height in 8x8 tiles (Must be 30 in Milestone 8 MVP). */
@@ -102,6 +118,10 @@ export interface BackgroundMapDefinition {
    * Represents the subpalette allocated to each 16x16 pixel (2x2 tile) quadrant.
    */
   readonly paletteAssignments: readonly number[];
+  /** Optional map-owned gameplay data. Never participates in graphics validity. */
+  readonly collision?: BackgroundCollisionLayer;
+  /** Optional procedural-generation settings retained with the generated map. */
+  readonly procedural?: BackgroundProceduralSource;
 }
 
 /**
@@ -147,6 +167,15 @@ export interface CreateEmptyBackgroundMapOptions {
   readonly name?: string;
   readonly patternTable?: BackgroundPatternTable;
   readonly assetId?: ProjectAssetId;
+}
+
+export interface CreateBackgroundMapFromPlayfieldOptions extends CreateEmptyBackgroundMapOptions {
+  readonly id: string;
+  readonly assetId: ProjectAssetId;
+  readonly paletteAssignments?: ArrayLike<number>;
+  readonly collisionCells?: ArrayLike<number>;
+  readonly activeCollisionType?: CollisionType;
+  readonly randomPlayfieldFeatures?: readonly RandomPlayfieldFeature[];
 }
 
 /**
@@ -290,6 +319,54 @@ export function createEmptyBackgroundMap(
     assetId: options.assetId,
     cells: createEmptyBackgroundCells(),
     paletteAssignments: Array.from(createEmptyBackgroundPaletteAssignments()),
+  };
+}
+
+/**
+ * Converts one 256x240 image-backed Playfield screen into canonical logical
+ * Background Map cells. Physical CHR placement remains compiler-owned.
+ */
+export function createBackgroundMapFromPlayfield(
+  options: CreateBackgroundMapFromPlayfieldOptions,
+): BackgroundMapDefinition {
+  const map = createEmptyBackgroundMap(options);
+  const cells = map.cells.map((_, index) => {
+    const tileX = index % BACKGROUND_WIDTH_TILES;
+    const tileY = Math.floor(index / BACKGROUND_WIDTH_TILES);
+    return {
+      logicalKey: createLogicalTileKey(options.assetId, tileX, tileY),
+      tileX,
+      tileY,
+      sourceTileIndex: index,
+    };
+  });
+  const paletteAssignments = Array.from(
+    options.paletteAssignments ?? map.paletteAssignments,
+  ).slice(0, BACKGROUND_PALETTE_ASSIGNMENT_COUNT);
+  while (paletteAssignments.length < BACKGROUND_PALETTE_ASSIGNMENT_COUNT) {
+    paletteAssignments.push(0);
+  }
+
+  return {
+    ...map,
+    assetId: options.assetId,
+    cells,
+    paletteAssignments,
+    ...(options.collisionCells !== undefined
+      ? {
+          collision: {
+            cells: Array.from(options.collisionCells),
+            ...(options.activeCollisionType !== undefined
+              ? { activeType: options.activeCollisionType }
+              : {}),
+          },
+        }
+      : {}),
+    ...(options.randomPlayfieldFeatures !== undefined
+      ? {
+          procedural: { features: [...options.randomPlayfieldFeatures] },
+        }
+      : {}),
   };
 }
 

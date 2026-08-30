@@ -86,6 +86,6 @@ winner by input order.
 ## Scope boundary
 
 This compiler supports only NROM, static 8 KiB CHR-ROM, 8×8 Sprites, and fixed
-Pattern Table configuration per render context. It does not migrate Playfield,
-replace CHR Memory or Delivery projections, redesign exporters, support 8×16
+Pattern Table configuration per render context. It does not replace CHR Memory
+or Delivery projections, redesign exporters, support 8×16
 Sprites, model mapper banks, or model CHR-RAM streaming.

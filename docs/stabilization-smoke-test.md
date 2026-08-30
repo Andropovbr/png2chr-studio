@@ -114,13 +114,13 @@ Validate the end-to-end integration of spritesheets, transparent cell omission, 
 
 Validate that Tileset and Playfield modes operate without regression alongside the new animation subsystem:
 
-| Step | Action                                                                                  | Expected result                                                                                                                               |
-| ---- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Switch to **Tileset** mode and import a tileset PNG (e.g. 128×128 pixels).              | Tileset extracts 8×8 tiles; deduplication and Base CHR assignment function cleanly; CHR Memory displays accurate project tile attributions.   |
-| 2    | Switch to **Playfield** mode and import a full-screen background PNG (256×240 pixels).  | Playfield quantizes to 4 background palettes; 32×30 nametable grid and 64-byte attribute table generate accurately.                           |
-| 3    | Paint collision cells (solid, ladder, hazard) and test procedural feature overlays.     | Collision map updates 480-byte `.col` buffer; random playfield generator operates without errors.                                             |
-| 4    | Export Tileset/Playfield production artifacts (`.chr`, `.nam`, `.atr`, `.pal`, `.col`). | Binary files match strict NES hardware sizing (Nametable = 960 bytes, Attribute Table = 64 bytes, Collision = 480 bytes, Palette = 16 bytes). |
-| 5    | Save project as `.p2c` and reopen.                                                      | Mode, collision cells, palette assignments, and tile overrides restore with 100% fidelity.                                                    |
+| Step | Action                                                                                  | Expected result                                                                                                                             |
+| ---- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Switch to **Tileset** mode and import a tileset PNG (e.g. 128×128 pixels).              | Tileset extracts 8×8 tiles; deduplication and Base CHR assignment function cleanly; CHR Memory displays accurate project tile attributions. |
+| 2    | Switch to **Playfield** mode and import a full-screen background PNG (256×240 pixels).  | Workflow creates/updates a Background Map with 32×30 logical cells, 240 palette assignments, and compiler-derived Nametable/Attribute/CHR.  |
+| 3    | Paint collision cells (solid, ladder, hazard) and test procedural feature overlays.     | Owning map updates its independent 480-byte `.col` gameplay buffer; invalid collision never invalidates graphics artifacts.                 |
+| 4    | Export Tileset/Playfield production artifacts (`.chr`, `.nam`, `.atr`, `.pal`, `.col`). | Playfield `.chr`, `.nam`, and `.atr` come from canonical compiler; sizes remain 8192, 960, 64, 16 bytes; `.col` remains 480 bytes.          |
+| 5    | Save project as `.p2c` and reopen.                                                      | `playfield` is absent from saved JSON; Background Map, collision, palettes, and overrides restore with fidelity.                            |
 
 ## Background Pipeline smoke test (Milestone 8)
 

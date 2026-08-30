@@ -637,8 +637,8 @@ A Milestone 8 estabelece o pipeline de **Cenários, Mapas e Backgrounds** (Namet
 - **Formato do Projeto e Backward Compatibility:**
   - Backgrounds nasceram como extensão aditiva de `formatVersion: 1`. O schema atual v2 preserva esses projetos pela migração determinística v1 para v2.
 - **Projeção Runtime Completa (`src/ui/project-runtime.ts`):**
-  - O carregamento restaura Background Maps, CHR Regions/Reservations, Animation, Scene, Palette Manager e as configurações persistidas de Tileset/Playfield independentemente do modo ativo.
-  - A projeção de salvamento atualiza o domínio legado ativo a partir da imagem reconstruída e preserva os demais domínios e referências originais, inclusive quando um asset externo não pôde ser decodificado.
+  - O carregamento restaura Background Maps, CHR Regions/Reservations, Animation, Scene e Palette Manager. Playfield legado é projetado a partir do mapa migrado para preservar o fluxo de PNG full-screen.
+  - A projeção de salvamento atualiza o Background Map associado ao fluxo Playfield e preserva os demais mapas e referências, inclusive quando um asset externo não pôde ser decodificado.
   - Importar ou substituir uma fonte gráfica limpa somente os buffers de trabalho da fonte ativa; mapas, animações, regiões, Scene e paletas não são reinicializados.
   - Novos Background Maps recebem IDs únicos, que permanecem estáveis após salvar e reabrir.
   - O formato e o modelo de assets permanecem na versão 1; esta integração não introduz catálogo de assets nem compilador CHR global.

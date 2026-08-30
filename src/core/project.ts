@@ -40,6 +40,8 @@ import {
   BACKGROUND_PALETTE_ASSIGNMENT_COUNT,
   BACKGROUND_TILE_COUNT,
   BACKGROUND_WIDTH_TILES,
+  createBackgroundMapFromPlayfield,
+  createEmptyBackgroundMap,
 } from './background-model';
 import {
   PROJECT_GRAPHICS_PROFILE,
@@ -212,6 +214,97 @@ interface StudioProjectData {
   readonly backgrounds?: ProjectBackgroundSettingsConfig;
   readonly animation?: ProjectAnimationSettingsConfig;
   readonly scenePreview?: ProjectScenePreviewConfig;
+}
+
+const MIGRATED_PLAYFIELD_MAP_ID = 'background-playfield-default';
+
+function migratePlayfieldScreen(
+  project: StudioProjectData,
+  updateActiveMap = false,
+): StudioProjectData {
+  const playfield = project.playfield;
+  const hasSource = playfield?.asset != null || playfield?.assetId != null;
+  const hasScreenData =
+    playfield !== undefined &&
+    (hasSource || (!updateActiveMap && playfield.collisionCells !== undefined));
+  if (!hasScreenData) return project;
+
+  const existingMaps = project.backgrounds?.maps ?? [];
+  const activeMap = updateActiveMap
+    ? existingMaps.find((map) => map.migratedFromPlayfield === true)
+    : undefined;
+  let mapId = MIGRATED_PLAYFIELD_MAP_ID;
+  let suffix = 2;
+  while (existingMaps.some((map) => map.id === mapId)) {
+    mapId = `${MIGRATED_PLAYFIELD_MAP_ID}-${String(suffix)}`;
+    suffix += 1;
+  }
+  const assetId = hasSource
+    ? normalizeProjectAssetId(
+        playfield.assetId ?? playfield.asset?.id,
+        'playfield-image',
+      )
+    : undefined;
+  const migratedMap: BackgroundMapDefinition = {
+    ...(assetId === undefined
+      ? {
+          ...createEmptyBackgroundMap({
+            id: activeMap?.id ?? mapId,
+            name:
+              activeMap?.name ?? playfield.asset?.name ?? 'Migrated Playfield',
+            patternTable:
+              activeMap?.patternTable ??
+              (project.animation?.destinationPatternTable === 1 ? 1 : 0),
+          }),
+          ...(playfield.collisionCells !== undefined
+            ? {
+                collision: {
+                  cells: [...playfield.collisionCells],
+                  ...(playfield.activeCollisionType !== undefined
+                    ? { activeType: playfield.activeCollisionType }
+                    : {}),
+                },
+              }
+            : {}),
+          ...(playfield.randomPlayfieldFeatures !== undefined
+            ? {
+                procedural: {
+                  features: [...playfield.randomPlayfieldFeatures],
+                },
+              }
+            : {}),
+        }
+      : createBackgroundMapFromPlayfield({
+          id: activeMap?.id ?? mapId,
+          name:
+            activeMap?.name ?? playfield.asset?.name ?? 'Migrated Playfield',
+          assetId,
+          patternTable:
+            activeMap?.patternTable ??
+            (project.animation?.destinationPatternTable === 1 ? 1 : 0),
+          paletteAssignments: playfield.paletteAssignments,
+          collisionCells: playfield.collisionCells,
+          activeCollisionType: playfield.activeCollisionType,
+          randomPlayfieldFeatures: playfield.randomPlayfieldFeatures,
+        })),
+    migratedFromPlayfield: true,
+  };
+
+  return {
+    ...project,
+    backgrounds: {
+      activeMapId:
+        project.mode === 'playfield'
+          ? migratedMap.id
+          : (project.backgrounds?.activeMapId ?? migratedMap.id),
+      maps:
+        activeMap === undefined
+          ? [...existingMaps, migratedMap]
+          : existingMaps.map((map) =>
+              map.id === activeMap.id ? migratedMap : map,
+            ),
+    },
+  };
 }
 
 /** Current canonical project. Version 1 exists only as deserializer input. */
@@ -454,7 +547,9 @@ export function createDefaultProject(
  */
 export function serializeProject(project: StudioProject): string {
   const canonicalProject = stripProjectGraphicsCompatibilityPayloads(
-    canonicalizeProjectGraphics(project),
+    canonicalizeProjectGraphics(
+      migratePlayfieldScreen(project, true) as StudioProject,
+    ),
   );
   const paletteSet = resolveActiveBackgroundPaletteSet(
     canonicalProject.palette.palettes,
@@ -462,7 +557,12 @@ export function serializeProject(project: StudioProject): string {
     canonicalProject.palette.universalBackgroundColor,
     canonicalProject.palette.paletteSet,
   );
-  const { graphics, ...projectWithoutGraphics } = canonicalProject;
+  const {
+    graphics,
+    playfield: playfieldCompatibilityProjection,
+    ...projectWithoutGraphics
+  } = canonicalProject;
+  void playfieldCompatibilityProjection;
   const persistableProject: StudioProject = {
     ...projectWithoutGraphics,
     formatVersion: CURRENT_PROJECT_FORMAT_VERSION,
@@ -913,7 +1013,7 @@ export function deserializeProject(
   const chrRegions = parseChrRegions(raw.chrRegions);
   const backgrounds = parseBackgroundSettings(raw.backgrounds);
 
-  const projectData: StudioProjectData = {
+  const parsedProjectData: StudioProjectData = {
     name,
     mode,
     settings: {
@@ -938,13 +1038,20 @@ export function deserializeProject(
     ...(animation !== undefined ? { animation } : {}),
     ...(scenePreview !== undefined ? { scenePreview } : {}),
   };
+  const projectData = migratePlayfieldScreen(parsedProjectData);
 
   let graphics: ProjectGraphicsConfiguration;
   try {
-    graphics =
+    const parsedGraphics =
       raw.formatVersion === CURRENT_PROJECT_FORMAT_VERSION
         ? parseProjectGraphicsConfiguration(raw.graphics)
         : migrateLegacyProjectGraphics(projectData);
+    graphics = ensureBackgroundRenderContexts(
+      parsedGraphics,
+      projectData.backgrounds?.maps ?? [],
+      projectData.animation?.patternTable === 0 ? 0 : 1,
+      projectData.animation?.animations.map((animation) => animation.id) ?? [],
+    );
   } catch (error: unknown) {
     return {
       success: false,
@@ -981,6 +1088,34 @@ export function deserializeProject(
     success: true,
     project: projectGraphicsCompatibilityProjection(project),
   };
+}
+
+function ensureBackgroundRenderContexts(
+  graphics: ProjectGraphicsConfiguration,
+  maps: readonly BackgroundMapDefinition[],
+  spritePatternTable: 0 | 1,
+  animationIds: readonly string[],
+): ProjectGraphicsConfiguration {
+  const referencedMapIds = new Set(
+    graphics.renderContexts.flatMap((context) => context.mapIds),
+  );
+  const missingContexts = maps
+    .filter((map) => !referencedMapIds.has(map.id))
+    .map((map) => ({
+      id: `render-context-${map.id}`,
+      name: `${map.name} Render Context`,
+      backgroundPatternTable: map.patternTable,
+      spriteMode: '8x8' as const,
+      spritePatternTable,
+      mapIds: [map.id],
+      animationIds: [...animationIds],
+    }));
+  return missingContexts.length === 0
+    ? graphics
+    : {
+        ...graphics,
+        renderContexts: [...graphics.renderContexts, ...missingContexts],
+      };
 }
 
 function validateProjectGraphicsReferences(
@@ -1175,7 +1310,7 @@ function migrateLegacyProjectGraphics(
         map.id,
         map.assetId,
       );
-    } else if (map.assetId) {
+    } else if (map.assetId && !assets.has(map.assetId)) {
       register({
         id: map.assetId,
         kind: 'background-image',
@@ -1337,9 +1472,24 @@ function projectGraphicsCompatibilityProjection(
     project.tileset?.assetId ?? undefined,
     'tileset-image',
   );
+  const migratedPlayfieldMap = project.backgrounds?.maps.find(
+    (map) => map.migratedFromPlayfield === true,
+  );
+  const projectedPlayfield =
+    project.playfield ??
+    (migratedPlayfieldMap !== undefined
+      ? {
+          assetId: migratedPlayfieldMap.assetId ?? null,
+          asset: migratedPlayfieldMap.asset ?? null,
+          paletteAssignments: migratedPlayfieldMap.paletteAssignments,
+          collisionCells: migratedPlayfieldMap.collision?.cells,
+          activeCollisionType: migratedPlayfieldMap.collision?.activeType,
+          randomPlayfieldFeatures: migratedPlayfieldMap.procedural?.features,
+        }
+      : undefined);
   const playfieldAsset = resolveLinkedAsset(
-    project.playfield?.asset,
-    project.playfield?.assetId ?? undefined,
+    projectedPlayfield?.asset,
+    projectedPlayfield?.assetId ?? undefined,
     'playfield-image',
   );
   const contextsByMap = new Map<string, ProjectRenderContext>();
@@ -1423,10 +1573,10 @@ function projectGraphicsCompatibilityProjection(
           },
         }
       : {}),
-    ...(project.playfield
+    ...(projectedPlayfield
       ? {
           playfield: {
-            ...project.playfield,
+            ...projectedPlayfield,
             ...(playfieldAsset !== undefined
               ? {
                   assetId: playfieldAsset.id,
@@ -2209,6 +2359,7 @@ function parseBackgroundSettings(
       mapObj.patternTable === 1 ? 1 : 0;
 
     const asset = parseAssetReference(mapObj.asset, 'background-image', id);
+    const migratedFromPlayfield = mapObj.migratedFromPlayfield === true;
     const rawAssetId =
       typeof mapObj.assetId === 'string' && mapObj.assetId.trim() !== ''
         ? mapObj.assetId.trim()
@@ -2225,6 +2376,8 @@ function parseBackgroundSettings(
     const paletteAssignments = parseBackgroundPaletteAssignments(
       mapObj.paletteAssignments,
     );
+    const collision = parseBackgroundCollision(mapObj.collision);
+    const procedural = parseBackgroundProcedural(mapObj.procedural);
 
     maps.push({
       id,
@@ -2232,10 +2385,15 @@ function parseBackgroundSettings(
       widthTiles,
       heightTiles,
       patternTable,
+      ...(migratedFromPlayfield
+        ? { migratedFromPlayfield: true as const }
+        : {}),
       ...(assetId ? { assetId } : {}),
       ...(asset ? { asset } : {}),
       cells,
       paletteAssignments,
+      ...(collision !== undefined ? { collision } : {}),
+      ...(procedural !== undefined ? { procedural } : {}),
     });
   }
 
@@ -2243,6 +2401,34 @@ function parseBackgroundSettings(
     activeMapId: activeMapId ?? maps[0]?.id ?? null,
     maps,
   };
+}
+
+function parseBackgroundCollision(
+  value: unknown,
+): BackgroundMapDefinition['collision'] | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  const cells = parseNumberArray(raw.cells);
+  if (cells === undefined) return undefined;
+  return {
+    cells,
+    ...(typeof raw.activeType === 'number'
+      ? { activeType: raw.activeType as CollisionType }
+      : {}),
+  };
+}
+
+function parseBackgroundProcedural(
+  value: unknown,
+): BackgroundMapDefinition['procedural'] | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw.features)) return undefined;
+  return { features: raw.features as RandomPlayfieldFeature[] };
 }
 
 function parseBackgroundMapCells(

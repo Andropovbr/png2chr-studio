@@ -1,5 +1,3 @@
-import { encodeChr } from '../core/chr-encoder';
-import { padChrRom } from '../core/chr-rom';
 import {
   countCollisionCells,
   encodeCollisionMap,
@@ -13,10 +11,7 @@ import {
   TILESET_PALETTE_REGION_SIZE,
   type NesPaletteSet,
 } from '../core/nes-palette';
-import {
-  encodePlayfield,
-  PlayfieldEncodingError,
-} from '../core/playfield-encoder';
+import { compilePlayfieldBackground } from '../core/playfield-background';
 import type { RandomPlayfieldFeature } from '../core/random-playfield';
 import { deduplicateTiles } from '../core/tile-deduplication';
 import { extractTiles } from '../core/tile-extraction';
@@ -34,12 +29,7 @@ import {
   type QuantizationPreview,
 } from './quantization-panel';
 import { createTileGrid } from './tile-grid';
-import {
-  displayErrorFromPlayfield,
-  type DisplayError,
-  type PreviewTool,
-  type ProjectMode,
-} from './types';
+import { type DisplayError, type PreviewTool, type ProjectMode } from './types';
 import {
   toAttributeTableFileName,
   toChrFileName,
@@ -49,6 +39,7 @@ import {
 } from '../utils/file-name';
 
 export interface PlayfieldWorkspaceOptions {
+  readonly assetId?: string | null;
   readonly fileName: string | null;
   readonly sourceKind: 'png' | 'chr' | 'nes' | null;
   readonly width: number | null;
@@ -159,7 +150,7 @@ export function createPlayfieldWorkspace(
       ? []
       : extractTiles(mappedImage).slice(0, options.tiles.length);
 
-  let visibleTiles = options.deduplicationEnabled
+  const visibleTiles = options.deduplicationEnabled
     ? deduplicateTiles(mappedTiles)
     : mappedTiles;
 
@@ -167,25 +158,26 @@ export function createPlayfieldWorkspace(
   let attributeTable: Uint8Array | null = null;
   let conversionError = options.error;
 
-  if (mappedImage !== null) {
-    try {
-      const playfield = encodePlayfield(
-        mappedImage,
-        mappedTiles,
-        options.deduplicationEnabled,
-        options.paletteAssignments,
-      );
-      visibleTiles = playfield.chrTiles;
-      nametable = playfield.nametable;
-      attributeTable = playfield.attributeTable;
-    } catch (error: unknown) {
-      if (error instanceof PlayfieldEncodingError) {
-        conversionError = displayErrorFromPlayfield(error);
-      }
+  let chr: Uint8Array | null = null;
+  if (mappedImage !== null && mappedTiles.length === 960) {
+    const compiled = compilePlayfieldBackground({
+      assetId: options.assetId ?? 'asset-playfield-default',
+      tiles: mappedTiles,
+      paletteAssignments: options.paletteAssignments,
+    });
+    if (compiled.graphics.success) {
+      chr = compiled.graphics.finalChr;
+      nametable = compiled.graphics.backgrounds[0]?.nametable ?? null;
+      attributeTable = compiled.attributeTable;
+    } else {
+      conversionError = {
+        key: 'tooManyPlayfieldTiles',
+        variables: { count: visibleTiles.length },
+      };
     }
+  } else if (mappedImage !== null) {
+    conversionError = { key: 'invalidPlayfieldDimensions' };
   }
-
-  const chr = mappedImage === null ? null : padChrRom(encodeChr(visibleTiles));
 
   const workspaceElement = document.createElement(
     'div',
