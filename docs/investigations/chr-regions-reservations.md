@@ -28,6 +28,12 @@ A **Milestone 5 — CHR Regions & Reservations** tem como objetivo introduzir no
 
 ## 2. Estado Atual da Arquitetura
 
+> Atualização da Issue #167: o compilador canônico usa a política explícita de
+> Base CHR de `graphics.baseChr`; não infere disponibilidade a partir de bytes
+> zero. As descrições históricas abaixo registram o comportamento dos fluxos
+> anteriores à compilação project-wide. Regions continuam organizacionais e
+> Reservations continuam bloqueando somente novas alocações automáticas.
+
 ### 2.1 Estrutura Física de CHR e Indexação
 
 A PPU do NES endereça graficamente até 8 KiB de memória de padrões:

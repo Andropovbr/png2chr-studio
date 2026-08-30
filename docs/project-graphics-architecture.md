@@ -1,8 +1,8 @@
 # Project Graphics Architecture
 
 This document is the authoritative logical graphics contract for PNG2CHR
-Studio project files. It defines the input model for a future project-wide CHR
-compiler; it does not define or implement that compiler.
+Studio project files. Its runtime compilation boundary is defined in
+[`project-graphics-compiler.md`](./project-graphics-compiler.md).
 
 ## Supported profile
 
@@ -158,14 +158,16 @@ Sprite PT, and including all animations. Without Background maps, migration
 creates one default/sprite-only context. Playfield is not converted into a map
 in this issue.
 
-## Future compiler boundary
+## Compiler boundary
 
-A later issue may consume this model plus decoded assets and produce one atomic,
-immutable compilation result: final 8 KiB CHR, logical-to-physical placements,
-Nametable/OAM address interpretations, ownership/usages, diagnostics, and
-readiness. CHR Memory, diagnostics, ownership, editing, and Delivery must
-eventually consume that result rather than reconstruct placement.
+`compileProjectGraphics` consumes this model, resolved Base CHR bytes, decoded
+assets, Background Maps, logical Animation frame demands, and CHR Regions /
+Reservations. One invocation produces one atomic project-wide result containing
+the final static 8 KiB CHR-ROM, physical allocation manifest, logical placement
+metadata, compiled Nametable and OAM-local indexes, usage provenance, capacity
+facts, and required render-context Pattern Table configuration.
 
-No physical allocation manifest is persisted by version 2, and this issue does
-not change Playfield UI, CHR Memory, Delivery, exporters, mapper behavior, or
-CHR-RAM behavior.
+Physical allocation remains runtime-derived and is never persisted in version 2. CHR Memory, diagnostics, ownership, editing, and Delivery migration remain
+later work; their existing projections are not additional authoritative
+compiler results. Playfield conversion, 8×16 Sprites, mapper banking, CHR-RAM
+streaming, and exporter redesign remain outside this boundary.

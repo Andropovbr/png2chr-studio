@@ -64,3 +64,18 @@ Os testes automatizados cobrem:
 
 O roteiro manual em `docs/stabilization-smoke-test.md` complementa a suíte para
 interações de navegador, seleção de arquivos e downloads.
+
+## Fronteira canônica de compilação
+
+Desde a Issue #167, fatos físicos de uma build NROM estática devem partir de
+`CompiledProjectGraphics`. O compilador prova a Pattern Table exigida antes de
+reduzir slots físicos a bytes locais de Nametable ou OAM, e falha atomicamente
+quando a tabela selecionada não comporta todos os consumidores. Espaço livre na
+outra Pattern Table não elimina o erro. Base CHR não resolvida, conflitos de
+bytes sob uma mesma identidade lógica e consumidores de contexto ausentes são
+falhas de compilação, não violações inferidas do hardware.
+
+CHR Memory, diagnósticos e Delivery ainda não foram migrados nesta issue. Até
+essa integração futura, suas projeções existentes não devem ser interpretadas
+como uma segunda autoridade de placement nem usadas para contradizer um
+resultado do compilador.

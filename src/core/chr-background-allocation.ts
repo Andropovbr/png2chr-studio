@@ -16,7 +16,7 @@ import {
   createPatternTableSlots,
   encodePatternTableSlots,
   findNextAvailableChrSlot,
-  localPatternTableTileIndex,
+  localPatternTableTileIndexFor,
   NES_CHR_ROM_TILE_COUNT,
   NES_PATTERN_TABLE_TILE_COUNT,
   patternTablePhysicalRange,
@@ -317,7 +317,10 @@ export function allocateBackgroundChr(
         reuse = 'new';
       }
 
-      const localTileIndex = localPatternTableTileIndex(physicalTileIndex);
+      const localTileIndex = localPatternTableTileIndexFor(
+        physicalTileIndex,
+        patternTable,
+      );
       usedPhysicalIndices.add(physicalTileIndex);
       cellAssignments.push({
         cellIndex: i,
@@ -392,7 +395,10 @@ export function allocateBackgroundChr(
       reuse = 'new';
     }
 
-    const localTileIndex = localPatternTableTileIndex(physicalTileIndex);
+    const localTileIndex = localPatternTableTileIndexFor(
+      physicalTileIndex,
+      patternTable,
+    );
     if (localTileIndex < 0 || localTileIndex > 255) {
       throw new BackgroundModelError('invalid-tile-index', {
         cellIndex: i,
