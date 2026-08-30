@@ -4169,11 +4169,7 @@ function addBackgroundScreen(
   }
 
   const mapId = generateBackgroundMapId();
-  const assetId = normalizeProjectAssetId(
-    undefined,
-    'background-image',
-    mapId,
-  );
+  const assetId = normalizeProjectAssetId(undefined, 'background-image', mapId);
   const paletteAssignments = assignmentsForImage(indexedImage, 'playfield');
   const pixelOverrides = createPixelOverrides(
     indexedImage.width,

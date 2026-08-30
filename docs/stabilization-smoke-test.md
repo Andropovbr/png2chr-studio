@@ -114,13 +114,13 @@ Validate the end-to-end integration of spritesheets, transparent cell omission, 
 
 Validate contextual graphics and screen workflows alongside the animation subsystem:
 
-| Step | Action                                                                                  | Expected result                                                                                                                             |
-| ---- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Open **Graphics Assets** and use **Add PNG graphics asset** (e.g. 128×128 pixels).       | The graphics asset extracts 8×8 tiles; deduplication and Base CHR assignment function cleanly; CHR Memory displays accurate project tile attributions. |
-| 2    | Open **Background Maps** and use **New screen from PNG** with a 256×240 image.            | Workflow creates a Background Map with 32×30 logical cells, 240 palette assignments, and compiler-derived Nametable/Attribute/CHR. |
-| 3    | Paint collision cells (solid, ladder, hazard) and test procedural feature overlays.     | Owning map updates its independent 480-byte `.col` gameplay buffer; invalid collision never invalidates graphics artifacts.                 |
-| 4    | Export Tileset/Playfield production artifacts (`.chr`, `.nam`, `.atr`, `.pal`, `.col`). | Playfield `.chr`, `.nam`, and `.atr` come from canonical compiler; sizes remain 8192, 960, 64, 16 bytes; `.col` remains 480 bytes.          |
-| 5    | Save project as `.p2c` and reopen.                                                      | `playfield` is absent from saved JSON; Background Map, collision, palettes, and overrides restore with fidelity.                            |
+| Step | Action                                                                                  | Expected result                                                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | Open **Graphics Assets** and use **Add PNG graphics asset** (e.g. 128×128 pixels).      | The graphics asset extracts 8×8 tiles; deduplication and Base CHR assignment function cleanly; CHR Memory displays accurate project tile attributions. |
+| 2    | Open **Background Maps** and use **New screen from PNG** with a 256×240 image.          | Workflow creates a Background Map with 32×30 logical cells, 240 palette assignments, and compiler-derived Nametable/Attribute/CHR.                     |
+| 3    | Paint collision cells (solid, ladder, hazard) and test procedural feature overlays.     | Owning map updates its independent 480-byte `.col` gameplay buffer; invalid collision never invalidates graphics artifacts.                            |
+| 4    | Export Tileset/Playfield production artifacts (`.chr`, `.nam`, `.atr`, `.pal`, `.col`). | Playfield `.chr`, `.nam`, and `.atr` come from canonical compiler; sizes remain 8192, 960, 64, 16 bytes; `.col` remains 480 bytes.                     |
+| 5    | Save project as `.p2c` and reopen.                                                      | `playfield` is absent from saved JSON; Background Map, collision, palettes, and overrides restore with fidelity.                                       |
 
 ## Background Pipeline smoke test (Milestone 8)
 
