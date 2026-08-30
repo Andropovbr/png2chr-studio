@@ -9,6 +9,11 @@
 
 import type { AnimationProjectModel } from './animation-model';
 import {
+  getPhysicalSlotAttribution,
+  type ChrAssetMappingIndex,
+} from './chr-asset-mapping';
+import { parseLogicalTileKey } from './asset-identity';
+import {
   baseChrPhysicalStart,
   classifyChrSlots,
   collectPhysicalTileReferences,
@@ -103,6 +108,8 @@ export interface ResolveTileEditOriginOptions {
   readonly deduplicationEnabled?: boolean;
   readonly flipDeduplicationEnabled?: boolean;
   readonly finalChrBytes?: Uint8Array | null;
+  /** Compiler-derived provenance for this render. */
+  readonly mappingIndex?: ChrAssetMappingIndex;
 }
 
 /**
@@ -126,6 +133,62 @@ export function resolveTileEditOrigin(
 
   const mode = options.mode ?? 'tileset';
   const destPt = options.destinationPatternTable ?? 0;
+
+  const attribution = options.mappingIndex
+    ? getPhysicalSlotAttribution(physicalIndex, options.mappingIndex)
+    : undefined;
+  const parsedOrigin = attribution?.origin?.logicalKey
+    ? parseLogicalTileKey(attribution.origin.logicalKey)
+    : null;
+  if (attribution?.origin?.creationKind === 'base-chr') {
+    return {
+      type: 'base',
+      physicalIndex,
+      byteOffsetInBaseChr: physicalIndex * 16,
+      destinationPatternTable: destPt,
+    };
+  }
+  if (parsedOrigin) {
+    const animationUsage = attribution?.usages.find(
+      (usage) => usage.type === 'animation',
+    );
+    if (animationUsage) {
+      return {
+        type: 'animation',
+        animationId: animationUsage.animationId,
+        animationName:
+          animationUsage.animationName ?? animationUsage.animationId,
+        entity: animationUsage.entity,
+        frameIndex: animationUsage.frameIndex,
+        tileX: parsedOrigin.tileX,
+        tileY: parsedOrigin.tileY,
+      };
+    }
+    return mode === 'playfield'
+      ? {
+          type: 'playfield',
+          tileIndex: parsedOrigin.tileY * 32 + parsedOrigin.tileX,
+          tileX: parsedOrigin.tileX,
+          tileY: parsedOrigin.tileY,
+          column: parsedOrigin.tileX,
+          row: parsedOrigin.tileY,
+        }
+      : {
+          type: 'tileset',
+          tileIndex: parsedOrigin.tileY * 16 + parsedOrigin.tileX,
+          tileX: parsedOrigin.tileX,
+          tileY: parsedOrigin.tileY,
+          column: parsedOrigin.tileX,
+          row: parsedOrigin.tileY,
+        };
+  }
+  if (options.mappingIndex) {
+    return {
+      type: 'empty',
+      physicalIndex,
+      patternTable: patternTableForPhysicalTile(physicalIndex),
+    };
+  }
 
   // 1. Check references in the current project
   const references = collectPhysicalTileReferences({

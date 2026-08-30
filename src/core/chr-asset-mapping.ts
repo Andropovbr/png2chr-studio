@@ -49,6 +49,7 @@ import {
   deduplicateTilesConsideringFlips,
 } from './tile-deduplication';
 import type { Tile } from './types';
+import type { CompiledProjectGraphics } from './project-graphics-compiler';
 import { t } from '../i18n';
 
 /** Mechanism by which a physical tile slot came into existence. */
@@ -182,6 +183,11 @@ export interface GenericAnimationItemConfig {
 
 /** Options for constructing the pure ChrAssetMappingIndex. */
 export interface BuildChrAssetMappingIndexOptions {
+  /**
+   * Immutable compiler output. Physical ownership is defined only by this
+   * manifest; the remaining inputs are retained temporarily for UI metadata.
+   */
+  readonly compiled?: CompiledProjectGraphics | null;
   /** Optional active studio project. */
   readonly project?: StudioProject | null;
   /** Active project mode override (if not extracted from project). */
@@ -292,6 +298,115 @@ interface MutableSlotState {
 export function buildChrAssetMappingIndex(
   options: BuildChrAssetMappingIndexOptions = {},
 ): ChrAssetMappingIndex {
+  const compiled = options.compiled;
+  if (compiled) {
+    const placementsBySlot = new Map<
+      number,
+      CompiledProjectGraphics['logicalTilePlacements']
+    >();
+    for (const placement of compiled.logicalTilePlacements) {
+      const placements = placementsBySlot.get(placement.physicalSlot) ?? [];
+      placementsBySlot.set(placement.physicalSlot, [...placements, placement]);
+    }
+    const physicalIndicesByAsset = new Map<ProjectAssetId, Set<number>>();
+    const usagesByLogicalKey = new Map<LogicalTileKey, PhysicalTileUsage[]>();
+    const track = (assetId: ProjectAssetId, physicalIndex: number): void => {
+      const indices = physicalIndicesByAsset.get(assetId) ?? new Set<number>();
+      indices.add(physicalIndex);
+      physicalIndicesByAsset.set(assetId, indices);
+    };
+    const byPhysicalIndex = compiled.allocationManifest.map((allocation) => {
+      const placements = placementsBySlot.get(allocation.physicalSlot) ?? [];
+      const parsedOrigin = allocation.originLogicalKey
+        ? parseLogicalTileKey(allocation.originLogicalKey)
+        : null;
+      const origin: PhysicalTileOrigin | undefined = allocation.originAssetId
+        ? {
+            primaryAssetId: allocation.originAssetId,
+            logicalKey: allocation.originLogicalKey ?? undefined,
+            ...(parsedOrigin
+              ? {
+                  sourceCoordinates: {
+                    tileX: parsedOrigin.tileX,
+                    tileY: parsedOrigin.tileY,
+                    pixelX: parsedOrigin.tileX * 8,
+                    pixelY: parsedOrigin.tileY * 8,
+                  },
+                }
+              : {}),
+            creationKind:
+              allocation.state === 'base-chr' ? 'base-chr' : 'extracted',
+          }
+        : undefined;
+      if (origin) track(origin.primaryAssetId, allocation.physicalSlot);
+      const usages: PhysicalTileUsage[] = placements.flatMap((placement) =>
+        placement.usages.map((usage): PhysicalTileUsage => {
+          const logicalKey = placement.logicalKey;
+          const assetId =
+            parsedOrigin?.assetId ?? allocation.originAssetId ?? '';
+          if (usage.kind === 'background') {
+            return {
+              type: 'background',
+              assetId,
+              mapId: usage.mapId,
+              column: usage.cellIndex % 32,
+              row: Math.floor(usage.cellIndex / 32),
+              nametableIndex: usage.cellIndex,
+              localTileIndex: allocation.localPatternTableIndex,
+              physicalTileIndex: allocation.physicalSlot,
+              logicalKey,
+            };
+          }
+          return {
+            type: 'animation',
+            assetId,
+            animationId: usage.animationId,
+            frameIndex: usage.frameIndex,
+            spriteIndex: usage.spriteIndex,
+            x: 0,
+            y: 0,
+            horizontalFlip: (usage.flipAttributes & 0x40) !== 0,
+            verticalFlip: (usage.flipAttributes & 0x80) !== 0,
+            physicalTileIndex: allocation.physicalSlot,
+            logicalKey,
+          };
+        }),
+      );
+      usages.sort(comparePhysicalTileUsages);
+      for (const usage of usages) {
+        track(usage.assetId, allocation.physicalSlot);
+        if (usage.logicalKey) {
+          const list = usagesByLogicalKey.get(usage.logicalKey) ?? [];
+          list.push(usage);
+          usagesByLogicalKey.set(usage.logicalKey, list);
+        }
+      }
+      return Object.freeze({
+        physicalIndex: allocation.physicalSlot,
+        patternTable: allocation.patternTable,
+        localIndex: allocation.localPatternTableIndex,
+        origin: origin ? Object.freeze(origin) : undefined,
+        usages: Object.freeze(usages),
+        usageCount: usages.length,
+        isShared: usages.length > 1,
+      });
+    });
+    return {
+      byPhysicalIndex: Object.freeze(byPhysicalIndex),
+      physicalIndicesByAsset: new Map(
+        [...physicalIndicesByAsset].map(([assetId, indices]) => [
+          assetId,
+          Object.freeze(new Set([...indices].sort((a, b) => a - b))),
+        ]),
+      ),
+      usagesByLogicalKey: new Map(
+        [...usagesByLogicalKey].map(([key, usages]) => [
+          key,
+          Object.freeze(usages.sort(comparePhysicalTileUsages)),
+        ]),
+      ),
+    };
+  }
   const project = options.project ?? null;
   const mode = options.mode ?? project?.mode ?? 'tileset';
   const destPt: SpritePatternTable =

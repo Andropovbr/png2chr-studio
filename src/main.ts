@@ -146,6 +146,11 @@ import {
 } from './core/project-graphics-assets';
 import { reconcileAnimationGeometry } from './core/asset-lifecycle';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
+import { extractLogicalAnimationFrames } from './core/metasprite-extraction';
+import {
+  compileProjectGraphics,
+  type CompiledProjectGraphics,
+} from './core/project-graphics-compiler';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
 import { buildSourceTilePaletteContexts } from './core/nes-background-diagnostics';
 import {
@@ -1794,6 +1799,12 @@ function restoreChrEditorFocus(selector: string | null): void {
 
 function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
+  const compiledGraphics = compileCurrentProjectGraphics(project);
+  const compiledMappingIndex = compiledGraphics
+    ? buildChrAssetMappingIndex({
+        compiled: compiledGraphics,
+      })
+    : undefined;
   const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
 
   let playfieldNametable: Uint8Array | null = null;
@@ -1860,6 +1871,7 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
     playfieldNametable,
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
+    mappingIndex: compiledMappingIndex,
   });
 
   const regionSize = project.indexedImage
@@ -2687,9 +2699,11 @@ function renderAnimationWorkspace(): void {
   const workspaceElement = document.createElement('div');
   workspaceElement.className = 'workspace animation-workspace';
   const { model, modelError } = resolveAnimationProjectModel(project);
+  const compiledGraphics = compileCurrentProjectGraphics(project);
   const paletteState = resolveProjectPaletteState(project);
   const spritePaletteSet = resolveProjectSpritePaletteSet(project);
   const sceneChrAssetMappingIndex = buildChrAssetMappingIndex({
+    compiled: compiledGraphics,
     mode: project.mode,
     animationModel: model,
     animations: project.animation.animations,
@@ -3330,6 +3344,53 @@ function buildProjectBackgroundModels(
   return models;
 }
 
+/** One runtime projection of canonical inputs; never reconstructs placement. */
+function compileCurrentProjectGraphics(
+  currentProject: ProjectView,
+): CompiledProjectGraphics | null {
+  const decoded = decodeProjectGraphicsAssets(
+    currentProject.graphics,
+    runtimeGraphicsAssetSources(currentProject),
+  );
+  if (!decoded.success) return null;
+  const result = compileProjectGraphics({
+    graphics: currentProject.graphics,
+    decodedAssets: decoded.assets,
+    backgroundMaps: currentProject.backgrounds?.maps ?? [],
+    animationDemands: currentProject.animation.animations.flatMap(
+      (animation) =>
+        animation.source?.indexedImage && animation.source.assetId
+          ? [
+              {
+                animationId: animation.id,
+                frames: extractLogicalAnimationFrames({
+                  image: animation.source.indexedImage,
+                  pixelOverrides: animation.pixelOverrides,
+                  frameIndices: animation.frameIndices,
+                  defaultDuration: animation.defaultDuration,
+                  frameDurations: animation.frameDurations,
+                  framePalettes: animation.framePalettes,
+                  paletteIndex: animation.paletteIndex,
+                  frameWidth: animation.frameWidth,
+                  frameHeight: animation.frameHeight,
+                  originX: animation.originX,
+                  originY: animation.originY,
+                  assetId: animation.source.assetId,
+                }),
+                flipDeduplication: currentProject.animation.flipDeduplication,
+              },
+            ]
+          : [],
+    ),
+    baseChrBytes:
+      currentProject.animation.destinationChr.length > 0
+        ? currentProject.animation.destinationChr
+        : undefined,
+    chrRegions: currentProject.chrRegions,
+  });
+  return result.success ? result : null;
+}
+
 /** Runtime source registry. IDs are explicit; absent assets remain unresolved. */
 function runtimeGraphicsAssetSources(
   currentProject: ProjectView,
@@ -3382,6 +3443,7 @@ function buildCurrentSourcePaletteContexts(
 
 function renderChrWorkspace(): void {
   const { model: animModel } = resolveAnimationProjectModel(project);
+  const compiledGraphics = compileCurrentProjectGraphics(project);
   const paletteState = resolveProjectPaletteState(project);
   const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
   const manualChr =
@@ -3430,6 +3492,7 @@ function renderChrWorkspace(): void {
       ? deduplicateTiles(project.tiles)
       : project.tiles;
   const currentFinalChr =
+    compiledGraphics?.finalChr ??
     animModel?.finalChr ??
     (manualChr
       ? composeChrWithAllocatedTiles(
@@ -3461,6 +3524,7 @@ function renderChrWorkspace(): void {
 
   const backgroundModels = buildProjectBackgroundModels(project);
   const chrAssetMappingIndex = buildChrAssetMappingIndex({
+    compiled: compiledGraphics,
     mode: project.mode,
     animationModel: animModel,
     animations: project.animation.animations,
@@ -3477,6 +3541,7 @@ function renderChrWorkspace(): void {
   });
 
   const workspaceElement = createChrWorkspace({
+    compiledGraphics,
     mode: project.mode,
     animationModel: animModel,
     playfieldNametable,
@@ -3697,6 +3762,7 @@ function renderChrWorkspace(): void {
 function renderDeliveryWorkspace(): void {
   const { model: animModel, modelError: animModelError } =
     resolveAnimationProjectModel(project);
+  const compiledGraphics = compileCurrentProjectGraphics(project);
   const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
 
   const tiles = project.tiles;
@@ -3813,6 +3879,7 @@ function renderDeliveryWorkspace(): void {
   );
 
   const chrAssetMappingIndex = buildChrAssetMappingIndex({
+    compiled: compiledGraphics,
     mode: project.mode,
     animationModel: animModel,
     animations: project.animation.animations,

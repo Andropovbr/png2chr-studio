@@ -51,6 +51,7 @@ import { padChrRom } from '../core/chr-rom';
 import type { TileHistory } from '../core/chr-tile-editor';
 import type { ChrDrawingTool } from './chr-tile-editor';
 import type { Tile } from '../core/types';
+import type { CompiledProjectGraphics } from '../core/project-graphics-compiler';
 import { t } from '../i18n';
 import { createChrRegionManagerPanel } from './chr-region-manager';
 import { createChrTileInspector } from './chr-tile-inspector';
@@ -68,6 +69,7 @@ export const NEUTRAL_NES_GRAYSCALE = [
 ] as const;
 
 export interface ChrWorkspaceOptions {
+  readonly compiledGraphics?: CompiledProjectGraphics | null;
   readonly mode: ProjectMode;
   readonly animationModel: AnimationProjectModel | null;
   readonly playfieldNametable?: Uint8Array | null;
@@ -162,6 +164,43 @@ interface ComputedChrMetrics {
 }
 
 function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
+  if (options.compiledGraphics) {
+    const manifest = options.compiledGraphics.allocationManifest;
+    const occupied = (patternTable: SpritePatternTable) =>
+      manifest.filter(
+        (slot) =>
+          slot.patternTable === patternTable &&
+          slot.state !== 'available' &&
+          slot.state !== 'reserved',
+      ).length;
+    const base = (patternTable: SpritePatternTable) =>
+      manifest.filter(
+        (slot) =>
+          slot.patternTable === patternTable && slot.state === 'base-chr',
+      ).length;
+    const pt0Occupied = occupied(0);
+    const pt1Occupied = occupied(1);
+    const spritePt = options.patternTable;
+    const spriteOccupied = occupied(spritePt);
+    return {
+      physicalCapacityTiles: NES_CHR_ROM_TILE_COUNT,
+      totalOccupiedTiles: pt0Occupied + pt1Occupied,
+      totalFreeTiles: NES_CHR_ROM_TILE_COUNT - pt0Occupied - pt1Occupied,
+      pt0OccupiedTiles: pt0Occupied,
+      pt0BaseTiles: base(0),
+      pt1OccupiedTiles: pt1Occupied,
+      pt1BaseTiles: base(1),
+      activeSpritePatternTable: spritePt,
+      spritePtOccupiedTiles: spriteOccupied,
+      spritePtRemainingTiles: NES_PATTERN_TABLE_TILE_COUNT - spriteOccupied,
+      reusedDestinationTiles: 0,
+      reusedImportedTiles: 0,
+      newTileCount: 0,
+      deduplicationSavings: 0,
+      finalChrBytes: options.compiledGraphics.finalChr,
+      outputFileName: 'project.chr',
+    };
+  }
   if (options.mode === 'animation' && options.animationModel !== null) {
     const stats = options.animationModel.chr;
     const pt0Occupied = stats.patternTableFinalTileCounts[0];
@@ -1896,17 +1935,32 @@ export function createChrWorkspace(
   );
   const previewColors = previewPaletteContext.colors;
 
-  const classifications = classifyChrSlots({
-    finalChrBytes: metrics.finalChrBytes,
-    mode: options.mode,
-    animationModel: options.animationModel,
-    baseChr: options.baseChr,
-    destinationPatternTable: options.destinationPatternTable,
-    tiles: options.tiles,
-    deduplicationEnabled: options.deduplicationEnabled,
-    flipDeduplicationEnabled: options.flipDeduplicationEnabled,
-    chrRegions: options.chrRegions,
-  });
+  const classifications: readonly ChrSlotClassification[] =
+    options.compiledGraphics
+      ? options.compiledGraphics.allocationManifest.map((slot) => ({
+          physicalIndex: slot.physicalSlot,
+          localIndex: slot.localPatternTableIndex,
+          patternTable: slot.patternTable,
+          occupancy:
+            slot.state === 'project'
+              ? 'project'
+              : slot.state === 'base-chr'
+                ? 'base'
+                : slot.state === 'reserved'
+                  ? 'reserved'
+                  : 'empty',
+        }))
+      : classifyChrSlots({
+          finalChrBytes: metrics.finalChrBytes,
+          mode: options.mode,
+          animationModel: options.animationModel,
+          baseChr: options.baseChr,
+          destinationPatternTable: options.destinationPatternTable,
+          tiles: options.tiles,
+          deduplicationEnabled: options.deduplicationEnabled,
+          flipDeduplicationEnabled: options.flipDeduplicationEnabled,
+          chrRegions: options.chrRegions,
+        });
 
   const mappingIndex =
     options.chrAssetMappingIndex ??

@@ -35,6 +35,14 @@ O canvas pode receber foco para que os atalhos permaneçam disponíveis. A ediç
 
 ## Integração e persistência
 
+O compilador de gráficos do projeto é a única fonte de posicionamento físico.
+Memória CHR, classificação de slot, posse e resolução de edição consomem o
+manifesto de alocação imutável da compilação atual; nunca simulam primeiro slot
+livre, ordem contígua de Tileset/Playfield ou igualdade numérica entre índices.
+Para slot reutilizado, o editor grava a origem lógica canônica registrada no
+manifesto e o inspetor lista todos os usos. A edição não separa consumidores
+silenciosamente. Reservas continuam política de alocação, não posse.
+
 - **Tileset e Playfield:** a edição atualiza `project.pixelOverrides` e recalcula os tiles derivados.
 - **Animação:** a edição atualiza os overrides da spritesheet de origem e seus previews.
 - **CHR-Base:** os 16 bytes planares do slot são atualizados sem alterar os demais bytes.
