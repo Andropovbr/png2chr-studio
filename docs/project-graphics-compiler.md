@@ -83,6 +83,12 @@ cannot be produced by guessing. Likewise, duplicate consumer identities or one
 logical key resolving to different tile bytes fail instead of selecting a
 winner by input order.
 
+For a Background Map, every non-empty logical key must also name its declared
+source asset. This prevents a source change from silently retaining cells that
+would resolve through another asset. Animation demands retain frame extraction
+and flip-aware reuse, but their required Sprite Pattern Table comes only from
+render context.
+
 ## Scope boundary
 
 This compiler supports only NROM, static 8 KiB CHR-ROM, 8×8 Sprites, and fixed

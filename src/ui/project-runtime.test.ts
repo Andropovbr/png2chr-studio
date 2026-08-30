@@ -249,6 +249,14 @@ describe('runtime project persistence boundary', () => {
       expect(loaded.animation?.animations[0]?.asset?.id).toBe(
         'asset-hero-stable',
       );
+      expect(loaded.graphics.assets.map((asset) => asset.id)).toEqual(
+        expect.arrayContaining([
+          'asset-tileset-stable',
+          'asset-playfield-stable',
+          'asset-hero-stable',
+          'asset-bg-overworld',
+        ]),
+      );
       expect(loaded.backgrounds?.maps.map((map) => map.id)).toEqual([
         'bg-overworld',
         'bg-castle',

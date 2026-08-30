@@ -541,6 +541,27 @@ function compileProjectGraphicsUnchecked(
       'Background Map and Animation demand IDs must be unique.',
     );
   }
+  for (const map of options.backgroundMaps) {
+    for (const cell of map.cells) {
+      if (cell === null) continue;
+      const parsed = parseLogicalTileKey(cell.logicalKey);
+      if (
+        !parsed ||
+        map.assetId === undefined ||
+        parsed.assetId !== map.assetId
+      ) {
+        return failure(
+          'unresolved-logical-tile',
+          'Background Map logical tiles must resolve through its declared graphics asset.',
+          {
+            mapId: map.id,
+            assetId: map.assetId,
+            logicalKey: cell.logicalKey,
+          },
+        );
+      }
+    }
+  }
   for (const demand of options.animationDemands) {
     for (const logicalFrame of demand.frames) {
       for (const sprite of logicalFrame.sprites) {

@@ -140,6 +140,10 @@ import {
   type LogicalTileKey,
   type ProjectAssetId,
 } from './core/asset-identity';
+import {
+  decodeProjectGraphicsAssets,
+  type GraphicsAssetDecodeSource,
+} from './core/project-graphics-assets';
 import { reconcileAnimationGeometry } from './core/asset-lifecycle';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
 import { createDeliveryWorkspace } from './ui/delivery-workspace';
@@ -291,6 +295,10 @@ let project: ProjectView = {
 
 let projectName = t('defaultProjectName');
 let projectDirty = false;
+const restoredGraphicsAssetSources = new Map<
+  ProjectAssetId,
+  GraphicsAssetDecodeSource
+>();
 let workspace: WorkspaceState = createWorkspaceState(
   project.activePaletteIndex,
   project.activeColorIndex,
@@ -391,6 +399,57 @@ async function decodeDataUrl(dataUrl: string): Promise<ImageData> {
   });
 }
 
+async function restoreGraphicsAssetSources(
+  loaded: StudioProject,
+): Promise<void> {
+  restoredGraphicsAssetSources.clear();
+  for (const asset of loaded.graphics.assets) {
+    if (asset.source === null) continue;
+    const source = asset.source;
+    const file = findMatchingAssetFile(source);
+    const sourceName = source.name ?? source.path;
+    const isChr =
+      asset.logicalTiles.decoding === 'nes-2bpp' ||
+      source.sourceKind === 'chr' ||
+      sourceName.toLowerCase().endsWith('.chr');
+    try {
+      if (isChr) {
+        const bytes = file
+          ? new Uint8Array(await file.arrayBuffer())
+          : source.dataUrl
+            ? base64ToUint8Array(source.dataUrl)
+            : null;
+        if (bytes) {
+          restoredGraphicsAssetSources.set(asset.id, {
+            assetId: asset.id,
+            tiles: decodeChr(bytes),
+          });
+        }
+        continue;
+      }
+      const image = file
+        ? await decodeImage(file)
+        : source.dataUrl
+          ? await decodeDataUrl(source.dataUrl)
+          : null;
+      if (image) {
+        restoredGraphicsAssetSources.set(asset.id, {
+          assetId: asset.id,
+          indexedImage: quantizePngSource(
+            image,
+            asset.logicalTiles.paletteBank === 'sprite'
+              ? 'animation'
+              : 'tileset',
+            asset.logicalTiles.quantization ?? loaded.settings.quantization,
+          ),
+        });
+      }
+    } catch {
+      // Missing and invalid sources stay unresolved; no asset substitution.
+    }
+  }
+}
+
 function uint8ArrayToBase64(bytes: Uint8Array): string {
   let binary = '';
   const len = bytes.byteLength;
@@ -447,6 +506,7 @@ function handleNewProject(): void {
   quantizationPreviewsLoading = false;
   quantizationPreviewCache.clear();
   resetAllTileHistories();
+  restoredGraphicsAssetSources.clear();
   const defaultPalettes = createDefaultPaletteDefinitions();
   const defaultAnimation = createDefaultAnimationSettings();
   project = {
@@ -693,6 +753,7 @@ async function loadProjectFile(
     const loaded = result.project;
     projectName = loaded.name;
     projectDirty = false;
+    await restoreGraphicsAssetSources(loaded);
 
     const hasAsset = (path: string): boolean => {
       const fileName = path.split('/').pop() ?? path;
@@ -3235,19 +3296,14 @@ function buildProjectBackgroundModels(
     return [];
   }
 
-  const projectAssets = extractProjectAssets(currentProject);
-  const assetTilesMap = new Map<ProjectAssetId, readonly Tile[]>();
-  if (projectAssets.length > 0 && currentProject.tiles.length > 0) {
-    for (const asset of projectAssets) {
-      assetTilesMap.set(asset.id, currentProject.tiles);
-    }
-  }
-
+  const decoded = decodeProjectGraphicsAssets(
+    currentProject.graphics,
+    runtimeGraphicsAssetSources(currentProject),
+  );
+  if (!decoded.success) return [];
   const tileMap = new Map<LogicalTileKey, Tile>();
-  for (const [assetId, tiles] of assetTilesMap.entries()) {
-    for (const t of tiles) {
-      tileMap.set(`${assetId}:${String(t.column)}:${String(t.row)}`, t);
-    }
+  for (const asset of decoded.assets) {
+    for (const [key, tile] of asset.tilesByLogicalKey) tileMap.set(key, tile);
   }
 
   const baseChr =
@@ -3272,6 +3328,30 @@ function buildProjectBackgroundModels(
   }
 
   return models;
+}
+
+/** Runtime source registry. IDs are explicit; absent assets remain unresolved. */
+function runtimeGraphicsAssetSources(
+  currentProject: ProjectView,
+): readonly GraphicsAssetDecodeSource[] {
+  const sources = Array.from(restoredGraphicsAssetSources.values());
+  if (currentProject.assetId && currentProject.indexedImage) {
+    sources.push({
+      assetId: currentProject.assetId,
+      indexedImage: currentProject.indexedImage,
+      tiles: currentProject.tiles,
+    });
+  }
+  for (const animation of currentProject.animation.animations) {
+    const source = animation.source;
+    if (source?.assetId) {
+      sources.push({
+        assetId: source.assetId,
+        indexedImage: source.indexedImage,
+      });
+    }
+  }
+  return sources;
 }
 
 function buildCurrentSourcePaletteContexts(
@@ -3831,10 +3911,14 @@ function renderBackgroundWorkspace(): void {
 
   // Extract available project assets
   const projectAssets = extractProjectAssets(project);
+  const decoded = decodeProjectGraphicsAssets(
+    project.graphics,
+    runtimeGraphicsAssetSources(project),
+  );
   const assetTilesMap = new Map<ProjectAssetId, readonly Tile[]>();
-  if (projectAssets.length > 0 && project.tiles.length > 0) {
-    for (const asset of projectAssets) {
-      assetTilesMap.set(asset.id, project.tiles);
+  if (decoded.success) {
+    for (const asset of decoded.assets) {
+      assetTilesMap.set(asset.assetId, asset.tiles);
     }
   }
 
