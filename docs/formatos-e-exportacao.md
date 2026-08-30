@@ -149,13 +149,13 @@ Armazena dados de colisão e física para jogos de NES, pintados sobre a grade 3
 Formato canônico em JSON para persistência completa de projetos no PNG2CHR Studio.
 
 - **Extensões reconhecidas:** `.p2c`, `.p2c.json`, `.json`.
-- **Versão atual do schema:** `1` (`CURRENT_PROJECT_FORMAT_VERSION = 1`).
+- **Versão atual do schema:** `2` (`CURRENT_PROJECT_FORMAT_VERSION = 2`). Projetos `formatVersion: 1` são aceitos apenas como entrada e migrados deterministicamente para v2.
 
-### Estrutura do Schema `StudioProject` (`formatVersion: 1`)
+### Estrutura do Schema `StudioProject` (`formatVersion: 2`)
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "name": "Nome do Projeto",
   "mode": "tileset | playfield | animation",
   "settings": {
@@ -215,23 +215,75 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
       "kind": "reservation"
     }
   ],
-  "tileset": {
-    "asset": {
-      "path": "assets/tiles.png",
-      "name": "tiles.png",
-      "sourceKind": "png",
-      "dataUrl": "data:image/png;base64,..."
+  "graphics": {
+    "profile": {
+      "mapper": "nrom",
+      "chrMemory": "static-8k-chr-rom",
+      "spriteMode": "8x8",
+      "patternTableMode": "fixed-per-render-context"
     },
-    "paletteAssignments": [0, 1, 2, 3],
-    "pixelOverrides": [0, 0, 1, 2]
+    "assets": [
+      {
+        "id": "asset-tileset-dungeon",
+        "kind": "tileset-image",
+        "name": "tiles.png",
+        "source": {
+          "path": "assets/tiles.png",
+          "name": "tiles.png",
+          "sourceKind": "png",
+          "dataUrl": "data:image/png;base64,..."
+        },
+        "logicalTiles": {
+          "decoding": "png-indexed",
+          "quantization": {
+            "quantizationMode": "median-cut",
+            "ditheringMode": "none",
+            "colorDistanceMode": "perceptual"
+          },
+          "paletteBank": "background",
+          "paletteAssignments": [0, 1, 2, 3],
+          "pixelOverrides": {
+            "kind": "indexed-image",
+            "values": [0, 0, 1, 2]
+          }
+        }
+      }
+    ],
+    "baseChr": {
+      "assetId": null,
+      "source": null,
+      "byteLength": 0,
+      "shortFilePatternTable": 0,
+      "slotPolicies": [
+        {
+          "startSlot": 0,
+          "endSlot": 511,
+          "occupancy": "available",
+          "writability": "writable",
+          "ownerAssetId": null,
+          "provenance": "none"
+        }
+      ]
+    },
+    "renderContexts": [
+      {
+        "id": "render-context-default",
+        "name": "Default Render Context",
+        "backgroundPatternTable": 0,
+        "spriteMode": "8x8",
+        "spritePatternTable": 1,
+        "mapIds": [],
+        "animationIds": ["anim_1"]
+      }
+    ]
+  },
+  "tileset": {
+    "assetId": "asset-tileset-dungeon",
+    "asset": null
   },
   "playfield": {
-    "asset": {
-      "path": "stages/stage1.png",
-      "name": "stage1.png",
-      "sourceKind": "png",
-      "dataUrl": "data:image/png;base64,..."
-    },
+    "assetId": null,
+    "asset": null,
     "collisionCells": [1, 0, 2],
     "activeCollisionType": 1,
     "randomPlayfieldFeatures": ["walls", "platforms", "clouds"],
@@ -249,25 +301,14 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
     "spriteColorIndex": 1,
     "patternTable": 0,
     "destinationPatternTable": 0,
-    "destinationChr": {
-      "id": "asset-base-chr-default",
-      "path": "chr/base.chr",
-      "name": "base.chr",
-      "sourceKind": "chr",
-      "dataUrl": "data:application/octet-stream;base64,..."
-    },
+    "destinationChr": null,
     "animations": [
       {
         "id": "anim_1",
         "name": "walk",
         "entity": "hero",
-        "asset": {
-          "id": "asset-anim-walk-sheet",
-          "path": "sprites/hero_walk.png",
-          "name": "hero_walk.png",
-          "sourceKind": "png",
-          "dataUrl": "data:image/png;base64,..."
-        },
+        "assetId": null,
+        "asset": null,
         "paletteId": "pal_hero_blue",
         "paletteIndex": 0,
         "framePaletteIds": ["pal_hero_blue", "pal_hero_blue"],
@@ -285,10 +326,7 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
         "defaultDuration": 6,
         "frameIndices": [0, 1, 2, 3],
         "frameDurations": [6, 6, 8, 6],
-        "framePalettes": [0, 0, 0, 0],
-        "pixelOverrides": {
-          "0_0": { "0": 3, "1": 2 }
-        }
+        "framePalettes": [0, 0, 0, 0]
       }
     ]
   },
@@ -313,19 +351,22 @@ Formato canônico em JSON para persistência completa de projetos no PNG2CHR Stu
 
 ### Detalhamento dos Campos
 
-- **Portabilidade e Identidade de Assets (`ProjectAssetReference`):** Cada referência a arquivo (`asset` ou `destinationChr`) armazena:
-  - `id` (`ProjectAssetId`): identificador estável único do asset lógico (ex: `asset-anim-walk-sheet`, `asset-tileset-dungeon`). Projetos legados sem `id` são automaticamente normalizados com IDs determinísticos (`asset-tileset-default`, `asset-playfield-default`, `asset-base-chr-default`, `asset-anim-<animId>`), mantendo compatibilidade estrita (`formatVersion: 1`).
+- **Arquitetura gráfica canônica (`graphics`):** Catálogo com identidade única de assets, inputs de tiles lógicos, Base CHR em nível de projeto e contextos de renderização explícitos. O perfil inicial é NROM com CHR-ROM estática de 8 KiB, Sprites 8×8 e Pattern Tables fixas por contexto. PT0 para Background e PT1 para Sprites é somente o default do Studio; combinações inversas e same-table são válidas. Contrato completo em [`project-graphics-architecture.md`](./project-graphics-architecture.md).
+- **Migração v1 para v2:** `deserializeProject` aceita v1, cria catálogo/IDs/contextos deterministicamente, move a semântica de Base CHR para `graphics.baseChr` e preserva Tileset, Playfield, Backgrounds, Animation, colisão, CHR Regions e Reservations. `serializeProject` grava somente v2.
+
+- **Portabilidade e Identidade de Assets (`ProjectAssetReference`):** Em v2, consumidores usam `assetId` para apontar para uma entrada de `graphics.assets`; a identidade estável existe somente nessa entrada. O `source` canônico armazena:
   - `path`: caminho relativo normalizado do arquivo.
   - `dataUrl`: dados binários embutidos codificados em Base64 para garantir portabilidade completa offline.
   - `sourceKind` e `name`: tipo de origem (`png`, `chr`, `nes`) e nome de exibição.
+    Os campos antigos `asset` e `destinationChr` são projeções de runtime para os editores atuais. Quando existe um vínculo canônico, o save v2 não duplica neles o source, as atribuições de paleta nem os overrides.
 - **Chaves Canônicas de Tiles Lógicos (`LogicalTileKey`):** Identifica tiles na grade lógica de origem no formato `${assetId}:${tileX}:${tileY}` (ex: `asset-hero:0:0`), estritamente desacoplada da alocação de slots físicos em CHR (Pattern Tables, offsets ou deduplicação).
-- **Gerenciador de Paletas (`palette`):** Persiste a biblioteca declarativa de paletas (`palettes: readonly PaletteDefinition[]`), a cor universal de fundo da PPU `$3F00` (`universalBackgroundColor: number`), os 4 slots ativos de hardware de Background (`activeBackgroundSlots: ActivePaletteSlots`), os 4 slots ativos de Sprites (`activeSpriteSlots: ActivePaletteSlots`), além dos índices de edição da UI e campos legados (`paletteSet`, `activeSpritePaletteSlots`) para retrocompatibilidade determinística e transparente (`formatVersion: 1`). No save, `serializeProject` deriva os campos legados dos bancos canônicos; eles não competem como fontes de verdade de runtime.
-- **Regiões e Reservas de CHR (`chrRegions`):** Lista opcional de partições lógicas e reservas de exclusão de CHR (`ChrRegion`). Cada item contém `id`, `name`, `patternTable` (`0` ou `1`), `startTile` e `endTile` (índices locais `$00..$FF` / `0..255`, inclusive), `kind` (`"region"` para faixas organizacionais neutras ou `"reservation"` para reservas que bloqueiam novas alocações automáticas de tiles), além de `notes` e `color` opcionais. Uma reserva bloqueia novas alocações sem mover, apagar ou alterar tiles físicos existentes, permitindo que tiles reais pré-existentes na faixa sejam referenciados por deduplicação. Mantém total retrocompatibilidade (`formatVersion: 1`).
+- **Gerenciador de Paletas (`palette`):** Persiste a biblioteca declarativa de paletas (`palettes: readonly PaletteDefinition[]`), a cor universal de fundo da PPU `$3F00` (`universalBackgroundColor: number`), os 4 slots ativos de hardware de Background (`activeBackgroundSlots: ActivePaletteSlots`), os 4 slots ativos de Sprites (`activeSpriteSlots: ActivePaletteSlots`), além dos índices de edição da UI e aliases antigos (`paletteSet`, `activeSpritePaletteSlots`). No save v2, `serializeProject` deriva esses aliases dos bancos canônicos; eles não competem como fontes de verdade de runtime.
+- **Regiões e Reservas de CHR (`chrRegions`):** Lista opcional de partições lógicas e reservas de exclusão de CHR (`ChrRegion`). Cada item contém `id`, `name`, `patternTable` (`0` ou `1`), `startTile` e `endTile` (índices locais `$00..$FF` / `0..255`, inclusive), `kind` (`"region"` para faixas organizacionais neutras ou `"reservation"` para reservas que bloqueiam novas alocações automáticas de tiles), além de `notes` e `color` opcionais. Uma reserva bloqueia novas alocações sem mover, apagar ou alterar tiles físicos existentes, permitindo que tiles reais pré-existentes na faixa sejam referenciados por deduplicação. Reserva não é ownership e permanece separada da política de Base CHR.
 - **Identidade de animação na Scene (`scenePreview.instances[].animationId`):** ID estável e canônico da animação. `entityId` e `animationName` permanecem aliases de exibição retrocompatíveis. Na leitura de projetos legados sem `animationId`, a migração atribui o ID somente quando `entityId + animationName` encontra exatamente uma animação; zero ou múltiplos matches preservam a referência como não resolvida (`animationId: ""`). Um ID não vazio sem animação correspondente representa referência dangling e nunca produz fallback automático.
 - **Tileset & Playfield:** Persiste caminhos/dados de imagem, atribuições de paleta por tile/metatile, substituições de pixels 8×8 (`pixelOverrides`), mapa de colisão de 480 bytes (`collisionCells` com 11 tipos), tipo de colisão ativo e parâmetros de geração procedural.
 - **Animações e Metasprites (`animation`):** Múltiplas animações com identificadores estáveis (`id`), dimensões e âncoras de origem por animação, sequenciamento e temporização por frame, paletas atribuídas por frame ou globais (`paletteId` / `framePaletteIds`), mapa de substituições de pixel 8×8 (`pixelOverrides`) e alocação de Base CHR com isolamento de Pattern Table (PT0/PT1).
 - **Scene Preview (`scenePreview`):** Instâncias multi-entidade com `animationId` estável, posição canônica de âncora (`anchorX`/`anchorY`), aliases legados de posição visual (`x`/`y`), visibilidade, nome e identificador único (`id`). Ordem no array é ordem persistida de composição. Coordenadas carregadas ou atualizadas programaticamente permanecem intactas; o **Deliver & Export** deriva delas avisos para metasprites totalmente fora da área visível e informações de wrap de 8 bits, sem classificar clipping parcial como problema. Seleção, playback e navegação permanecem transitórios. Não existe export Scene standalone; esta seção do `.p2c` é a fronteira de serialização suportada.
-- **Mapeamento de CHR e Posse de Tiles (Runtime-Derived):** O índice bidirecional de atribuição física (`ChrAssetMappingIndex`, `PhysicalSlotAttribution`, `PhysicalTileOrigin`, `PhysicalTileUsage`, `isShared`) é uma estrutura puramente derivada em tempo de execução (`src/core/chr-asset-mapping.ts`), recalculada sob demanda a partir da fonte canônica do projeto. **Não é serializado no `.p2c`**, mantendo o formato estável e leve (`formatVersion: 1`).
+- **Mapeamento de CHR e Posse de Tiles (Runtime-Derived):** O índice bidirecional de atribuição física (`ChrAssetMappingIndex`, `PhysicalSlotAttribution`, `PhysicalTileOrigin`, `PhysicalTileUsage`, `isShared`) continua derivado em runtime. **Não é serializado no `.p2c`**; v2 persiste intenção lógica e políticas, não placement físico compilado.
 - **Fronteiras de Estado:** Estados transitórios de UI (como subworkspace ativo na sidebar, abas do editor, níveis de zoom e recolhimento de painéis) são gerenciados no `WorkspaceState` e deliberadamente **não** são serializados no arquivo de projeto, evitando marcação indevida de modificação (_dirty state_).
 
 ---

@@ -26,6 +26,7 @@ import { validateChrRegion, type ChrRegion } from './chr-pattern-table';
 import {
   createLogicalTileKey,
   normalizeProjectAssetId,
+  parseLogicalTileKey,
   type ProjectAssetId,
   type ProjectAssetKind,
 } from './asset-identity';
@@ -40,6 +41,21 @@ import {
   BACKGROUND_TILE_COUNT,
   BACKGROUND_WIDTH_TILES,
 } from './background-model';
+import {
+  PROJECT_GRAPHICS_PROFILE,
+  createDefaultRenderContext,
+  createDefaultProjectGraphicsConfiguration,
+  createEmptyProjectBaseChr,
+  createProjectBaseChr,
+  validateProjectGraphicsConfiguration,
+  type GraphicsPixelOverrides,
+  type ProjectAssetSource,
+  type ProjectBaseChr,
+  type ProjectGraphicsAsset,
+  type ProjectGraphicsConfiguration,
+  type ProjectLogicalTileSource,
+  type ProjectRenderContext,
+} from './project-graphics';
 
 export type { ProjectScenePreviewConfig, ScenePreviewInstance, ChrRegion };
 export * from './asset-identity';
@@ -49,6 +65,7 @@ export * from './metasprite-extraction';
 export * from './chr-spritesheet-allocation';
 export * from './background-model';
 export * from './background-exporters';
+export * from './project-graphics';
 export type {
   ActivePaletteSlots,
   AnalyzePaletteDiagnosticsOptions,
@@ -67,8 +84,8 @@ export {
   resolveProjectSpritePaletteSet,
 } from './palette-manager';
 
-export const CURRENT_PROJECT_FORMAT_VERSION = 1;
-export const SUPPORTED_PROJECT_FORMAT_VERSIONS = [1] as const;
+export const CURRENT_PROJECT_FORMAT_VERSION = 2;
+export const SUPPORTED_PROJECT_FORMAT_VERSIONS = [1, 2] as const;
 
 export interface ProjectAssetReference {
   /** Stable unique logical asset identifier. */
@@ -97,6 +114,8 @@ export interface ProjectAnimationItemConfig {
   readonly id: string;
   readonly name: string;
   readonly entity?: string;
+  /** Canonical link to graphics.assets in formatVersion 2. */
+  readonly assetId?: ProjectAssetId | null;
   readonly asset: ProjectAssetReference | null;
   readonly paletteId?: string | null;
   readonly paletteIndex?: number | null;
@@ -135,12 +154,16 @@ export interface ProjectAnimationSettingsConfig {
 }
 
 export interface ProjectTilesetConfig {
+  /** Canonical link to graphics.assets in formatVersion 2. */
+  readonly assetId?: ProjectAssetId | null;
   readonly asset: ProjectAssetReference | null;
   readonly paletteAssignments?: readonly number[];
   readonly pixelOverrides?: readonly number[];
 }
 
 export interface ProjectPlayfieldConfig {
+  /** Canonical link to graphics.assets in formatVersion 2. */
+  readonly assetId?: ProjectAssetId | null;
   readonly asset: ProjectAssetReference | null;
   readonly collisionCells?: readonly number[];
   readonly activeCollisionType?: CollisionType;
@@ -173,8 +196,7 @@ export interface ProjectPaletteConfig {
   readonly activeSpritePaletteSlots?: readonly (string | null)[];
 }
 
-export interface StudioProject {
-  readonly formatVersion: 1;
+interface StudioProjectData {
   readonly name: string;
   readonly mode: ProjectMode;
   readonly settings: {
@@ -189,6 +211,12 @@ export interface StudioProject {
   readonly backgrounds?: ProjectBackgroundSettingsConfig;
   readonly animation?: ProjectAnimationSettingsConfig;
   readonly scenePreview?: ProjectScenePreviewConfig;
+}
+
+/** Current canonical project. Version 1 exists only as deserializer input. */
+export interface StudioProject extends StudioProjectData {
+  readonly formatVersion: 2;
+  readonly graphics: ProjectGraphicsConfiguration;
 }
 
 export interface MissingAssetInfo {
@@ -342,7 +370,7 @@ export function createDefaultProject(
   );
 
   return {
-    formatVersion: 1,
+    formatVersion: CURRENT_PROJECT_FORMAT_VERSION,
     name,
     mode,
     settings: {
@@ -362,9 +390,11 @@ export function createDefaultProject(
     },
     chrRegions: [],
     tileset: {
+      assetId: null,
       asset: null,
     },
     playfield: {
+      assetId: null,
       asset: null,
       randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
     },
@@ -381,7 +411,7 @@ export function createDefaultProject(
       flipDeduplication: true,
       spritePalette: 0,
       spriteColorIndex: 1,
-      patternTable: 0,
+      patternTable: 1,
       destinationPatternTable: 0,
       destinationChr: null,
       animations: [
@@ -389,6 +419,7 @@ export function createDefaultProject(
           id: 'anim-default',
           name: 'idle',
           entity: 'entity',
+          assetId: null,
           asset: null,
           paletteId:
             dualBank.activeSpriteSlots[0] ?? dualBank.palettes[0]?.id ?? null,
@@ -413,6 +444,7 @@ export function createDefaultProject(
     scenePreview: {
       instances: [],
     },
+    graphics: createDefaultProjectGraphicsConfiguration(['anim-default']),
   };
 }
 
@@ -420,21 +452,113 @@ export function createDefaultProject(
  * Serializes a StudioProject into formatted JSON string.
  */
 export function serializeProject(project: StudioProject): string {
-  const paletteSet = resolveActiveBackgroundPaletteSet(
-    project.palette.palettes,
-    project.palette.activeBackgroundSlots,
-    project.palette.universalBackgroundColor,
-    project.palette.paletteSet,
+  const canonicalProject = stripProjectGraphicsCompatibilityPayloads(
+    canonicalizeProjectGraphics(project),
   );
+  const paletteSet = resolveActiveBackgroundPaletteSet(
+    canonicalProject.palette.palettes,
+    canonicalProject.palette.activeBackgroundSlots,
+    canonicalProject.palette.universalBackgroundColor,
+    canonicalProject.palette.paletteSet,
+  );
+  const { graphics, ...projectWithoutGraphics } = canonicalProject;
   const persistableProject: StudioProject = {
-    ...project,
+    ...projectWithoutGraphics,
+    formatVersion: CURRENT_PROJECT_FORMAT_VERSION,
     palette: {
-      ...project.palette,
+      ...canonicalProject.palette,
       paletteSet,
-      activeSpritePaletteSlots: project.palette.activeSpriteSlots,
+      activeSpritePaletteSlots: canonicalProject.palette.activeSpriteSlots,
     },
+    graphics,
   };
   return JSON.stringify(persistableProject, null, 2);
+}
+
+function stripProjectGraphicsCompatibilityPayloads(
+  project: StudioProject,
+): StudioProject {
+  const assetIds = new Set(project.graphics.assets.map((asset) => asset.id));
+  const stripTilesetPayload = (
+    config: ProjectTilesetConfig,
+  ): ProjectTilesetConfig => {
+    const {
+      assetId = null,
+      asset,
+      paletteAssignments,
+      pixelOverrides,
+      ...rest
+    } = config;
+    const linked = assetId !== null && assetIds.has(assetId);
+    return {
+      assetId,
+      asset: linked ? null : asset,
+      ...rest,
+      ...(linked ? {} : { paletteAssignments, pixelOverrides }),
+    };
+  };
+  const stripPlayfieldPayload = (
+    config: ProjectPlayfieldConfig,
+  ): ProjectPlayfieldConfig => {
+    const {
+      assetId = null,
+      asset,
+      paletteAssignments,
+      pixelOverrides,
+      ...rest
+    } = config;
+    const linked = assetId !== null && assetIds.has(assetId);
+    return {
+      assetId,
+      asset: linked ? null : asset,
+      ...rest,
+      ...(linked ? {} : { paletteAssignments, pixelOverrides }),
+    };
+  };
+
+  return {
+    ...project,
+    ...(project.tileset
+      ? { tileset: stripTilesetPayload(project.tileset) }
+      : {}),
+    ...(project.playfield
+      ? { playfield: stripPlayfieldPayload(project.playfield) }
+      : {}),
+    ...(project.backgrounds
+      ? {
+          backgrounds: {
+            ...project.backgrounds,
+            maps: project.backgrounds.maps.map((map) => ({
+              ...map,
+              asset: null,
+            })),
+          },
+        }
+      : {}),
+    ...(project.animation
+      ? {
+          animation: {
+            ...project.animation,
+            destinationChr: null,
+            animations: project.animation.animations.map((animation) => {
+              const linked =
+                animation.assetId !== null &&
+                animation.assetId !== undefined &&
+                assetIds.has(animation.assetId);
+              return linked
+                ? {
+                    ...animation,
+                    asset: null,
+                    quantizationMode: undefined,
+                    ditheringMode: undefined,
+                    pixelOverrides: undefined,
+                  }
+                : animation;
+            }),
+          },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -594,8 +718,10 @@ export function deserializeProject(
   let tileset: ProjectTilesetConfig | undefined;
   if (typeof raw.tileset === 'object' && raw.tileset !== null) {
     const rawTileset = raw.tileset as Record<string, unknown>;
+    const asset = parseAssetReference(rawTileset.asset, 'tileset-image');
     tileset = {
-      asset: parseAssetReference(rawTileset.asset, 'tileset-image'),
+      assetId: parseConsumerAssetId(rawTileset.assetId, asset),
+      asset,
       paletteAssignments: parseNumberArray(rawTileset.paletteAssignments),
       pixelOverrides: parseNumberArray(rawTileset.pixelOverrides),
     };
@@ -604,8 +730,10 @@ export function deserializeProject(
   let playfield: ProjectPlayfieldConfig | undefined;
   if (typeof raw.playfield === 'object' && raw.playfield !== null) {
     const rawPlayfield = raw.playfield as Record<string, unknown>;
+    const asset = parseAssetReference(rawPlayfield.asset, 'playfield-image');
     playfield = {
-      asset: parseAssetReference(rawPlayfield.asset, 'playfield-image'),
+      assetId: parseConsumerAssetId(rawPlayfield.assetId, asset),
+      asset,
       collisionCells: parseNumberArray(rawPlayfield.collisionCells),
       activeCollisionType:
         typeof rawPlayfield.activeCollisionType === 'number'
@@ -677,6 +805,8 @@ export function deserializeProject(
               return null;
             })
           : undefined);
+      const asset = parseAssetReference(rawItem.asset, 'spritesheet', animId);
+      const pixelOverrides = parseTilePixelOverrides(rawItem.pixelOverrides);
 
       items.push({
         id: animId,
@@ -688,7 +818,8 @@ export function deserializeProject(
           typeof rawItem.entity === 'string' && rawItem.entity.trim() !== ''
             ? rawItem.entity.trim()
             : 'entity',
-        asset: parseAssetReference(rawItem.asset, 'spritesheet', animId),
+        assetId: parseConsumerAssetId(rawItem.assetId, asset),
+        asset,
         paletteId: resolvedPaletteId,
         paletteIndex: rawPaletteIndex,
         framePaletteIds: resolvedFramePaletteIds,
@@ -717,14 +848,14 @@ export function deserializeProject(
         playback: rawItem.playback === 'once' ? 'once' : 'loop',
         allowHorizontalFlip: Boolean(rawItem.allowHorizontalFlip),
         allowVerticalFlip: Boolean(rawItem.allowVerticalFlip),
-        flipH: typeof rawItem.flipH === 'boolean' ? rawItem.flipH : undefined,
-        flipV: typeof rawItem.flipV === 'boolean' ? rawItem.flipV : undefined,
+        ...(typeof rawItem.flipH === 'boolean' ? { flipH: rawItem.flipH } : {}),
+        ...(typeof rawItem.flipV === 'boolean' ? { flipV: rawItem.flipV } : {}),
         defaultDuration:
           typeof rawItem.defaultDuration === 'number' &&
           rawItem.defaultDuration > 0
             ? rawItem.defaultDuration
             : 12,
-        pixelOverrides: parseTilePixelOverrides(rawItem.pixelOverrides),
+        ...(pixelOverrides !== undefined ? { pixelOverrides } : {}),
         frameIndices: parseNumberArray(rawItem.frameIndices) ?? [],
         frameDurations: parseNumberArray(rawItem.frameDurations) ?? [],
       });
@@ -781,8 +912,7 @@ export function deserializeProject(
   const chrRegions = parseChrRegions(raw.chrRegions);
   const backgrounds = parseBackgroundSettings(raw.backgrounds);
 
-  const project: StudioProject = {
-    formatVersion: 1,
+  const projectData: StudioProjectData = {
     name,
     mode,
     settings: {
@@ -808,10 +938,907 @@ export function deserializeProject(
     ...(scenePreview !== undefined ? { scenePreview } : {}),
   };
 
+  let graphics: ProjectGraphicsConfiguration;
+  try {
+    graphics =
+      raw.formatVersion === CURRENT_PROJECT_FORMAT_VERSION
+        ? parseProjectGraphicsConfiguration(raw.graphics)
+        : migrateLegacyProjectGraphics(projectData);
+  } catch (error: unknown) {
+    return {
+      success: false,
+      error: {
+        code: 'invalid-project-schema',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Project graphics configuration is invalid.',
+      },
+    };
+  }
+
+  const project: StudioProject = {
+    formatVersion: CURRENT_PROJECT_FORMAT_VERSION,
+    ...projectData,
+    graphics,
+  };
+  const referenceErrors = validateProjectGraphicsReferences(
+    projectData,
+    graphics,
+  );
+  if (referenceErrors.length > 0) {
+    return {
+      success: false,
+      error: {
+        code: 'invalid-project-schema',
+        message: referenceErrors.join(' '),
+      },
+    };
+  }
+
   return {
     success: true,
-    project,
+    project: projectGraphicsCompatibilityProjection(project),
   };
+}
+
+function validateProjectGraphicsReferences(
+  project: StudioProjectData,
+  graphics: ProjectGraphicsConfiguration,
+): readonly string[] {
+  const errors: string[] = [];
+  const assetIds = new Set(graphics.assets.map((asset) => asset.id));
+  const mapIds = new Set(
+    (project.backgrounds?.maps ?? []).map((map) => map.id),
+  );
+  const animationIds = new Set(
+    (project.animation?.animations ?? []).map((animation) => animation.id),
+  );
+  const requireAsset = (id: string | undefined, owner: string): void => {
+    if (id !== undefined && !assetIds.has(id)) {
+      errors.push(`${owner} references missing graphics asset "${id}".`);
+    }
+  };
+  requireAsset(project.tileset?.assetId ?? undefined, 'Tileset');
+  requireAsset(project.playfield?.assetId ?? undefined, 'Playfield');
+  for (const map of project.backgrounds?.maps ?? []) {
+    requireAsset(map.assetId ?? map.asset?.id, `Background map "${map.id}"`);
+    for (const cell of map.cells) {
+      if (cell === null) continue;
+      const key = parseLogicalTileKey(cell.logicalKey);
+      if (key !== null) requireAsset(key.assetId, `Background map "${map.id}"`);
+    }
+  }
+  for (const animation of project.animation?.animations ?? []) {
+    requireAsset(animation.assetId ?? undefined, `Animation "${animation.id}"`);
+  }
+  for (const context of graphics.renderContexts) {
+    for (const mapId of context.mapIds) {
+      if (!mapIds.has(mapId)) {
+        errors.push(
+          `Render context "${context.id}" references missing map "${mapId}".`,
+        );
+      }
+    }
+    for (const animationId of context.animationIds) {
+      if (!animationIds.has(animationId)) {
+        errors.push(
+          `Render context "${context.id}" references missing animation "${animationId}".`,
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+function sourceFromAssetReference(
+  reference: ProjectAssetReference,
+): ProjectAssetSource {
+  return {
+    path: reference.path,
+    ...(reference.name !== undefined ? { name: reference.name } : {}),
+    ...(reference.sourceKind !== undefined
+      ? { sourceKind: reference.sourceKind }
+      : {}),
+    ...(reference.dataUrl !== undefined ? { dataUrl: reference.dataUrl } : {}),
+  };
+}
+
+function legacyLogicalTileSource(
+  reference: ProjectAssetReference | null,
+  quantization: QuantizationSettings,
+  paletteBank: 'background' | 'sprite',
+  paletteAssignments?: readonly number[],
+  pixelOverrides?: GraphicsPixelOverrides,
+): ProjectLogicalTileSource {
+  const sourceKind = reference?.sourceKind;
+  const decodedChr = sourceKind === 'chr' || sourceKind === 'nes';
+  return {
+    decoding: decodedChr ? 'nes-2bpp' : 'png-indexed',
+    quantization: decodedChr ? null : quantization,
+    paletteBank: decodedChr ? null : paletteBank,
+    ...(paletteAssignments !== undefined ? { paletteAssignments } : {}),
+    ...(pixelOverrides !== undefined ? { pixelOverrides } : {}),
+  };
+}
+
+function dataUrlByteLength(dataUrl: string | undefined): number | null {
+  if (dataUrl === undefined) return null;
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0 || !/;base64$/i.test(dataUrl.slice(0, comma))) return null;
+  const payload = dataUrl.slice(comma + 1).replace(/\s/g, '');
+  if (payload.length === 0) return 0;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) return null;
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+  return Math.floor((payload.length * 3) / 4) - padding;
+}
+
+function migrateLegacyProjectGraphics(
+  project: StudioProjectData,
+): ProjectGraphicsConfiguration {
+  const assets = new Map<ProjectAssetId, ProjectGraphicsAsset>();
+  const register = (asset: ProjectGraphicsAsset): void => {
+    const existing = assets.get(asset.id);
+    if (existing === undefined) {
+      assets.set(asset.id, asset);
+      return;
+    }
+    if (JSON.stringify(existing) !== JSON.stringify(asset)) {
+      throw new Error(
+        `Legacy project uses asset ID "${asset.id}" for conflicting graphics definitions.`,
+      );
+    }
+  };
+  const registerReference = (
+    reference: ProjectAssetReference | null | undefined,
+    kind: Exclude<ProjectAssetKind, 'base-chr'>,
+    name: string,
+    logicalTiles: ProjectLogicalTileSource,
+    secondaryKey?: string,
+    explicitId?: ProjectAssetId | null,
+  ): ProjectAssetId | null => {
+    if (reference === null || reference === undefined) return null;
+    if (explicitId && reference.id && explicitId !== reference.id) {
+      throw new Error(`${name} has conflicting assetId and asset.id values.`);
+    }
+    const id = normalizeProjectAssetId(
+      explicitId ?? reference.id,
+      kind,
+      secondaryKey,
+    );
+    register({
+      id,
+      kind,
+      name: reference.name ?? name,
+      source: sourceFromAssetReference(reference),
+      logicalTiles,
+    });
+    return id;
+  };
+
+  registerReference(
+    project.tileset?.asset,
+    'tileset-image',
+    'Tileset Image',
+    legacyLogicalTileSource(
+      project.tileset?.asset ?? null,
+      project.settings.quantization,
+      'background',
+      project.tileset?.paletteAssignments,
+      project.tileset?.pixelOverrides
+        ? {
+            kind: 'indexed-image',
+            values: project.tileset.pixelOverrides,
+          }
+        : undefined,
+    ),
+    undefined,
+    project.tileset?.assetId,
+  );
+  registerReference(
+    project.playfield?.asset,
+    'playfield-image',
+    'Playfield Image',
+    legacyLogicalTileSource(
+      project.playfield?.asset ?? null,
+      project.settings.quantization,
+      'background',
+      project.playfield?.paletteAssignments,
+      project.playfield?.pixelOverrides
+        ? {
+            kind: 'indexed-image',
+            values: project.playfield.pixelOverrides,
+          }
+        : undefined,
+    ),
+    undefined,
+    project.playfield?.assetId,
+  );
+
+  for (const map of project.backgrounds?.maps ?? []) {
+    if (map.assetId && map.asset?.id && map.assetId !== map.asset.id) {
+      throw new Error(
+        `Background map "${map.id}" has conflicting assetId and asset.id values.`,
+      );
+    }
+    if (map.asset) {
+      registerReference(
+        map.asset,
+        'background-image',
+        map.name,
+        legacyLogicalTileSource(
+          map.asset,
+          project.settings.quantization,
+          'background',
+        ),
+        map.id,
+        map.assetId,
+      );
+    } else if (map.assetId) {
+      register({
+        id: map.assetId,
+        kind: 'background-image',
+        name: map.name,
+        source: null,
+        logicalTiles: legacyLogicalTileSource(
+          null,
+          project.settings.quantization,
+          'background',
+        ),
+      });
+    }
+  }
+
+  for (const animation of project.animation?.animations ?? []) {
+    const quantization = normalizeQuantizationSettings({
+      ...project.settings.quantization,
+      quantizationMode:
+        animation.quantizationMode ?? project.animation?.quantizationMode,
+      ditheringMode:
+        animation.ditheringMode ?? project.animation?.ditheringMode,
+    });
+    registerReference(
+      animation.asset,
+      'spritesheet',
+      animation.name,
+      legacyLogicalTileSource(
+        animation.asset,
+        quantization,
+        'sprite',
+        undefined,
+        animation.pixelOverrides
+          ? { kind: 'sparse-tiles', values: animation.pixelOverrides }
+          : undefined,
+      ),
+      animation.id,
+      animation.assetId,
+    );
+  }
+
+  for (const map of project.backgrounds?.maps ?? []) {
+    for (const cell of map.cells) {
+      if (cell === null) continue;
+      const parsed = parseLogicalTileKey(cell.logicalKey);
+      if (parsed === null) {
+        throw new Error(
+          `Background map "${map.id}" contains invalid LogicalTileKey "${cell.logicalKey}".`,
+        );
+      }
+      if (!assets.has(parsed.assetId)) {
+        register({
+          id: parsed.assetId,
+          kind: 'background-image',
+          name: parsed.assetId,
+          source: null,
+          logicalTiles: legacyLogicalTileSource(
+            null,
+            project.settings.quantization,
+            'background',
+          ),
+        });
+      }
+    }
+  }
+
+  const legacyBase = project.animation?.destinationChr ?? null;
+  const embeddedBaseLength = dataUrlByteLength(legacyBase?.dataUrl);
+  const baseChr = legacyBase
+    ? createProjectBaseChr({
+        assetId: normalizeProjectAssetId(legacyBase.id, 'base-chr'),
+        source: sourceFromAssetReference(legacyBase),
+        byteLength:
+          embeddedBaseLength !== null &&
+          embeddedBaseLength <= 8192 &&
+          embeddedBaseLength % 16 === 0
+            ? embeddedBaseLength
+            : null,
+        shortFilePatternTable:
+          project.animation?.destinationPatternTable === 1 ? 1 : 0,
+      })
+    : createEmptyProjectBaseChr();
+
+  const animationIds = (project.animation?.animations ?? []).map(
+    (animation) => animation.id,
+  );
+  if (new Set(animationIds).size !== animationIds.length) {
+    throw new Error('Legacy project contains duplicate animation IDs.');
+  }
+  const maps = project.backgrounds?.maps ?? [];
+  const mapIds = maps.map((map) => map.id);
+  if (new Set(mapIds).size !== mapIds.length) {
+    throw new Error('Legacy project contains duplicate Background map IDs.');
+  }
+  const spritePatternTable = project.animation?.patternTable === 1 ? 1 : 0;
+  const renderContexts: ProjectRenderContext[] =
+    maps.length > 0
+      ? maps.map((map) => ({
+          id: `render-context-${map.id}`,
+          name: `${map.name} Render Context`,
+          backgroundPatternTable: map.patternTable,
+          spriteMode: '8x8',
+          spritePatternTable,
+          mapIds: [map.id],
+          animationIds: [...animationIds],
+        }))
+      : [
+          {
+            ...createDefaultRenderContext(animationIds),
+            spritePatternTable,
+          },
+        ];
+
+  const graphics: ProjectGraphicsConfiguration = {
+    profile: PROJECT_GRAPHICS_PROFILE,
+    assets: [...assets.values()],
+    baseChr,
+    renderContexts,
+  };
+  const errors = validateProjectGraphicsConfiguration(graphics);
+  if (errors.length > 0) throw new Error(errors.join(' '));
+  return graphics;
+}
+
+function referenceFromGraphicsAsset(
+  asset: ProjectGraphicsAsset | undefined,
+): ProjectAssetReference | null {
+  if (asset?.source === null || asset === undefined) return null;
+  return { id: asset.id, ...asset.source };
+}
+
+function projectGraphicsCompatibilityProjection(
+  project: StudioProject,
+): StudioProject {
+  const assets = new Map(
+    project.graphics.assets.map((asset) => [asset.id, asset] as const),
+  );
+  const resolveLinkedAsset = (
+    reference: ProjectAssetReference | null | undefined,
+    explicitId?: string,
+    fallbackKind?: Exclude<ProjectAssetKind, 'base-chr'>,
+    secondaryKey?: string,
+  ): ProjectGraphicsAsset | undefined => {
+    const rawId = explicitId ?? reference?.id;
+    const id =
+      rawId === undefined && fallbackKind !== undefined
+        ? normalizeProjectAssetId(undefined, fallbackKind, secondaryKey)
+        : rawId;
+    return id === undefined ? undefined : assets.get(id);
+  };
+  const indexedOverrides = (
+    asset: ProjectGraphicsAsset | undefined,
+  ): readonly number[] | undefined =>
+    asset?.logicalTiles.pixelOverrides?.kind === 'indexed-image'
+      ? asset.logicalTiles.pixelOverrides.values
+      : undefined;
+
+  const tilesetAsset = resolveLinkedAsset(
+    project.tileset?.asset,
+    project.tileset?.assetId ?? undefined,
+    'tileset-image',
+  );
+  const playfieldAsset = resolveLinkedAsset(
+    project.playfield?.asset,
+    project.playfield?.assetId ?? undefined,
+    'playfield-image',
+  );
+  const contextsByMap = new Map<string, ProjectRenderContext>();
+  for (const context of project.graphics.renderContexts) {
+    for (const mapId of context.mapIds) {
+      if (!contextsByMap.has(mapId)) contextsByMap.set(mapId, context);
+    }
+  }
+  const defaultContext = project.graphics.renderContexts[0];
+
+  const animation = project.animation
+    ? {
+        ...project.animation,
+        patternTable:
+          defaultContext?.spritePatternTable ?? project.animation.patternTable,
+        destinationPatternTable: project.graphics.baseChr.shortFilePatternTable,
+        destinationChr:
+          project.graphics.baseChr.assetId === null ||
+          project.graphics.baseChr.source === null
+            ? null
+            : {
+                id: project.graphics.baseChr.assetId,
+                ...project.graphics.baseChr.source,
+              },
+        animations: project.animation.animations.map((animationItem) => {
+          const asset = resolveLinkedAsset(
+            animationItem.asset,
+            animationItem.assetId ?? undefined,
+            'spritesheet',
+            animationItem.id,
+          );
+          const sparseOverrides =
+            asset?.logicalTiles.pixelOverrides?.kind === 'sparse-tiles'
+              ? asset.logicalTiles.pixelOverrides.values
+              : undefined;
+          return {
+            ...animationItem,
+            ...(asset !== undefined
+              ? {
+                  assetId: asset.id,
+                  asset: referenceFromGraphicsAsset(asset),
+                }
+              : {}),
+            ...(asset?.logicalTiles.quantization !== null &&
+            asset?.logicalTiles.quantization !== undefined
+              ? {
+                  quantizationMode:
+                    asset.logicalTiles.quantization.quantizationMode,
+                  ditheringMode: asset.logicalTiles.quantization.ditheringMode,
+                }
+              : {}),
+            ...(sparseOverrides !== undefined
+              ? { pixelOverrides: sparseOverrides }
+              : {}),
+          };
+        }),
+      }
+    : undefined;
+
+  return {
+    ...project,
+    ...(project.tileset
+      ? {
+          tileset: {
+            ...project.tileset,
+            ...(tilesetAsset !== undefined
+              ? {
+                  assetId: tilesetAsset.id,
+                  asset: referenceFromGraphicsAsset(tilesetAsset),
+                }
+              : {}),
+            ...(tilesetAsset?.logicalTiles.paletteAssignments !== undefined
+              ? {
+                  paletteAssignments:
+                    tilesetAsset.logicalTiles.paletteAssignments,
+                }
+              : {}),
+            ...(indexedOverrides(tilesetAsset) !== undefined
+              ? { pixelOverrides: indexedOverrides(tilesetAsset) }
+              : {}),
+          },
+        }
+      : {}),
+    ...(project.playfield
+      ? {
+          playfield: {
+            ...project.playfield,
+            ...(playfieldAsset !== undefined
+              ? {
+                  assetId: playfieldAsset.id,
+                  asset: referenceFromGraphicsAsset(playfieldAsset),
+                }
+              : {}),
+            ...(playfieldAsset?.logicalTiles.paletteAssignments !== undefined
+              ? {
+                  paletteAssignments:
+                    playfieldAsset.logicalTiles.paletteAssignments,
+                }
+              : {}),
+            ...(indexedOverrides(playfieldAsset) !== undefined
+              ? { pixelOverrides: indexedOverrides(playfieldAsset) }
+              : {}),
+          },
+        }
+      : {}),
+    ...(project.backgrounds
+      ? {
+          backgrounds: {
+            ...project.backgrounds,
+            maps: project.backgrounds.maps.map((map) => {
+              const asset = resolveLinkedAsset(
+                map.asset,
+                map.assetId,
+                'background-image',
+                map.id,
+              );
+              return {
+                ...map,
+                patternTable:
+                  contextsByMap.get(map.id)?.backgroundPatternTable ??
+                  map.patternTable,
+                ...(asset === undefined
+                  ? {}
+                  : {
+                      assetId: asset.id,
+                      asset: referenceFromGraphicsAsset(asset),
+                    }),
+              };
+            }),
+          },
+        }
+      : {}),
+    ...(animation !== undefined ? { animation } : {}),
+  };
+}
+
+/**
+ * Canonical runtime-to-persistence adapter for legacy editors.
+ * Version 2 parsing never uses this direction; it projects aliases from graphics.
+ */
+export function canonicalizeProjectGraphics(
+  project: StudioProject,
+): StudioProject {
+  const projectData: StudioProjectData = project;
+  const existing = project.graphics;
+  const derived = migrateLegacyProjectGraphics(projectData);
+  const linkedIds = new Set(derived.assets.map((asset) => asset.id));
+  const assets = [
+    ...derived.assets,
+    ...existing.assets.filter((asset) => !linkedIds.has(asset.id)),
+  ];
+  const legacyBaseReference = project.animation?.destinationChr ?? null;
+  const existingBaseReference =
+    existing.baseChr.assetId === null || existing.baseChr.source === null
+      ? null
+      : {
+          id: existing.baseChr.assetId,
+          ...existing.baseChr.source,
+        };
+  const baseChrUnchanged =
+    JSON.stringify(legacyBaseReference) ===
+      JSON.stringify(existingBaseReference) &&
+    (project.animation?.destinationPatternTable ?? 0) ===
+      existing.baseChr.shortFilePatternTable;
+
+  const existingContexts = existing.renderContexts;
+  const derivedByMap = new Map(
+    derived.renderContexts.flatMap((context) =>
+      context.mapIds.map((mapId) => [mapId, context] as const),
+    ),
+  );
+  let renderContexts: ProjectRenderContext[] = existingContexts.map(
+    (context) => ({
+      ...context,
+      mapIds: context.mapIds.filter((mapId) =>
+        (project.backgrounds?.maps ?? []).some((map) => map.id === mapId),
+      ),
+      animationIds: context.animationIds.filter((animationId) =>
+        (project.animation?.animations ?? []).some(
+          (animation) => animation.id === animationId,
+        ),
+      ),
+    }),
+  );
+  for (const map of project.backgrounds?.maps ?? []) {
+    if (renderContexts.some((context) => context.mapIds.includes(map.id))) {
+      const projectedPatternTable = existingContexts.find((context) =>
+        context.mapIds.includes(map.id),
+      )?.backgroundPatternTable;
+      if (
+        projectedPatternTable !== undefined &&
+        projectedPatternTable !== map.patternTable
+      ) {
+        renderContexts = renderContexts.map((context) =>
+          context.mapIds.includes(map.id)
+            ? { ...context, backgroundPatternTable: map.patternTable }
+            : context,
+        );
+      }
+    } else {
+      const migratedContext = derivedByMap.get(map.id);
+      if (migratedContext !== undefined) renderContexts.push(migratedContext);
+    }
+  }
+  const projectedSpritePatternTable = existingContexts[0]?.spritePatternTable;
+  if (
+    project.animation &&
+    projectedSpritePatternTable !== undefined &&
+    projectedSpritePatternTable !== project.animation.patternTable
+  ) {
+    renderContexts = renderContexts.map((context) => ({
+      ...context,
+      spritePatternTable: project.animation?.patternTable ?? 1,
+    }));
+  }
+  if (renderContexts.length === 0) renderContexts = [...derived.renderContexts];
+
+  const canonical: StudioProject = {
+    ...project,
+    formatVersion: CURRENT_PROJECT_FORMAT_VERSION,
+    graphics: {
+      profile: existing.profile,
+      assets,
+      baseChr: baseChrUnchanged ? existing.baseChr : derived.baseChr,
+      renderContexts,
+    },
+  };
+  const errors = [...validateProjectGraphicsConfiguration(canonical.graphics)];
+  errors.push(
+    ...validateProjectGraphicsReferences(projectData, canonical.graphics),
+  );
+  if (errors.length > 0) throw new Error(errors.join(' '));
+  return projectGraphicsCompatibilityProjection(canonical);
+}
+
+function parseProjectAssetSource(value: unknown): ProjectAssetSource | null {
+  if (value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('graphics asset source must be an object or null.');
+  }
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.path !== 'string') {
+    throw new Error('graphics asset source must contain a path.');
+  }
+  if ('id' in raw) {
+    throw new Error(
+      'graphics asset source must not contain a second asset ID.',
+    );
+  }
+  return {
+    path: normalizePath(raw.path),
+    ...(typeof raw.name === 'string' ? { name: raw.name } : {}),
+    ...(raw.sourceKind === 'png' ||
+    raw.sourceKind === 'chr' ||
+    raw.sourceKind === 'nes'
+      ? { sourceKind: raw.sourceKind }
+      : {}),
+    ...(typeof raw.dataUrl === 'string' ? { dataUrl: raw.dataUrl } : {}),
+  };
+}
+
+function parseProjectGraphicsConfiguration(
+  value: unknown,
+): ProjectGraphicsConfiguration {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('formatVersion 2 requires a graphics configuration.');
+  }
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.profile !== 'object' ||
+    raw.profile === null ||
+    Array.isArray(raw.profile)
+  ) {
+    throw new Error('graphics.profile must identify the supported profile.');
+  }
+  const profile = raw.profile as Record<string, unknown>;
+  if (
+    profile.mapper !== PROJECT_GRAPHICS_PROFILE.mapper ||
+    profile.chrMemory !== PROJECT_GRAPHICS_PROFILE.chrMemory ||
+    profile.spriteMode !== PROJECT_GRAPHICS_PROFILE.spriteMode ||
+    profile.patternTableMode !== PROJECT_GRAPHICS_PROFILE.patternTableMode
+  ) {
+    throw new Error(
+      'graphics.profile is not the supported NROM static-CHR profile.',
+    );
+  }
+  const rawAssets = Array.isArray(raw.assets) ? raw.assets : null;
+  const rawContexts = Array.isArray(raw.renderContexts)
+    ? raw.renderContexts
+    : null;
+  if (rawAssets === null || rawContexts === null) {
+    throw new Error('graphics assets and renderContexts must be arrays.');
+  }
+
+  const assets: ProjectGraphicsAsset[] = rawAssets.map((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new Error('graphics asset entries must be objects.');
+    }
+    const asset = item as Record<string, unknown>;
+    if (
+      typeof asset.id !== 'string' ||
+      asset.id.trim() === '' ||
+      typeof asset.name !== 'string' ||
+      asset.name.trim() === '' ||
+      (asset.kind !== 'spritesheet' &&
+        asset.kind !== 'tileset-image' &&
+        asset.kind !== 'playfield-image' &&
+        asset.kind !== 'background-image')
+    ) {
+      throw new Error('graphics asset identity or kind is invalid.');
+    }
+    if (
+      typeof asset.logicalTiles !== 'object' ||
+      asset.logicalTiles === null ||
+      Array.isArray(asset.logicalTiles)
+    ) {
+      throw new Error(
+        `Graphics asset "${asset.id}" lacks logical tile inputs.`,
+      );
+    }
+    const rawTiles = asset.logicalTiles as Record<string, unknown>;
+    if (
+      rawTiles.decoding !== 'png-indexed' &&
+      rawTiles.decoding !== 'nes-2bpp'
+    ) {
+      throw new Error(`Graphics asset "${asset.id}" has invalid decoding.`);
+    }
+    const pixelOverrides = parseGraphicsPixelOverrides(rawTiles.pixelOverrides);
+    const paletteAssignments = parseNumberArray(rawTiles.paletteAssignments);
+    const logicalTiles: ProjectLogicalTileSource = {
+      decoding: rawTiles.decoding,
+      quantization:
+        rawTiles.quantization === null
+          ? null
+          : normalizeQuantizationSettings(rawTiles.quantization),
+      paletteBank:
+        rawTiles.paletteBank === 'background' ||
+        rawTiles.paletteBank === 'sprite'
+          ? rawTiles.paletteBank
+          : null,
+      ...(paletteAssignments !== undefined ? { paletteAssignments } : {}),
+      ...(pixelOverrides !== undefined ? { pixelOverrides } : {}),
+    };
+    return {
+      id: asset.id.trim(),
+      kind: asset.kind,
+      name: asset.name.trim(),
+      source: parseProjectAssetSource(asset.source),
+      logicalTiles,
+    };
+  });
+
+  if (
+    typeof raw.baseChr !== 'object' ||
+    raw.baseChr === null ||
+    Array.isArray(raw.baseChr)
+  ) {
+    throw new Error('graphics.baseChr must be an object.');
+  }
+  const rawBase = raw.baseChr as Record<string, unknown>;
+  const rawRanges = Array.isArray(rawBase.slotPolicies)
+    ? rawBase.slotPolicies
+    : [];
+  if (
+    rawBase.assetId !== null &&
+    (typeof rawBase.assetId !== 'string' || rawBase.assetId.trim() === '')
+  ) {
+    throw new Error('graphics.baseChr.assetId must be a string or null.');
+  }
+  if (
+    rawBase.byteLength !== null &&
+    (typeof rawBase.byteLength !== 'number' ||
+      !Number.isInteger(rawBase.byteLength) ||
+      rawBase.byteLength < 0 ||
+      rawBase.byteLength > 8192 ||
+      rawBase.byteLength % 16 !== 0)
+  ) {
+    throw new Error('graphics.baseChr.byteLength is invalid.');
+  }
+  if (
+    rawBase.shortFilePatternTable !== 0 &&
+    rawBase.shortFilePatternTable !== 1
+  ) {
+    throw new Error('graphics.baseChr.shortFilePatternTable must be 0 or 1.');
+  }
+  const baseChr: ProjectBaseChr = {
+    assetId:
+      typeof rawBase.assetId === 'string' && rawBase.assetId.trim() !== ''
+        ? rawBase.assetId.trim()
+        : null,
+    source: parseProjectAssetSource(rawBase.source),
+    byteLength:
+      rawBase.byteLength === null
+        ? null
+        : typeof rawBase.byteLength === 'number'
+          ? rawBase.byteLength
+          : Number.NaN,
+    shortFilePatternTable: rawBase.shortFilePatternTable === 1 ? 1 : 0,
+    slotPolicies: rawRanges.map((item) => {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        throw new Error('Base CHR slot policy entries must be objects.');
+      }
+      const range = item as Record<string, unknown>;
+      if (
+        (range.occupancy !== 'available' &&
+          range.occupancy !== 'occupied' &&
+          range.occupancy !== 'unknown') ||
+        (range.writability !== 'writable' && range.writability !== 'locked') ||
+        (range.provenance !== 'none' &&
+          range.provenance !== 'imported-base-chr' &&
+          range.provenance !== 'pending-source')
+      ) {
+        throw new Error('Base CHR slot policy semantics are invalid.');
+      }
+      return {
+        startSlot:
+          typeof range.startSlot === 'number' ? range.startSlot : Number.NaN,
+        endSlot: typeof range.endSlot === 'number' ? range.endSlot : Number.NaN,
+        occupancy: range.occupancy,
+        writability: range.writability,
+        ownerAssetId:
+          typeof range.ownerAssetId === 'string' &&
+          range.ownerAssetId.trim() !== ''
+            ? range.ownerAssetId.trim()
+            : null,
+        provenance: range.provenance,
+      };
+    }),
+  };
+
+  const renderContexts: ProjectRenderContext[] = rawContexts.map((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new Error('Render context entries must be objects.');
+    }
+    const context = item as Record<string, unknown>;
+    if (
+      typeof context.id !== 'string' ||
+      context.id.trim() === '' ||
+      typeof context.name !== 'string' ||
+      context.name.trim() === '' ||
+      !Array.isArray(context.mapIds) ||
+      !Array.isArray(context.animationIds)
+    ) {
+      throw new Error('Render context identity or consumers are invalid.');
+    }
+    if (
+      (context.backgroundPatternTable !== 0 &&
+        context.backgroundPatternTable !== 1) ||
+      (context.spritePatternTable !== 0 && context.spritePatternTable !== 1) ||
+      context.spriteMode !== '8x8'
+    ) {
+      throw new Error(
+        'Render context Pattern Tables or sprite mode are invalid.',
+      );
+    }
+    return {
+      id: context.id.trim(),
+      name: context.name.trim(),
+      backgroundPatternTable: context.backgroundPatternTable === 1 ? 1 : 0,
+      spriteMode: '8x8',
+      spritePatternTable: context.spritePatternTable === 1 ? 1 : 0,
+      mapIds: context.mapIds.filter(
+        (entry): entry is string => typeof entry === 'string',
+      ),
+      animationIds: context.animationIds.filter(
+        (entry): entry is string => typeof entry === 'string',
+      ),
+    };
+  });
+  const graphics: ProjectGraphicsConfiguration = {
+    profile: PROJECT_GRAPHICS_PROFILE,
+    assets,
+    baseChr,
+    renderContexts,
+  };
+  const errors = validateProjectGraphicsConfiguration(graphics);
+  if (errors.length > 0) throw new Error(errors.join(' '));
+  return graphics;
+}
+
+function parseGraphicsPixelOverrides(
+  value: unknown,
+): GraphicsPixelOverrides | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  if (raw.kind === 'indexed-image' && Array.isArray(raw.values)) {
+    return {
+      kind: 'indexed-image',
+      values: raw.values.filter(
+        (entry): entry is number => typeof entry === 'number',
+      ),
+    };
+  }
+  if (raw.kind === 'sparse-tiles') {
+    const values = parseTilePixelOverrides(raw.values);
+    return values === undefined ? undefined : { kind: 'sparse-tiles', values };
+  }
+  return undefined;
 }
 
 function parseChrRegions(value: unknown): readonly ChrRegion[] | undefined {
@@ -957,6 +1984,15 @@ function parseAssetReference(
         ? raw.dataUrl
         : undefined,
   };
+}
+
+function parseConsumerAssetId(
+  value: unknown,
+  compatibilityReference: ProjectAssetReference | null,
+): ProjectAssetId | null {
+  return typeof value === 'string' && value.trim() !== ''
+    ? value.trim()
+    : (compatibilityReference?.id ?? null);
 }
 
 function parseNumberArray(value: unknown): number[] | undefined {

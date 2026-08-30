@@ -434,7 +434,7 @@ describe('Asset Lifecycle Reconciliation Engine', () => {
 
   it('8. Replacement introducing a new tile allocates through normal allocator', () => {
     const baseProject = createDefaultProject('Test', 'tileset');
-    expect(baseProject.formatVersion).toBe(1);
+    expect(baseProject.formatVersion).toBe(2);
   });
 
   it('9. Replacement that exceeds capacity fails safely without mutating canonical project state', () => {
@@ -1026,8 +1026,12 @@ describe('Spritesheet Reimport Full Pipeline (reconcileSpritesheetReimport & Iss
     expect(initialReimport.success).toBe(true);
     if (!initialReimport.success) return;
 
-    // CHR slot 0 has Pattern A
-    expect(initialReimport.animationModel.finalChr[0]).toBe(0xff); // bitplane 0 for color 1
+    const patternTableByteOffset =
+      (project.animation?.patternTable ?? 0) * 4096;
+    // The first slot in the configured Sprite Pattern Table has Pattern A.
+    expect(
+      initialReimport.animationModel.finalChr[patternTableByteOffset],
+    ).toBe(0xff); // bitplane 0 for color 1
     const stableAssetId = initialReimport.reconciliation.assetId;
 
     // Reimport new image with Pattern B (color 2)
@@ -1049,13 +1053,21 @@ describe('Spritesheet Reimport Full Pipeline (reconcileSpritesheetReimport & Iss
       getTestAnimationConfig(secondReimport.project).animations[0]?.asset?.id,
     ).toBe(stableAssetId);
 
-    // CHR slot 0 now has Pattern B (color 2: bitplane 0 = 0, bitplane 1 = 0xff)
-    expect(secondReimport.animationModel.finalChr[0]).toBe(0x00);
-    expect(secondReimport.animationModel.finalChr[8]).toBe(0xff);
+    // The same slot now has Pattern B (bitplane 0 = 0, bitplane 1 = 0xff).
+    expect(secondReimport.animationModel.finalChr[patternTableByteOffset]).toBe(
+      0x00,
+    );
+    expect(
+      secondReimport.animationModel.finalChr[patternTableByteOffset + 8],
+    ).toBe(0xff);
 
     // Mapping index has origin and usages
-    const slot0 = getPhysicalSlotAttribution(0, secondReimport.mappingIndex);
-    expect(slot0?.origin?.primaryAssetId).toBe(stableAssetId);
+    const firstSpriteSlot = (project.animation?.patternTable ?? 0) * 256;
+    const slot = getPhysicalSlotAttribution(
+      firstSpriteSlot,
+      secondReimport.mappingIndex,
+    );
+    expect(slot?.origin?.primaryAssetId).toBe(stableAssetId);
   });
 
   it('Scenario 2: Increasing image size expands frame availability and preserves valid keys', () => {
@@ -1704,6 +1716,7 @@ describe('Spritesheet Reimport Full Pipeline (reconcileSpritesheetReimport & Iss
     const rebuiltModel = buildAnimationProjectModel({
       name: reloadedProject.animation?.name ?? 'entity',
       symbolPrefix: reloadedProject.animation?.symbolPrefix ?? 'entity',
+      patternTable: reloadedProject.animation?.patternTable,
       animations: [
         {
           id: reloadedAnim.id,

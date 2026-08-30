@@ -14,6 +14,7 @@ import type { FrameDetectionResult } from '../core/frame-detection';
 import type { ProjectScenePreviewConfig } from '../core/scene-preview';
 import type {
   ProjectAssetReference,
+  ProjectGraphicsConfiguration,
   ProjectPlayfieldConfig,
   ProjectTilesetConfig,
 } from '../core/project';
@@ -106,6 +107,7 @@ export interface AnimationSettings {
 import type { ProjectBackgroundSettingsConfig } from '../core/project';
 
 export interface ProjectView {
+  readonly graphics: ProjectGraphicsConfiguration;
   readonly assetId?: string | null;
   readonly fileName: string | null;
   readonly sourceKind: SourceKind | null;

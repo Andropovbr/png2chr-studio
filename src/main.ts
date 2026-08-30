@@ -78,6 +78,7 @@ import { ImageAnalysisError, type IndexedImage, type Tile } from './core/types';
 import { quantizeImageToNes } from './core/image-quantization';
 import { readAndDecodePng, type PngLoadFailure } from './core/png-load';
 import {
+  createDefaultProjectGraphicsConfiguration,
   deserializeProject,
   findMissingAssets,
   serializeProject,
@@ -230,7 +231,7 @@ function createDefaultAnimationSettings(): AnimationSettings {
     colorIndices: new Uint8Array(),
     destinationChrName: null,
     destinationChr: new Uint8Array(),
-    patternTable: 0,
+    patternTable: 1,
     destinationPatternTable: 0,
   };
 }
@@ -247,7 +248,11 @@ const quantizationPreviewCache = new Map<
   readonly QuantizationPreview[]
 >();
 
+const initialAnimation = createDefaultAnimationSettings();
 let project: ProjectView = {
+  graphics: createDefaultProjectGraphicsConfiguration(
+    initialAnimation.animations.map((animation) => animation.id),
+  ),
   fileName: null,
   sourceKind: null,
   width: null,
@@ -277,7 +282,7 @@ let project: ProjectView = {
     randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
   },
   chrRegions: [],
-  animation: createDefaultAnimationSettings(),
+  animation: initialAnimation,
   scenePreview: { instances: [] },
   backgrounds: { activeMapId: null, maps: [] },
   quantizationSettings: loadQuantizationSettings(settingsStorage),
@@ -442,7 +447,11 @@ function handleNewProject(): void {
   quantizationPreviewCache.clear();
   resetAllTileHistories();
   const defaultPalettes = createDefaultPaletteDefinitions();
+  const defaultAnimation = createDefaultAnimationSettings();
   project = {
+    graphics: createDefaultProjectGraphicsConfiguration(
+      defaultAnimation.animations.map((animation) => animation.id),
+    ),
     fileName: null,
     sourceKind: null,
     width: null,
@@ -469,7 +478,7 @@ function handleNewProject(): void {
       randomPlayfieldFeatures: [...DEFAULT_RANDOM_PLAYFIELD_FEATURES],
     },
     chrRegions: [],
-    animation: createDefaultAnimationSettings(),
+    animation: defaultAnimation,
     scenePreview: { instances: [] },
     backgrounds: { activeMapId: null, maps: [] },
     quantizationSettings: loadQuantizationSettings(settingsStorage),

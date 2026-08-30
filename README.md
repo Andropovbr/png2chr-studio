@@ -53,6 +53,7 @@ Detailed technical documentation is available in the [`docs/`](docs/) directory:
 - [**Development Guide (`docs/desenvolvimento.md`)**](docs/desenvolvimento.md) — Prerequisites, local environment, tests, linting, formatting, coding standards, and CI pipeline.
 - [**Formats & Export Specification (`docs/formatos-e-exportacao.md`)**](docs/formatos-e-exportacao.md) — Binary layouts, file formats (PNG, CHR, iNES, `.nam`, `.atr`, `.pal`, `.col`, `.p2c`, JSON, cc65 C, ca65 ASM).
 - [**Project State Boundaries (`docs/project-state-boundaries.md`)**](docs/project-state-boundaries.md) — State segregation rules between persistable project data and transient workspace state.
+- [**Project Graphics Architecture (`docs/project-graphics-architecture.md`)**](docs/project-graphics-architecture.md) — Canonical graphics assets, Base CHR, render contexts, NROM profile, and v1-to-v2 migration contract.
 - [**Scene Final Audit (`docs/investigations/scene-multi-entity-preview-audit.md`)**](docs/investigations/scene-multi-entity-preview-audit.md) — Final architecture, regression coverage, migration checklist, and deferred responsibilities.
 - [**Stabilization Smoke Test (`docs/stabilization-smoke-test.md`)**](docs/stabilization-smoke-test.md) — Verification checklist and automated test counterparts.
 - [**Technical Change History (`docs/historico/`)**](docs/historico/README.md) — Architecture and format evolution log.
