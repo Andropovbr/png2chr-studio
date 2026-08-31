@@ -20,11 +20,13 @@ A ferramenta opera inteiramente no navegador do usuário (sem backend nem upload
    - Deduplicação exata e deduplicação com reconhecimento de espelhamentos horizontais e verticais (flip-aware).
    - Edição de pixels integrada e exportação de `.chr` e `.pal`.
 
-2. **Modo Playfield:**
-   - Criação e conversão de telas completas de 256×240 pixels (32×30 tiles).
+2. **Background Maps:**
+   - Criação e composição de telas completas de 256×240 pixels (32×30 tiles).
    - Validação de restrições do NES e geração de Nametable (`.nam`), Attribute Table (`.atr`) e Paletas (`.pal`).
-   - Editor de mapa de colisão com 11 tipos tipados e exportação de mapa empacotado (`.col`).
-   - Gerador procedural de telas de teste com plataformas, escadas e elementos decorativos.
+   - Colisão é dado opcional do mapa, com exportação independente em `.col`.
+   - Criação por PNG ou gerador procedural de telas de teste.
+   - Projetos Playfield legados são migrados para este workspace; nenhum fluxo
+     Playfield separado produz placement de CHR.
 
 3. **Modo Sprite Sheet / Animação:**
    - Configuração de múltiplas animações com spritesheets independentes.
@@ -37,7 +39,8 @@ A ferramenta opera inteiramente no navegador do usuário (sem backend nem upload
 4. **Modo Background Pipeline:**
    - Criação e composição de telas de background NES completas (32×30 tiles, 256×240 px).
    - Pintura de Attribute Table 16×16 px com seleção de subpaletas (0..3).
-   - Alocação determinística de CHR em Pattern Tables (PT0 / PT1) com deduplicação ExactMatch, preservação de Base CHR e respeito a CHR Reservations.
+   - Placement determinístico de CHR fornecido exclusivamente pelo compilador
+     gráfico do projeto, com preservação de Base CHR e respeito a CHR Reservations.
    - Exportadores para `.nam` (960 B), `.atr` (64 B), `.map` (1024 B), `.chr`, `.pal`, cc65 C (`.h`/`.c`) e ca65 ASM (`.inc`/`.s`).
 
 ---

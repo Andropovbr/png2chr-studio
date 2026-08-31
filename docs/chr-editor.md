@@ -43,7 +43,10 @@ Para slot reutilizado, o editor grava a origem lógica canônica registrada no
 manifesto e o inspetor lista todos os usos. A edição não separa consumidores
 silenciosamente. Reservas continuam política de alocação, não posse.
 
-- **Tileset e Playfield:** a edição atualiza `project.pixelOverrides` e recalcula os tiles derivados.
+- **Tileset:** a edição atualiza `project.pixelOverrides` e recalcula os tiles derivados.
+- **Background Maps:** o inspector mostra placement compilado, mas edição direta de
+  tile permanece bloqueada até existir uma mutação segura do override do asset
+  canônico; isso evita perda de alteração na próxima compilação.
 - **Animação:** a edição atualiza os overrides da spritesheet de origem e seus previews.
 - **CHR-Base:** os 16 bytes planares do slot são atualizados sem alterar os demais bytes.
 - **Slot vazio:** a primeira alteração materializa o slot em `destinationChr`. Editar PT1 expande uma base de 4 KiB para 8 KiB somente quando necessário.
@@ -64,7 +67,7 @@ No Inspetor de Tile do workspace **Memória CHR**, a seção **Origem e Uso do A
 - **Status Compartilhado:** Badge de destaque para tiles reutilizados, diferenciando compartilhamento interno (mesmo asset) e compartilhamento entre múltiplos assets do projeto.
 - **Usos no Projeto:** Lista estruturada de referências ativas:
   - **Animação:** Nome da animação, entidade, índice do quadro, índice do sprite, coordenadas e flags de espelhamento horizontal/vertical. Botão **Ir para origem** salta diretamente para o workspace de animação no quadro e animação corretos.
-  - **Playfield:** Posição (coluna, linha) e índice na nametable.
+  - **Background Map:** Posição (coluna, linha), mapa e índice na Nametable.
   - **Tileset:** Índice do tile e coordenadas fonte.
 - **Destacar Tiles do Asset:** Ação que aplica filtro de realce em todos os slots físicos pertencentes ao mesmo asset, com seletor correspondente na barra de ferramentas superior do visualizador CHR. O estado de realce é mantido em `WorkspaceState.chr.highlightedAssetId`.
 

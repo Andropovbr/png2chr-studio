@@ -27,6 +27,19 @@ The manifest is runtime-only. It is not written into `.p2c` files. Manifest
 objects and arrays are frozen; binary access returns a defensive copy of the
 compiled CHR image.
 
+## Consumer integration
+
+Background Map preview/inspection, CHR Memory ownership and tile navigation,
+Animation mapping/export previews, and Delivery all consume this one result
+when compilation succeeds. They must not run a second Background, Playfield,
+or Sprite CHR allocator to obtain physical slots. While compilation is
+unresolved or fails, placement-dependent facts remain unavailable; a raw Base
+CHR byte preview does not establish project placement.
+
+The historical Playfield runtime is migration input only. Its screen, palette,
+pixel-override, collision, and procedural data belong to the migrated
+Background Map; it has no production workspace or independent CHR output path.
+
 ## Deterministic allocation
 
 Compilation starts from Base CHR policy and bytes, then applies all Background

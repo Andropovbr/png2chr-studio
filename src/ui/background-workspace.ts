@@ -5,9 +5,9 @@ import {
   type BackgroundMapCell,
   type BackgroundMapDefinition,
   type BackgroundPatternTable,
-  type BackgroundProjectModel,
   type BackgroundMapReconciliationFact,
 } from '../core/background-model';
+import type { SpritePatternTable } from '../core/chr-pattern-table';
 import { type ProjectAsset, type ProjectAssetId } from '../core/asset-identity';
 import { NES_MASTER_PALETTE, type NesPaletteSet } from '../core/nes-palette';
 import {
@@ -31,7 +31,12 @@ export interface BackgroundWorkspaceOptions {
   readonly universalBackgroundColor: number;
   readonly availableAssets?: readonly ProjectAsset[];
   readonly assetTilesMap?: ReadonlyMap<ProjectAssetId, readonly Tile[]>;
-  readonly compiledModel?: BackgroundProjectModel | null;
+  /** Read-only placement and bytes supplied by project graphics compiler. */
+  readonly compiledModel?: {
+    readonly patternTable: SpritePatternTable;
+    readonly nametable: Uint8Array;
+    readonly finalChr: Uint8Array;
+  } | null;
   readonly reconciliationFacts?: readonly BackgroundMapReconciliationFact[];
   readonly state: BackgroundWorkspaceState;
   readonly onSelectMap: (mapId: string) => void;
