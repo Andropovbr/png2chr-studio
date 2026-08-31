@@ -443,6 +443,8 @@ const en = {
   chrWorkspaceGoToAnimation: 'Go to Animation Editor',
   chrWorkspaceGoToPalettes: 'Go to Palette Workspace',
   chrWorkspaceNoBaseChr: 'No Base CHR loaded (Fresh 8 KiB space)',
+  chrWorkspacePlacementUnavailable:
+    'Authoritative CHR layout unavailable: {reason}',
   chrWorkspaceBaseChrLoaded:
     'Base CHR: {name} ({size} bytes, {slots} slots, {occupied} occupied)',
   chrTileInspectorTitle: 'Tile Inspector',
@@ -1574,6 +1576,8 @@ const ptBr = {
   chrWorkspaceGoToAnimation: 'Ir para Editor de Animação',
   chrWorkspaceGoToPalettes: 'Ir para Workspace de Paletas',
   chrWorkspaceNoBaseChr: 'Nenhum CHR-base carregado (Espaço limpo de 8 KiB)',
+  chrWorkspacePlacementUnavailable:
+    'Layout CHR autoritativo indisponível: {reason}',
   chrWorkspaceBaseChrLoaded:
     'CHR-Base: {name} ({size} bytes, {slots} slots, {occupied} ocupados)',
   chrTileInspectorTitle: 'Inspetor de Tile',

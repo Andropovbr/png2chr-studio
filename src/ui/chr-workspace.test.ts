@@ -66,6 +66,7 @@ class MockElement {
   };
   open = false;
   tabIndex = -1;
+  lastCanvasImageData: Uint8ClampedArray | null = null;
   focus = vi.fn();
   scrollIntoView = vi.fn();
 
@@ -230,7 +231,9 @@ class MockElement {
           width: w,
           height: h,
         }),
-        putImageData: noop,
+        putImageData: (image: { data: Uint8ClampedArray }) => {
+          this.lastCanvasImageData = image.data.slice();
+        },
         drawImage: noop,
         fillRect: noop,
         strokeRect: noop,
@@ -1524,6 +1527,45 @@ describe('ChrWorkspace component', () => {
           ?.querySelector('[data-physical-index="1"]')
           ?.getAttribute('data-occupancy'),
       ).toBe('empty');
+    });
+
+    it('does not present runtime Base CHR bytes as a layout when compilation is unavailable', () => {
+      const baseChr = new Uint8Array(8192);
+      baseChr.fill(0xff, 0, 16);
+      const workspace = createChrWorkspace({
+        placementAvailable: false,
+        mode: 'animation',
+        animationModel: null,
+        baseChr,
+        baseChrName: 'game.chr',
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      expect(mockWs.querySelector('.chr-base-status-badge')?.textContent).toBe(
+        'Authoritative CHR layout unavailable: CHR placement and runtime backing are UNKNOWN because no compiler result is available.',
+      );
+      const pt0Card = mockWs.querySelector('[data-pattern-table="0"]');
+      expect(
+        pt0Card?.querySelector('.chr-pt-occupancy-badge')?.textContent,
+      ).toBe('0 / 256');
+      expect(
+        pt0Card
+          ?.querySelector('[data-physical-index="0"]')
+          ?.getAttribute('data-occupancy'),
+      ).toBe('empty');
+      const pt0Canvas = pt0Card?.querySelector(
+        '.chr-pt-canvas',
+      ) as MockElement | null;
+      const rendered = pt0Canvas?.lastCanvasImageData;
+      expect(rendered).not.toBeNull();
+      expect(rendered?.[0]).toBe(15);
+      expect(rendered?.[1]).toBe(22);
+      expect(rendered?.[2]).toBe(32);
     });
 
     it('accurately distinguishes an intentionally allocated blank tile (16 zero bytes) as project from free slots', () => {

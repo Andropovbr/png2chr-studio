@@ -76,6 +76,8 @@ export interface ChrWorkspaceOptions {
   readonly compiledGraphics?: CompiledProjectGraphics | null;
   /** False when compiler cannot establish project physical placement. */
   readonly placementAvailable?: boolean;
+  /** Compiler failure projected by application orchestration. */
+  readonly placementUnavailableReason?: string;
   readonly mode: ProjectMode;
   readonly animationModel: AnimationProjectModel | null;
   readonly playfieldNametable?: Uint8Array | null;
@@ -236,7 +238,9 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
       reusedImportedTiles: 0,
       newTileCount: 0,
       deduplicationSavings: 0,
-      finalChrBytes: padChrRom(options.baseChr ?? new Uint8Array()),
+      // Raw runtime/Base-CHR bytes do not establish a physical layout without
+      // a successful canonical compilation.
+      finalChrBytes: new Uint8Array(NES_CHR_ROM_SIZE),
       outputFileName: 'project.chr',
     };
   }
@@ -2068,7 +2072,22 @@ export function createChrWorkspace(
 
   const baseStatusBadge = document.createElement('div');
   baseStatusBadge.className = 'chr-base-status-badge';
-  if (options.baseChr) {
+  if (options.placementAvailable === false) {
+    baseStatusBadge.textContent = t('chrWorkspacePlacementUnavailable', {
+      reason:
+        options.placementUnavailableReason ?? t('deliveryCompilerUnknown'),
+    });
+  } else if (options.compiledGraphics && options.baseChr) {
+    const baseSlots = options.compiledGraphics.allocationManifest.filter(
+      (slot) => slot.state === 'base-chr',
+    ).length;
+    baseStatusBadge.textContent = t('chrWorkspaceBaseChrLoaded', {
+      name: options.baseChrName ?? 'base.chr',
+      size: options.baseChr.length,
+      slots: options.baseChr.length / 16,
+      occupied: baseSlots,
+    });
+  } else if (options.baseChr) {
     const baseOccupancy = analyzeBaseChrOccupancy(options.baseChr);
     baseStatusBadge.textContent = t('chrWorkspaceBaseChrLoaded', {
       name: options.baseChrName ?? 'base.chr',

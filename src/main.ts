@@ -3243,6 +3243,31 @@ function compileCurrentProjectGraphics(
     : { kind: 'failed-compilation', result };
 }
 
+function chrPlacementUnavailableReason(
+  compilation: DeliveryCompilationStatus,
+): string | undefined {
+  if (compilation.kind === 'compiled') return undefined;
+  if (compilation.kind === 'missing-assets') {
+    return t('deliveryCompilerMissingAsset', { assetId: compilation.assetId });
+  }
+  if (compilation.kind === 'unsupported-source') {
+    return t('deliveryCompilerUnsupportedSource', {
+      assetId: compilation.assetId,
+    });
+  }
+  if (compilation.kind === 'failed-compilation') {
+    return compilation.result.failures
+      .map((failure) =>
+        t('deliveryCompilerFailure', {
+          code: failure.code,
+          message: failure.message,
+        }),
+      )
+      .join(' ');
+  }
+  return t('deliveryCompilerUnknown');
+}
+
 /** Runtime source registry. IDs are explicit; absent assets remain unresolved. */
 function runtimeGraphicsAssetSources(
   currentProject: ProjectView,
@@ -3344,6 +3369,7 @@ function renderChrWorkspace(): void {
   const workspaceElement = createChrWorkspace({
     compiledGraphics,
     placementAvailable: compiledGraphics !== null,
+    placementUnavailableReason: chrPlacementUnavailableReason(compilation),
     mode: project.mode,
     animationModel: compiledAnimationModel,
     playfieldNametable: null,

@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyBackgroundMap } from '../core/background-model';
 import { createEmptyCollisionMap } from '../core/collision-encoder';
+import { createLogicalTileKey } from '../core/asset-identity';
+import { compileProjectGraphics } from '../core/project-graphics-compiler';
+import { decodeProjectGraphicsAssets } from '../core/project-graphics-assets';
 import {
   createDefaultProject,
   deserializeProject,
   serializeProject,
   type StudioProject,
 } from '../core/project';
+import { extractLogicalAnimationFrames } from '../core/metasprite-extraction';
+import type { IndexedImage } from '../core/types';
 import type { AnimationSettings } from './types';
 import {
   beginGraphicsSourceImport,
@@ -18,6 +23,20 @@ import {
 const encodeImage = (): string => 'data:image/png;base64,runtime-image';
 const encodeBytes = (bytes: Uint8Array): string =>
   Array.from(bytes, (byte) => String(byte)).join('-');
+
+function indexedAnimation(seed: number): IndexedImage {
+  return {
+    width: 8,
+    height: 8,
+    pixels: new Uint8Array(64).fill(seed),
+    colors: [
+      { red: 0, green: 0, blue: 0 },
+      { red: 255, green: 255, blue: 255 },
+    ],
+    transparentIndex: 0,
+    colorCount: 2,
+  };
+}
 
 function createAnimationRuntime(project: StudioProject): AnimationSettings {
   const animation = project.animation;
@@ -315,6 +334,191 @@ describe('runtime project persistence boundary', () => {
     );
     expect(second.backgrounds?.maps.map((map) => map.id)).toEqual(
       first.backgrounds?.maps.map((map) => map.id),
+    );
+  });
+
+  it('keeps explicit Base CHR policy and compiled placement coherent after load and runtime projection', () => {
+    const baseBytes = new Uint8Array(8192);
+    for (let slot = 0; slot < 21; slot += 1) {
+      baseBytes[slot * 16] = 0x80;
+    }
+    const dataUrl = `data:application/octet-stream;base64,${btoa(
+      String.fromCharCode(...baseBytes),
+    )}`;
+    const initial = createDefaultProject('Loaded animation', 'animation');
+    const firstAnimation = initial.animation?.animations[0];
+    if (!firstAnimation) {
+      throw new Error('Expected default animation.');
+    }
+    const assetIds = ['asset-hero', 'asset-enemy'] as const;
+    const persisted: StudioProject = {
+      ...initial,
+      graphics: {
+        ...initial.graphics,
+        baseChr: {
+          assetId: 'asset-base',
+          source: {
+            path: 'game.chr',
+            name: 'game.chr',
+            sourceKind: 'chr',
+            dataUrl,
+          },
+          byteLength: 8192,
+          shortFilePatternTable: 0,
+          slotPolicies: [
+            {
+              startSlot: 0,
+              endSlot: 20,
+              occupancy: 'occupied',
+              writability: 'locked',
+              ownerAssetId: 'asset-base',
+              provenance: 'imported-base-chr',
+            },
+            {
+              startSlot: 21,
+              endSlot: 511,
+              occupancy: 'available',
+              writability: 'writable',
+              ownerAssetId: null,
+              provenance: 'none',
+            },
+          ],
+        },
+        assets: assetIds.map((id) => ({
+          id,
+          kind: 'spritesheet' as const,
+          name: id,
+          source: null,
+          logicalTiles: {
+            decoding: 'png-indexed' as const,
+            quantization: null,
+            paletteBank: 'sprite' as const,
+          },
+        })),
+        renderContexts: [
+          {
+            id: 'context-sprites',
+            name: 'Sprites',
+            backgroundPatternTable: 1,
+            spriteMode: '8x8',
+            spritePatternTable: 0,
+            mapIds: [],
+            animationIds: ['anim-hero', 'anim-enemy'],
+          },
+        ],
+      },
+      animation: {
+        ...initial.animation,
+        patternTable: 0,
+        destinationChr: {
+          id: 'asset-base',
+          path: 'game.chr',
+          name: 'game.chr',
+          sourceKind: 'chr',
+          dataUrl,
+        },
+        animations: assetIds.map((assetId, index) => ({
+          ...firstAnimation,
+          id: index === 0 ? 'anim-hero' : 'anim-enemy',
+          name: assetId,
+          assetId,
+          asset: null,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDurations: [8],
+        })),
+      },
+    };
+    const loadedResult = deserializeProject(serializeProject(persisted));
+    expect(loadedResult.success).toBe(true);
+    if (!loadedResult.success) return;
+    const loaded = loadedResult.project;
+    expect(loaded.graphics.baseChr.slotPolicies).toEqual(
+      persisted.graphics.baseChr.slotPolicies,
+    );
+
+    const runtimeImages = assetIds.map((_, index) =>
+      indexedAnimation(index + 1),
+    );
+    const runtime = restoreProjectView(loaded, createRuntimeSource(loaded), {
+      ...createAnimationRuntime(loaded),
+      destinationChr: baseBytes,
+      animations: (loaded.animation?.animations ?? []).map(
+        (animation, index) => ({
+          ...animation,
+          source: {
+            assetId: animation.assetId ?? undefined,
+            fileName: `${animation.id}.png`,
+            sourceImage: {
+              width: 8,
+              height: 8,
+              data: new Uint8ClampedArray(8 * 8 * 4),
+            } as ImageData,
+            indexedImage: runtimeImages[index] ?? indexedAnimation(1),
+          },
+        }),
+      ),
+    });
+    const decoded = decodeProjectGraphicsAssets(
+      runtime.graphics,
+      runtime.animation.animations.flatMap((animation) =>
+        animation.source?.indexedImage && animation.source.assetId
+          ? [
+              {
+                assetId: animation.source.assetId,
+                indexedImage: animation.source.indexedImage,
+              },
+            ]
+          : [],
+      ),
+    );
+    expect(decoded.success).toBe(true);
+    if (!decoded.success) return;
+    const compiled = compileProjectGraphics({
+      graphics: runtime.graphics,
+      decodedAssets: decoded.assets,
+      backgroundMaps: [],
+      animationDemands: runtime.animation.animations.flatMap((animation) =>
+        animation.source?.indexedImage && animation.source.assetId
+          ? [
+              {
+                animationId: animation.id,
+                frames: extractLogicalAnimationFrames({
+                  image: animation.source.indexedImage,
+                  pixelOverrides: animation.pixelOverrides,
+                  frameIndices: animation.frameIndices,
+                  defaultDuration: animation.defaultDuration,
+                  frameDurations: animation.frameDurations,
+                  framePalettes: animation.framePalettes,
+                  paletteIndex: animation.paletteIndex,
+                  frameWidth: animation.frameWidth,
+                  frameHeight: animation.frameHeight,
+                  originX: animation.originX,
+                  originY: animation.originY,
+                  assetId: animation.source.assetId,
+                }),
+                flipDeduplication: runtime.animation.flipDeduplication,
+              },
+            ]
+          : [],
+      ),
+      baseChrBytes: runtime.animation.destinationChr,
+      chrRegions: runtime.chrRegions,
+    });
+    expect(compiled.success).toBe(true);
+    if (!compiled.success) return;
+    expect(
+      compiled.allocationManifest.filter((slot) => slot.state === 'base-chr'),
+    ).toHaveLength(21);
+    expect(
+      compiled.allocationManifest.filter((slot) => slot.state === 'project'),
+    ).toHaveLength(2);
+    expect(
+      compiled.logicalTilePlacements.map((placement) => placement.physicalSlot),
+    ).toEqual([21, 22]);
+    expect(createLogicalTileKey('asset-hero', 0, 0)).toBe(
+      compiled.logicalTilePlacements[0]?.logicalKey,
     );
   });
 
