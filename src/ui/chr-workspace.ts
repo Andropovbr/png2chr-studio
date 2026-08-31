@@ -172,8 +172,7 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
       manifest.filter(
         (slot) =>
           slot.patternTable === patternTable &&
-          slot.state !== 'available' &&
-          slot.state !== 'reserved',
+          (slot.state === 'project' || slot.state === 'base-chr'),
       ).length;
     const base = (patternTable: SpritePatternTable) =>
       manifest.filter(

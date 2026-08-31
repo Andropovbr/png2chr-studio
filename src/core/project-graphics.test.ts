@@ -5,6 +5,8 @@ import {
   deserializeProject,
   serializeProject,
 } from './project';
+import { createProjectBaseChr } from './project-graphics';
+import { compileProjectGraphics } from './project-graphics-compiler';
 
 function legacyProject(overrides: Record<string, unknown> = {}) {
   return {
@@ -208,8 +210,8 @@ describe('project graphics architecture', () => {
     });
   });
 
-  it('round-trips Base CHR occupancy metadata independently from zero bytes', () => {
-    const zeroBase = btoa('\0'.repeat(4096));
+  it('migrates a legacy padded destination envelope as unknown instead of imported Base CHR', () => {
+    const paddedEnvelope = btoa('\0'.repeat(8192));
     const result = deserializeProject(
       JSON.stringify(
         legacyProject({
@@ -219,7 +221,7 @@ describe('project graphics architecture', () => {
               id: 'asset-base-font',
               path: 'font.chr',
               sourceKind: 'chr',
-              dataUrl: `data:application/octet-stream;base64,${zeroBase}`,
+              dataUrl: `data:application/octet-stream;base64,${paddedEnvelope}`,
             },
             animations: [],
           },
@@ -228,15 +230,64 @@ describe('project graphics architecture', () => {
     );
     expect(result.success).toBe(true);
     if (!result.success) return;
+    expect(result.project.graphics.baseChr).toMatchObject({
+      byteLength: null,
+      slotPolicies: [
+        {
+          startSlot: 0,
+          endSlot: 511,
+          occupancy: 'unknown',
+          writability: 'locked',
+          ownerAssetId: 'asset-base-font',
+          provenance: 'pending-source',
+        },
+      ],
+    });
+    expect(
+      compileProjectGraphics({
+        graphics: result.project.graphics,
+        decodedAssets: [],
+        backgroundMaps: [],
+        animationDemands: [],
+      }),
+    ).toMatchObject({
+      success: false,
+      failures: [{ code: 'unresolved-base-chr' }],
+    });
+  });
+
+  it('round-trips explicitly declared full Base CHR occupancy independently from zero bytes', () => {
+    const project = createDefaultProject();
+    const baseChr = createProjectBaseChr({
+      assetId: 'asset-base-font',
+      source: { path: 'font.chr', sourceKind: 'chr' },
+      byteLength: 8192,
+      shortFilePatternTable: 0,
+    });
+    const result = deserializeProject(
+      serializeProject({
+        ...project,
+        graphics: { ...project.graphics, baseChr },
+        ...(project.animation
+          ? {
+              animation: {
+                ...project.animation,
+                destinationChr: {
+                  id: 'asset-base-font',
+                  path: 'font.chr',
+                  sourceKind: 'chr',
+                  dataUrl: `data:application/octet-stream;base64,${btoa('\0'.repeat(8192))}`,
+                },
+              },
+            }
+          : {}),
+      }),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
     expect(result.project.graphics.baseChr.slotPolicies).toEqual([
       expect.objectContaining({
         startSlot: 0,
-        endSlot: 255,
-        occupancy: 'available',
-        writability: 'writable',
-      }),
-      expect.objectContaining({
-        startSlot: 256,
         endSlot: 511,
         occupancy: 'occupied',
         writability: 'locked',

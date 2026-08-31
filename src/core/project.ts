@@ -1181,6 +1181,20 @@ function sourceFromAssetReference(
   };
 }
 
+/** Runtime aliases may embed compiler output bytes; Base CHR policy owns occupancy. */
+function sameBaseChrSource(
+  left: ProjectAssetReference | null,
+  right: ProjectAssetReference | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  return (
+    left.id === right.id &&
+    left.path === right.path &&
+    left.name === right.name &&
+    left.sourceKind === right.sourceKind
+  );
+}
+
 function legacyLogicalTileSource(
   reference: ProjectAssetReference | null,
   quantization: QuantizationSettings,
@@ -1197,17 +1211,6 @@ function legacyLogicalTileSource(
     ...(paletteAssignments !== undefined ? { paletteAssignments } : {}),
     ...(pixelOverrides !== undefined ? { pixelOverrides } : {}),
   };
-}
-
-function dataUrlByteLength(dataUrl: string | undefined): number | null {
-  if (dataUrl === undefined) return null;
-  const comma = dataUrl.indexOf(',');
-  if (comma < 0 || !/;base64$/i.test(dataUrl.slice(0, comma))) return null;
-  const payload = dataUrl.slice(comma + 1).replace(/\s/g, '');
-  if (payload.length === 0) return 0;
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) return null;
-  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
-  return Math.floor((payload.length * 3) / 4) - padding;
 }
 
 function migrateLegacyProjectGraphics(
@@ -1378,17 +1381,14 @@ function migrateLegacyProjectGraphics(
   }
 
   const legacyBase = project.animation?.destinationChr ?? null;
-  const embeddedBaseLength = dataUrlByteLength(legacyBase?.dataUrl);
   const baseChr = legacyBase
     ? createProjectBaseChr({
         assetId: normalizeProjectAssetId(legacyBase.id, 'base-chr'),
         source: sourceFromAssetReference(legacyBase),
-        byteLength:
-          embeddedBaseLength !== null &&
-          embeddedBaseLength <= 8192 &&
-          embeddedBaseLength % 16 === 0
-            ? embeddedBaseLength
-            : null,
+        // Version 1 recorded bytes but no occupancy policy. Runtime saves could
+        // embed the compiler's padded 8 KiB destination envelope, so its byte
+        // length cannot safely establish imported Base CHR occupancy.
+        byteLength: null,
         shortFilePatternTable:
           project.animation?.destinationPatternTable === 1 ? 1 : 0,
       })
@@ -1651,8 +1651,7 @@ export function canonicalizeProjectGraphics(
           ...existing.baseChr.source,
         };
   const baseChrUnchanged =
-    JSON.stringify(legacyBaseReference) ===
-      JSON.stringify(existingBaseReference) &&
+    sameBaseChrSource(legacyBaseReference, existingBaseReference) &&
     (project.animation?.destinationPatternTable ?? 0) ===
       existing.baseChr.shortFilePatternTable;
 

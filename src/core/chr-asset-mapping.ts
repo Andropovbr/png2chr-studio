@@ -342,8 +342,9 @@ export function buildChrAssetMappingIndex(
       const usages: PhysicalTileUsage[] = placements.flatMap((placement) =>
         placement.usages.map((usage): PhysicalTileUsage => {
           const logicalKey = placement.logicalKey;
-          const parsedPlacement = parseLogicalTileKey(logicalKey);
-          const assetId = parsedPlacement?.assetId ?? placement.originAssetId;
+          // A shared physical allocation has one first origin, but every
+          // placement retains its own compiler-provided logical asset identity.
+          const assetId = placement.originAssetId;
           if (usage.kind === 'background') {
             return {
               type: 'background',

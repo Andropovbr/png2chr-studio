@@ -24,6 +24,7 @@ import type {
   ChrAssetMappingIndex,
   PhysicalSlotAttribution,
 } from '../core/chr-asset-mapping';
+import type { CompiledProjectGraphics } from '../core/project-graphics-compiler';
 
 type CanonicalPaletteOptionKeys =
   | 'palettes'
@@ -1333,6 +1334,53 @@ describe('ChrWorkspace component', () => {
       const pt1Badge = pt1Card?.querySelector('.chr-pt-occupancy-badge');
       expect(pt1Badge?.textContent).toBe('10 / 256');
       expect(pt1Card?.textContent).toContain('10 / 256 occupied (246 free)');
+    });
+
+    it('derives Pattern Table occupied and free counts from compiler manifest states', () => {
+      const allocationManifest = Array.from({ length: 512 }, (_, slot) => ({
+        physicalSlot: slot,
+        patternTable: (slot < 256 ? 0 : 1) as 0 | 1,
+        localPatternTableIndex: slot % 256,
+        state:
+          slot < 2
+            ? 'project'
+            : slot === 2
+              ? 'locked'
+              : slot >= 256 && slot < 259
+                ? 'base-chr'
+                : 'available',
+        originAssetId:
+          slot < 2 ? 'asset-project' : slot < 259 ? 'asset-base' : null,
+        originLogicalKey: null,
+      }));
+      const compiledGraphics = {
+        allocationManifest,
+        finalChr: new Uint8Array(8192),
+      } as unknown as CompiledProjectGraphics;
+      const workspace = createChrWorkspace({
+        compiledGraphics,
+        mode: 'tileset',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: false,
+      });
+
+      const mockWs = workspace as unknown as MockElement;
+      expect(
+        mockWs
+          .querySelector('[data-pattern-table="0"]')
+          ?.querySelector('.chr-pt-occupancy-badge')?.textContent,
+      ).toBe('2 / 256');
+      expect(
+        mockWs
+          .querySelector('[data-pattern-table="1"]')
+          ?.querySelector('.chr-pt-occupancy-badge')?.textContent,
+      ).toBe('3 / 256');
     });
 
     it('accurately distinguishes an intentionally allocated blank tile (16 zero bytes) as project from free slots', () => {

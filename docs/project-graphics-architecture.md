@@ -104,12 +104,17 @@ Every policy range stores separate facts:
 - provenance: none, imported Base CHR, or pending source.
 
 Tile bytes and these semantic facts are independent. Sixteen zero bytes are a
-valid NES tile and never prove availability. When legacy Base CHR bytes are
-available, every covered tile is migrated as occupied and locked, including
-zero-filled tiles; uncovered slots are available and writable. For a missing
-external companion, all occupancy is `unknown` and locked until bytes resolve.
-Opening the project remains possible, but future allocation must not treat
-unknown slots as free.
+valid NES tile and never prove availability. Explicit version 2 Base CHR policy
+may mark zero-filled tiles as occupied and locked. Version 1 did not persist
+that policy: its embedded `destinationChr` can be a generated, padded 8 KiB
+envelope rather than an imported Base CHR file. Migration therefore preserves
+the source reference but marks all Base CHR occupancy `unknown` and locked
+until an explicit policy is available. Opening the project remains possible,
+but future allocation must not treat unknown slots as free.
+
+Runtime compatibility aliases may carry an embedded compiled CHR preview. That
+payload does not replace an unchanged version 2 Base CHR source or its explicit
+policy; source identity and policy remain canonical.
 
 CHR Regions and Reservations remain separate Studio allocation policy.
 Reservation is not ownership and does not rewrite Base CHR metadata.
@@ -154,8 +159,9 @@ Migration performs these operations without compiling CHR:
   sparse tile overrides. Animation IDs, frame data, palette references, and
   Scene references remain unchanged.
 - Legacy Animation-owned `destinationChr` becomes project-level Base CHR. Its
-  short-file placement preserves `destinationPatternTable` for any file of at
-  most 256 tiles.
+  short-file placement preserves `destinationPatternTable`; because version 1
+  did not record semantic slot occupancy, migration blocks the Base CHR as
+  unknown instead of deriving occupancy from embedded byte length.
 - CHR Regions and Reservations are preserved unchanged.
 - A legacy Playfield screen becomes one deterministic Background Map with 960
   logical cells, its 240 palette assignments, source asset identity, and pixel
