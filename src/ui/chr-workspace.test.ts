@@ -4,8 +4,16 @@ import {
   buildAnimationProjectModel,
   type AnimationDefinitionInput,
 } from '../core/animation-model';
+import { createLogicalTileKey } from '../core/asset-identity';
+import {
+  buildChrAssetMappingIndex,
+  type ChrAssetMappingIndex,
+  type PhysicalSlotAttribution,
+} from '../core/chr-asset-mapping';
 import { NES_MASTER_PALETTE, type NesPaletteSet } from '../core/nes-palette';
 import type { PaletteDefinition } from '../core/palette-manager';
+import { compileProjectGraphics } from '../core/project-graphics-compiler';
+import { createDefaultProject } from '../core/project';
 import type { IndexedImage, Tile } from '../core/types';
 import { setLocale } from '../i18n';
 import {
@@ -20,10 +28,6 @@ import {
 import { createTileHistory, areTilePixelsEqual } from '../core/chr-tile-editor';
 import { applyWorkspaceUpdate } from './state-update';
 import { createWorkspaceState } from './workspace-state';
-import type {
-  ChrAssetMappingIndex,
-  PhysicalSlotAttribution,
-} from '../core/chr-asset-mapping';
 import type { CompiledProjectGraphics } from '../core/project-graphics-compiler';
 
 type CanonicalPaletteOptionKeys =
@@ -1339,7 +1343,7 @@ describe('ChrWorkspace component', () => {
     it('derives Pattern Table occupied and free counts from compiler manifest states', () => {
       const allocationManifest = Array.from({ length: 512 }, (_, slot) => ({
         physicalSlot: slot,
-        patternTable: (slot < 256 ? 0 : 1) as 0 | 1,
+        patternTable: slot < 256 ? 0 : 1,
         localPatternTableIndex: slot % 256,
         state:
           slot < 2
@@ -1381,6 +1385,145 @@ describe('ChrWorkspace component', () => {
           .querySelector('[data-pattern-table="1"]')
           ?.querySelector('.chr-pt-occupancy-badge')?.textContent,
       ).toBe('3 / 256');
+    });
+
+    it('keeps compiled Animation bytes, project occupancy, ownership, and metrics on one physical slot', () => {
+      const project = createDefaultProject('Animation manifest', 'animation');
+      const assetId = 'asset-animation';
+      const logicalKey = createLogicalTileKey(assetId, 0, 0);
+      const pixels = new Uint8Array(64).fill(1);
+      const tile: Tile = { id: 0, column: 0, row: 0, pixels };
+      const compiled = compileProjectGraphics({
+        graphics: {
+          ...project.graphics,
+          assets: [
+            {
+              id: assetId,
+              kind: 'spritesheet',
+              name: 'Animation',
+              source: null,
+              logicalTiles: {
+                decoding: 'png-indexed',
+                quantization: null,
+                paletteBank: 'sprite',
+              },
+            },
+          ],
+          renderContexts: [
+            {
+              id: 'context-animation',
+              name: 'Animation',
+              backgroundPatternTable: 1,
+              spriteMode: '8x8',
+              spritePatternTable: 0,
+              mapIds: [],
+              animationIds: ['anim-main'],
+            },
+          ],
+        },
+        decodedAssets: [
+          {
+            assetId,
+            widthTiles: 1,
+            heightTiles: 1,
+            tiles: [tile],
+            tilesByLogicalKey: new Map([[logicalKey, tile]]),
+          },
+        ],
+        backgroundMaps: [],
+        animationDemands: [
+          {
+            animationId: 'anim-main',
+            frames: [
+              {
+                sourceIndex: 0,
+                sourceX: 0,
+                sourceY: 0,
+                duration: 8,
+                effectivePalette: 0,
+                width: 16,
+                height: 8,
+                omittedTileCount: 0,
+                sprites: [
+                  {
+                    pixels,
+                    tileColumn: 0,
+                    tileRow: 0,
+                    tileX: 0,
+                    tileY: 0,
+                    logicalKey,
+                    x: 0,
+                    y: 0,
+                    sourceTileColumn: 0,
+                    sourceTileRow: 0,
+                  },
+                  {
+                    pixels,
+                    tileColumn: 1,
+                    tileRow: 0,
+                    tileX: 0,
+                    tileY: 0,
+                    logicalKey,
+                    x: 8,
+                    y: 0,
+                    sourceTileColumn: 0,
+                    sourceTileRow: 0,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      expect(compiled.success).toBe(true);
+      if (!compiled.success) return;
+
+      const physicalSlot = compiled.logicalTilePlacements[0]?.physicalSlot;
+      expect(physicalSlot).toBe(0);
+      if (physicalSlot === undefined) return;
+      expect(compiled.finalChr.subarray(0, 16).some((byte) => byte !== 0)).toBe(
+        true,
+      );
+      expect(compiled.allocationManifest[physicalSlot]).toMatchObject({
+        state: 'project',
+        usages: [
+          expect.objectContaining({ kind: 'animation' }),
+          expect.objectContaining({ kind: 'animation' }),
+        ],
+      });
+      const mapping = buildChrAssetMappingIndex({ compiled });
+      expect(mapping.byPhysicalIndex[physicalSlot]?.usages).toHaveLength(2);
+
+      const workspace = createChrWorkspace({
+        compiledGraphics: compiled,
+        chrAssetMappingIndex: mapping,
+        activeAssetIds: new Set([assetId]),
+        mode: 'animation',
+        animationModel: null,
+        baseChr: null,
+        baseChrName: null,
+        patternTable: 0,
+        destinationPatternTable: 0,
+        tiles: [],
+        deduplicationEnabled: true,
+        flipDeduplicationEnabled: true,
+      });
+      const mockWs = workspace as unknown as MockElement;
+      const pt0Card = mockWs.querySelector('[data-pattern-table="0"]');
+      expect(
+        pt0Card?.querySelector('.chr-pt-occupancy-badge')?.textContent,
+      ).toBe('1 / 256');
+      expect(pt0Card?.textContent).toContain('1 / 256 occupied (255 free)');
+      expect(
+        pt0Card
+          ?.querySelector('[data-physical-index="0"]')
+          ?.getAttribute('data-occupancy'),
+      ).toBe('project');
+      expect(
+        pt0Card
+          ?.querySelector('[data-physical-index="1"]')
+          ?.getAttribute('data-occupancy'),
+      ).toBe('empty');
     });
 
     it('accurately distinguishes an intentionally allocated blank tile (16 zero bytes) as project from free slots', () => {
