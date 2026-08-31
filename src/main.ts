@@ -110,29 +110,23 @@ import {
 import { createHeader } from './ui/header';
 import { createInspector } from './ui/inspector';
 import type { QuantizationPreview } from './ui/quantization-panel';
-import { encodeChr } from './core/chr-encoder';
 import { padChrRom } from './core/chr-rom';
-import { encodePlayfield } from './core/playfield-encoder';
 import {
   deduplicateTiles,
   deduplicateTilesConsideringFlips,
 } from './core/tile-deduplication';
 import { createSidebar } from './ui/sidebar';
 import { createTilesetWorkspace } from './ui/tileset-workspace';
-import { createPlayfieldWorkspace } from './ui/playfield-workspace';
 import { createPaletteWorkspace } from './ui/palette-workspace';
 import { createBackgroundWorkspace } from './ui/background-workspace';
 import { createChrWorkspace } from './ui/chr-workspace';
 import {
-  buildBackgroundProjectModel,
   createBackgroundMapFromPlayfield,
   createEmptyBackgroundMap,
   generateBackgroundMapId,
   encodeBackgroundAttributeTable,
   reconcileBackgroundMaps,
-  type BackgroundProjectModel,
 } from './core/background-model';
-import { composeChrWithAllocatedTiles } from './core/chr-pattern-table';
 import {
   extractProjectAssets,
   normalizeProjectAssetId,
@@ -146,7 +140,10 @@ import {
 import { reconcileAnimationGeometry } from './core/asset-lifecycle';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
 import { extractLogicalAnimationFrames } from './core/metasprite-extraction';
-import { compileProjectGraphics } from './core/project-graphics-compiler';
+import {
+  compileProjectGraphics,
+  type CompiledProjectGraphics,
+} from './core/project-graphics-compiler';
 import {
   createDeliveryWorkspace,
   type DeliveryCompilationStatus,
@@ -1808,49 +1805,6 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
     : undefined;
   const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
 
-  let playfieldNametable: Uint8Array | null = null;
-  if (project.mode === 'playfield' && project.tiles.length > 0) {
-    const regionSize = paletteRegionSize(
-      project.mode,
-      project.indexedImage ?? {
-        width: 256,
-        height: 240,
-        pixels: new Uint8Array(256 * 240),
-        colors: [],
-        transparentIndex: 0,
-        colorCount: 4,
-      },
-    );
-    const mappedImage = mapImageToNesPalettes(
-      project.indexedImage ?? {
-        width: 256,
-        height: 240,
-        pixels: new Uint8Array(256 * 240),
-        colors: [],
-        transparentIndex: 0,
-        colorCount: 4,
-      },
-      backgroundPaletteSet,
-      project.paletteAssignments,
-      regionSize,
-      project.pixelOverrides,
-      false,
-      project.quantizationSettings.colorDistanceMode,
-    );
-    const mappedTiles = extractTiles(mappedImage);
-    try {
-      const encodedPlayfield = encodePlayfield(
-        mappedImage,
-        mappedTiles,
-        project.deduplicationEnabled,
-        project.paletteAssignments,
-      );
-      playfieldNametable = encodedPlayfield.nametable;
-    } catch {
-      playfieldNametable = null;
-    }
-  }
-
   const destPt = project.animation.destinationPatternTable;
 
   const target = resolveTileEditOrigin({
@@ -1869,11 +1823,19 @@ function handleChrTileEdit(physicalIndex: number, newPixels: Uint8Array): void {
     baseChrName: project.animation.destinationChrName,
     destinationPatternTable: destPt,
     tiles: project.tiles,
-    playfieldNametable,
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
     mappingIndex: compiledMappingIndex,
   });
+  // Background assets are catalog-owned. Until the CHR editor can write that
+  // source-specific override, reject edits rather than losing them on compile.
+  if (
+    compiledMappingIndex?.byPhysicalIndex[physicalIndex]?.usages.some(
+      (usage) => usage.type === 'background',
+    )
+  ) {
+    return;
+  }
 
   const regionSize = project.indexedImage
     ? paletteRegionSize(project.mode, project.indexedImage)
@@ -2703,12 +2665,16 @@ function renderAnimationWorkspace(): void {
   const compilation = compileCurrentProjectGraphics(project);
   const compiledGraphics =
     compilation.kind === 'compiled' ? compilation.compiled : null;
+  const compiledAnimationModel = withCompiledAnimationPlacements(
+    model,
+    compiledGraphics,
+  );
   const paletteState = resolveProjectPaletteState(project);
   const spritePaletteSet = resolveProjectSpritePaletteSet(project);
   const sceneChrAssetMappingIndex = buildChrAssetMappingIndex({
     compiled: compiledGraphics,
     mode: project.mode,
-    animationModel: model,
+    animationModel: compiledAnimationModel,
     animations: project.animation.animations,
     baseChr: project.animation.destinationChr,
     destinationPatternTable: project.animation.destinationPatternTable,
@@ -2744,7 +2710,7 @@ function renderAnimationWorkspace(): void {
     previewCollapsed: workspace.animation.previewCollapsed,
     configCollapsed: workspace.animation.configCollapsed,
     paletteCollapsed: workspace.animation.paletteCollapsed,
-    model,
+    model: compiledAnimationModel,
     modelError,
     spritePaletteSet,
     palettes: paletteState.palettes,
@@ -3061,152 +3027,6 @@ function renderTilesetWorkspace(): void {
   app.replaceChildren(shell);
 }
 
-function renderPlayfieldWorkspace(): void {
-  ensureQuantizationPreviews();
-  const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
-  const workspaceElement = createPlayfieldWorkspace({
-    assetId: project.assetId,
-    fileName: project.fileName,
-    sourceKind: project.sourceKind,
-    width: project.width,
-    height: project.height,
-    sourceImage: project.sourceImage,
-    indexedImage: project.indexedImage,
-    tiles: project.tiles,
-    deduplicationEnabled: project.deduplicationEnabled,
-    collisionCells: project.collisionCells,
-    activeCollisionType: project.activeCollisionType,
-    randomPlayfieldFeatures: project.randomPlayfieldFeatures,
-    paletteSet: backgroundPaletteSet,
-    paletteAssignments: project.paletteAssignments,
-    pixelOverrides: project.pixelOverrides,
-    activePaletteIndex: project.activePaletteIndex,
-    activeColorIndex: project.activeColorIndex,
-    quantizationSettings: project.quantizationSettings,
-    quantizationPreviews,
-    quantizationPreviewsLoading,
-    quantizationCollapsed: workspace.quantizationCollapsed,
-    showPaletteNumbers: workspace.showPaletteNumbers,
-    previewTool: workspace.previewTool,
-    zoomedPaletteRegion: workspace.zoomedPaletteRegion,
-    paletteColorTarget: workspace.paletteColorTarget,
-    loading: derivedStatus.loading,
-    error: derivedStatus.error,
-    onFile: (file) => void loadFile(file),
-    onRandomPlayfieldFeaturesChange: (randomPlayfieldFeatures) => {
-      updateProject({ ...project, randomPlayfieldFeatures });
-      render();
-    },
-    onGeneratePlayfield: generatePlayfield,
-    onToggleQuantizationCollapse: () => {
-      updateWorkspace({
-        ...workspace,
-        quantizationCollapsed: !workspace.quantizationCollapsed,
-      });
-      render();
-    },
-    onQuantizationSettingsChange: (settings) =>
-      void changeQuantizationSettings(settings),
-    onActiveToolChange: (previewTool) => {
-      updateWorkspace({ ...workspace, previewTool });
-      render();
-    },
-    onCollisionChange: (collisionCells) => {
-      updateProject({ ...project, collisionCells });
-      render();
-    },
-    onCollisionTypeChange: (activeCollisionType) => {
-      updateProject({
-        ...project,
-        activeCollisionType,
-      });
-      updateWorkspace({ ...workspace, previewTool: 'paint-collision' });
-      render();
-    },
-    onPaletteRegionSelect: (zoomedPaletteRegion) => {
-      updateWorkspace({ ...workspace, zoomedPaletteRegion });
-      render();
-    },
-    onActivePaletteChange: (activePaletteIndex) => {
-      updateProject({ ...project, activePaletteIndex });
-      render();
-    },
-    onActiveColorChange: (activeColorIndex) => {
-      updateProject({ ...project, activeColorIndex });
-      render();
-    },
-    onShowPaletteNumbersChange: (showPaletteNumbers) => {
-      updateWorkspace({ ...workspace, showPaletteNumbers });
-      render();
-    },
-    onZoomedRegionChange: (zoomedPaletteRegion) => {
-      updateWorkspace({ ...workspace, zoomedPaletteRegion });
-      render();
-    },
-    onColorTargetChange: (paletteColorTarget) => {
-      updateWorkspace({ ...workspace, paletteColorTarget });
-      render();
-    },
-    onPaletteColorChange: (paletteIndex, colorIndex, colorCode) => {
-      updateActiveBackgroundPaletteColor(paletteIndex, colorIndex, colorCode);
-    },
-    onPixelOverridesChange: (pixelOverrides, paletteAssignments) => {
-      updateProject({ ...project, pixelOverrides, paletteAssignments });
-      render();
-    },
-    onDeduplicationChange: (enabled) => {
-      updateProject({
-        ...project,
-        deduplicationEnabled: enabled,
-      });
-      render();
-    },
-    onInspectInChr: (physicalTileIndex) => {
-      updateWorkspace({
-        ...workspace,
-        activeWorkspace: 'chr',
-        chr: { ...workspace.chr, selectedTileIndex: physicalTileIndex },
-      });
-      render();
-    },
-    onDownloadBytes: downloadBytes,
-  });
-
-  const sidebar = createSidebar({
-    activeWorkspace: 'playfield',
-    fileName: project.fileName,
-    quantizationMode: project.quantizationSettings.quantizationMode,
-    onQuantizationModeChange: (quantizationMode) => {
-      void changeQuantizationSettings({
-        ...project.quantizationSettings,
-        quantizationMode,
-      });
-    },
-    onWorkspaceChange: (view) => {
-      updateWorkspace({ ...workspace, activeWorkspace: view });
-      if (
-        view !== 'palette' &&
-        view !== 'chr' &&
-        view !== 'deliver' &&
-        view !== 'background'
-      ) {
-        changeMode(view);
-      } else {
-        render();
-      }
-    },
-  });
-  const inspector = createInspector();
-  const shell = createAppShell({
-    header: createProjectHeader(),
-    sidebar,
-    workspace: workspaceElement,
-    inspector,
-    diagnostics: workspaceElement.diagnosticsElement,
-  });
-  app.replaceChildren(shell);
-}
-
 function renderPaletteWorkspace(): void {
   const paletteState = resolveProjectPaletteState(project);
   const usageContext = createPaletteWorkspaceUsageContext(paletteState);
@@ -3301,48 +3121,69 @@ function renderPaletteWorkspace(): void {
   app.replaceChildren(shell);
 }
 
-function buildProjectBackgroundModels(
-  currentProject: ProjectView,
-): readonly BackgroundProjectModel[] {
-  if (
-    !currentProject.backgrounds?.maps ||
-    currentProject.backgrounds.maps.length === 0
-  ) {
-    return [];
-  }
-
-  const decoded = decodeProjectGraphicsAssets(
-    currentProject.graphics,
-    runtimeGraphicsAssetSources(currentProject),
+/** UI projection of compiler output. It never performs placement itself. */
+function compiledBackgroundPreview(
+  compiled: CompiledProjectGraphics | null,
+  mapId: string | null,
+) {
+  if (compiled === null || mapId === null) return null;
+  const background = compiled.backgrounds.find(
+    (candidate) => candidate.mapId === mapId,
   );
-  if (!decoded.success) return [];
-  const tileMap = new Map<LogicalTileKey, Tile>();
-  for (const asset of decoded.assets) {
-    for (const [key, tile] of asset.tilesByLogicalKey) tileMap.set(key, tile);
-  }
+  if (!background) return null;
+  return {
+    patternTable: background.requiredPatternTable,
+    nametable: background.nametable,
+    finalChr: compiled.finalChr,
+  };
+}
 
-  const baseChr =
-    currentProject.animation.destinationChr.length > 0
-      ? currentProject.animation.destinationChr
-      : null;
-  const chrRegions = currentProject.chrRegions;
-
-  const models: BackgroundProjectModel[] = [];
-  for (const map of currentProject.backgrounds.maps) {
-    try {
-      const model = buildBackgroundProjectModel({
-        map,
-        baseChr,
-        chrRegions,
-        tileMap,
-      });
-      models.push(model);
-    } catch {
-      // Ignore uncompilable maps
-    }
-  }
-
-  return models;
+/** Rebinds editor/export sprite indexes to canonical compiler placement. */
+function withCompiledAnimationPlacements(
+  model: AnimationProjectModel | null,
+  compiled: CompiledProjectGraphics | null,
+): AnimationProjectModel | null {
+  if (model === null || compiled === null) return null;
+  const assignmentsByAnimation = new Map<
+    string,
+    (typeof compiled.animations)[number]
+  >(compiled.animations.map((animation) => [animation.animationId, animation]));
+  return {
+    ...model,
+    finalChr: compiled.finalChr,
+    animations: model.animations.map((animation) => {
+      const compiledAnimation = animation.id
+        ? assignmentsByAnimation.get(animation.id)
+        : undefined;
+      if (!compiledAnimation) return animation;
+      return {
+        ...animation,
+        frames: animation.frames.map((frame, frameIndex) => {
+          const assignments = compiledAnimation.frameAssignments[frameIndex];
+          if (assignments?.length !== frame.sprites.length) {
+            return frame;
+          }
+          return {
+            ...frame,
+            sprites: frame.sprites.map((sprite, spriteIndex) => {
+              const assignment = assignments[spriteIndex];
+              if (!assignment) return sprite;
+              return {
+                ...sprite,
+                tile: assignment.localTileIndex,
+                physicalTileIndex: assignment.physicalTileIndex,
+                attributes:
+                  (sprite.attributes & 0x3f) | assignment.flipAttributes,
+                horizontalFlip: (assignment.flipAttributes & 0x40) !== 0,
+                verticalFlip: (assignment.flipAttributes & 0x80) !== 0,
+                reuse: assignment.reuse,
+              };
+            }),
+          };
+        }),
+      };
+    }),
+  };
 }
 
 /** One runtime projection of canonical inputs; never reconstructs placement. */
@@ -3457,8 +3298,11 @@ function renderChrWorkspace(): void {
   const compilation = compileCurrentProjectGraphics(project);
   const compiledGraphics =
     compilation.kind === 'compiled' ? compilation.compiled : null;
+  const compiledAnimationModel = withCompiledAnimationPlacements(
+    animModel,
+    compiledGraphics,
+  );
   const paletteState = resolveProjectPaletteState(project);
-  const backgroundPaletteSet = resolveProjectBackgroundPaletteSet(project);
   const manualChr =
     project.animation.destinationChr.length > 0
       ? project.animation.destinationChr
@@ -3466,64 +3310,11 @@ function renderChrWorkspace(): void {
   const manualChrName = project.animation.destinationChrName;
   const destinationPatternTable = project.animation.destinationPatternTable;
 
-  let playfieldNametable: Uint8Array | null = null;
-  if (project.mode === 'playfield' && project.indexedImage !== null) {
-    const regionSize =
-      project.indexedImage.width === 256 && project.indexedImage.height === 240
-        ? PLAYFIELD_PALETTE_REGION_SIZE
-        : TILESET_PALETTE_REGION_SIZE;
-    const mappedImage = mapImageToNesPalettes(
-      project.indexedImage,
-      backgroundPaletteSet,
-      project.paletteAssignments,
-      regionSize,
-      project.pixelOverrides,
-      false,
-      project.quantizationSettings.colorDistanceMode,
-    );
-    const mappedTiles = extractTiles(mappedImage).slice(
-      0,
-      project.tiles.length,
-    );
-    try {
-      const encodedPlayfield = encodePlayfield(
-        mappedImage,
-        mappedTiles,
-        project.deduplicationEnabled,
-        project.paletteAssignments,
-      );
-      playfieldNametable = encodedPlayfield.nametable;
-    } catch {
-      playfieldNametable = null;
-    }
-  }
-
   const selectedPhysicalTile = workspace.chr.selectedTileIndex;
-  const projectedTiles = project.flipDeduplicationEnabled
-    ? deduplicateTilesConsideringFlips(project.tiles)
-    : project.deduplicationEnabled
-      ? deduplicateTiles(project.tiles)
-      : project.tiles;
+  // No local allocator may supply a competing physical layout. A raw Base CHR
+  // preview remains available while compilation is unresolved.
   const currentFinalChr =
-    compiledGraphics?.finalChr ??
-    animModel?.finalChr ??
-    (manualChr
-      ? composeChrWithAllocatedTiles(
-          manualChr,
-          destinationPatternTable,
-          projectedTiles,
-          project.chrRegions,
-        )
-      : project.chrRegions && project.chrRegions.length > 0
-        ? composeChrWithAllocatedTiles(
-            new Uint8Array(8192),
-            0,
-            projectedTiles,
-            project.chrRegions,
-          )
-        : project.tiles.length > 0
-          ? padChrRom(encodeChr(projectedTiles))
-          : new Uint8Array(8192));
+    compiledGraphics?.finalChr ?? padChrRom(manualChr ?? new Uint8Array());
 
   const tileHistory =
     selectedPhysicalTile !== null &&
@@ -3535,13 +3326,11 @@ function renderChrWorkspace(): void {
         )
       : undefined;
 
-  const backgroundModels = buildProjectBackgroundModels(project);
   const chrAssetMappingIndex = buildChrAssetMappingIndex({
     compiled: compiledGraphics,
     mode: project.mode,
-    animationModel: animModel,
+    animationModel: compiledAnimationModel,
     animations: project.animation.animations,
-    playfieldNametable,
     playfieldAssetId: 'asset-playfield',
     tiles: project.tiles,
     tilesetAssetId: 'asset-tileset',
@@ -3550,14 +3339,14 @@ function renderChrWorkspace(): void {
     deduplicationEnabled: project.deduplicationEnabled,
     flipDeduplicationEnabled: project.flipDeduplicationEnabled,
     chrRegions: project.chrRegions,
-    backgroundModels,
   });
 
   const workspaceElement = createChrWorkspace({
     compiledGraphics,
+    placementAvailable: compiledGraphics !== null,
     mode: project.mode,
-    animationModel: animModel,
-    playfieldNametable,
+    animationModel: compiledAnimationModel,
+    playfieldNametable: null,
     baseChr: manualChr,
     baseChrName: manualChrName,
     patternTable:
@@ -3730,11 +3519,18 @@ function renderChrWorkspace(): void {
       render();
       restoreChrEditorFocus(focusSelector);
     },
-    onTilePixelsChange: (physicalIndex, newPixels) => {
-      const focusSelector = captureChrEditorFocusSelector();
-      handleChrTileEdit(physicalIndex, newPixels);
-      restoreChrEditorFocus(focusSelector);
-    },
+    ...(compiledGraphics
+      ? {
+          onTilePixelsChange: (
+            physicalIndex: number,
+            newPixels: Uint8Array,
+          ) => {
+            const focusSelector = captureChrEditorFocusSelector();
+            handleChrTileEdit(physicalIndex, newPixels);
+            restoreChrEditorFocus(focusSelector);
+          },
+        }
+      : {}),
     onUpdateChrRegions: (chrRegions) => {
       updateProject({
         ...project,
@@ -3778,6 +3574,10 @@ function renderDeliveryWorkspace(): void {
   const compilation = compileCurrentProjectGraphics(project);
   const compiledGraphics =
     compilation.kind === 'compiled' ? compilation.compiled : null;
+  const compiledAnimationModel = withCompiledAnimationPlacements(
+    animModel,
+    compiledGraphics,
+  );
   const tiles = project.tiles;
   const deduplicated = deduplicateTiles(tiles);
   const flipDeduplicated = deduplicateTilesConsideringFlips(tiles);
@@ -3805,19 +3605,25 @@ function renderDeliveryWorkspace(): void {
   const activeCompiledBackground = compiledGraphics?.backgrounds.find(
     (background) => background.mapId === activeBackgroundMapId,
   );
+  const deliveryMode: ProjectMode =
+    activeBackgroundMap !== undefined ? 'playfield' : project.mode;
 
-  if (project.mode === 'playfield') {
+  if (deliveryMode === 'playfield') {
     chr = compiledGraphics?.finalChr ?? null;
     nametable = activeCompiledBackground?.nametable ?? null;
     attributeTable = activeBackgroundMap
       ? encodeBackgroundAttributeTable(activeBackgroundMap.paletteAssignments)
       : null;
     try {
-      collisionMap = encodeCollisionMap(project.collisionCells);
+      collisionMap = encodeCollisionMap(
+        activeBackgroundMap?.collision
+          ? new Uint8Array(activeBackgroundMap.collision.cells)
+          : project.collisionCells,
+      );
     } catch {
       collisionMap = null;
     }
-  } else if (project.mode === 'tileset') {
+  } else if (deliveryMode === 'tileset') {
     chr = compiledGraphics?.finalChr ?? null;
   }
 
@@ -3828,7 +3634,7 @@ function renderDeliveryWorkspace(): void {
     : undefined;
 
   const workspaceElement = createDeliveryWorkspace({
-    mode: project.mode,
+    mode: deliveryMode,
     projectName,
     fileName: project.fileName,
     width: project.width,
@@ -3854,7 +3660,7 @@ function renderDeliveryWorkspace(): void {
     paletteState,
     paletteAnimations: project.animation.animations,
     scenePreview: project.scenePreview,
-    animationModel: animModel,
+    animationModel: compiledAnimationModel,
     animationModelError: animModelError,
     error: derivedStatus.error,
     chrRegions: project.chrRegions,
@@ -3926,10 +3732,13 @@ function renderBackgroundWorkspace(): void {
     }
   }
 
-  // Compile active map model
-  const backgroundModels = buildProjectBackgroundModels(project);
-  const compiledModel =
-    backgroundModels.find((m) => m.map.id === activeMapId) ?? null;
+  const compilation = compileCurrentProjectGraphics(project);
+  const compiledGraphics =
+    compilation.kind === 'compiled' ? compilation.compiled : null;
+  const compiledModel = compiledBackgroundPreview(
+    compiledGraphics,
+    activeMapId,
+  );
 
   const reconciliationResult = reconcileBackgroundMaps(backgrounds.maps, {
     availableAssetIds: new Set(projectAssets.map((a) => a.id)),
@@ -4109,7 +3918,9 @@ function render(): void {
   } else if (project.mode === 'animation') {
     renderAnimationWorkspace();
   } else if (project.mode === 'playfield') {
-    renderPlayfieldWorkspace();
+    // Legacy mode is compatibility input only. Persisted screen state already
+    // migrates into Background Maps, whose UI uses compiled project placement.
+    renderBackgroundWorkspace();
   } else {
     renderTilesetWorkspace();
   }
@@ -4540,72 +4351,6 @@ function indexedImageToImageData(image: IndexedImage): ImageData {
     rgba[target + 3] = 255;
   }
   return new ImageData(rgba, image.width, image.height);
-}
-
-function generatePlayfield(): void {
-  requestId += 1;
-  quantizationPreviewRequestId += 1;
-  quantizationPreviewKey = null;
-  quantizationPreviews = [];
-  quantizationPreviewsLoading = false;
-  quantizationPreviewCache.clear();
-  const indexedImage = generateRandomPlayfield(Math.random, {
-    features: project.randomPlayfieldFeatures,
-  });
-  const paletteAssignments = assignmentsForImage(indexedImage, 'playfield');
-  const paletteSet = resolveProjectBackgroundPaletteSet(project);
-  const pixelOverrides = createPixelOverrides(
-    indexedImage.width,
-    indexedImage.height,
-  );
-  const mappedImage = mapImageToNesPalettes(
-    indexedImage,
-    paletteSet,
-    paletteAssignments,
-    PLAYFIELD_PALETTE_REGION_SIZE,
-    pixelOverrides,
-    false,
-    project.quantizationSettings.colorDistanceMode,
-  );
-  const assetId = normalizeProjectAssetId(
-    project.mode === 'playfield' ? project.assetId : undefined,
-    'playfield-image',
-  );
-  const collisionCells = createEmptyCollisionMap();
-  updateProject({
-    ...project,
-    assetId,
-    fileName: 'random-playfield.png',
-    sourceKind: 'png',
-    width: indexedImage.width,
-    height: indexedImage.height,
-    sourceImage: indexedImageToImageData(indexedImage),
-    indexedImage,
-    tiles: extractTiles(mappedImage),
-    mode: 'playfield',
-    deduplicationEnabled: true,
-    flipDeduplicationEnabled: false,
-    collisionCells,
-    activeCollisionType: COLLISION_TYPES.solid,
-    randomPlayfieldFeatures: project.randomPlayfieldFeatures,
-    playfield: {
-      ...project.playfield,
-      asset: {
-        id: assetId,
-        path: 'random-playfield.png',
-        name: 'random-playfield.png',
-        sourceKind: 'png',
-      },
-      collisionCells: Array.from(collisionCells),
-      randomPlayfieldFeatures: [...project.randomPlayfieldFeatures],
-    },
-    paletteAssignments,
-    pixelOverrides,
-    activePaletteIndex: 0,
-    activeColorIndex: 1,
-  });
-  resetTransientState();
-  render();
 }
 
 subscribeToLocale(render);

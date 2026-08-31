@@ -342,8 +342,8 @@ export function buildChrAssetMappingIndex(
       const usages: PhysicalTileUsage[] = placements.flatMap((placement) =>
         placement.usages.map((usage): PhysicalTileUsage => {
           const logicalKey = placement.logicalKey;
-          const assetId =
-            parsedOrigin?.assetId ?? allocation.originAssetId ?? '';
+          const parsedPlacement = parseLogicalTileKey(logicalKey);
+          const assetId = parsedPlacement?.assetId ?? placement.originAssetId;
           if (usage.kind === 'background') {
             return {
               type: 'background',

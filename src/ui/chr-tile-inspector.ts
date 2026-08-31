@@ -1020,7 +1020,9 @@ export function createChrTileInspector(
                 ? 'Animation'
                 : ref.type === 'playfield'
                   ? 'Playfield'
-                  : 'Tileset';
+                  : ref.type === 'background'
+                    ? 'Background'
+                    : 'Tileset';
 
             const desc = document.createElement('span');
             desc.className = 'chr-tile-ref-desc';
@@ -1034,6 +1036,8 @@ export function createChrTileInspector(
               desc.textContent = `${entityPrefix}${ref.animationName} · Frame #${String(ref.frameIndex)} · sprite (${String(ref.x)}, ${String(ref.y)})${flipText}`;
             } else if (ref.type === 'playfield') {
               desc.textContent = `(${String(ref.column)}, ${String(ref.row)}) · tile $${ref.tileIndex.toString(16).toUpperCase().padStart(2, '0')}`;
+            } else if (ref.type === 'background') {
+              desc.textContent = `${ref.mapId} · (${String(ref.column)}, ${String(ref.row)})`;
             } else {
               desc.textContent = `tile #${String(ref.tileIndex)}${ref.sourceIndex !== undefined ? ` (src: ${String(ref.sourceIndex)})` : ''}`;
             }
@@ -1056,6 +1060,8 @@ export function createChrTileInspector(
                   col: ref.column,
                   row: ref.row,
                 });
+              } else if (ref.type === 'background') {
+                jumpBtn.title = `${ref.mapId} · (${String(ref.column)}, ${String(ref.row)})`;
               } else {
                 jumpBtn.title = t('chrTileInspectorJumpTileset', {
                   index: ref.tileIndex,

@@ -70,6 +70,8 @@ export const NEUTRAL_NES_GRAYSCALE = [
 
 export interface ChrWorkspaceOptions {
   readonly compiledGraphics?: CompiledProjectGraphics | null;
+  /** False when compiler cannot establish project physical placement. */
+  readonly placementAvailable?: boolean;
   readonly mode: ProjectMode;
   readonly animationModel: AnimationProjectModel | null;
   readonly playfieldNametable?: Uint8Array | null;
@@ -198,6 +200,26 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
       newTileCount: 0,
       deduplicationSavings: 0,
       finalChrBytes: options.compiledGraphics.finalChr,
+      outputFileName: 'project.chr',
+    };
+  }
+  if (options.placementAvailable === false) {
+    return {
+      physicalCapacityTiles: NES_CHR_ROM_TILE_COUNT,
+      totalOccupiedTiles: 0,
+      totalFreeTiles: NES_CHR_ROM_TILE_COUNT,
+      pt0OccupiedTiles: 0,
+      pt0BaseTiles: 0,
+      pt1OccupiedTiles: 0,
+      pt1BaseTiles: 0,
+      activeSpritePatternTable: options.patternTable,
+      spritePtOccupiedTiles: 0,
+      spritePtRemainingTiles: NES_PATTERN_TABLE_TILE_COUNT,
+      reusedDestinationTiles: 0,
+      reusedImportedTiles: 0,
+      newTileCount: 0,
+      deduplicationSavings: 0,
+      finalChrBytes: padChrRom(options.baseChr ?? new Uint8Array()),
       outputFileName: 'project.chr',
     };
   }
@@ -1950,41 +1972,62 @@ export function createChrWorkspace(
                   ? 'reserved'
                   : 'empty',
         }))
-      : classifyChrSlots({
-          finalChrBytes: metrics.finalChrBytes,
+      : options.placementAvailable === false
+        ? Array.from(
+            { length: NES_CHR_ROM_TILE_COUNT },
+            (_, physicalIndex) => ({
+              physicalIndex,
+              localIndex: physicalIndex % NES_PATTERN_TABLE_TILE_COUNT,
+              patternTable:
+                physicalIndex < NES_PATTERN_TABLE_TILE_COUNT ? 0 : 1,
+              occupancy: 'empty' as const,
+            }),
+          )
+        : classifyChrSlots({
+            finalChrBytes: metrics.finalChrBytes,
+            mode: options.mode,
+            animationModel: options.animationModel,
+            baseChr: options.baseChr,
+            destinationPatternTable: options.destinationPatternTable,
+            tiles: options.tiles,
+            deduplicationEnabled: options.deduplicationEnabled,
+            flipDeduplicationEnabled: options.flipDeduplicationEnabled,
+            chrRegions: options.chrRegions,
+          });
+
+  const mappingIndex =
+    options.placementAvailable === false
+      ? buildChrAssetMappingIndex()
+      : (options.chrAssetMappingIndex ??
+        buildChrAssetMappingIndex({
           mode: options.mode,
           animationModel: options.animationModel,
-          baseChr: options.baseChr,
+          playfieldNametable: options.playfieldNametable,
           destinationPatternTable: options.destinationPatternTable,
           tiles: options.tiles,
+          baseChr: options.baseChr ?? undefined,
           deduplicationEnabled: options.deduplicationEnabled,
           flipDeduplicationEnabled: options.flipDeduplicationEnabled,
           chrRegions: options.chrRegions,
-        });
+        }));
 
-  const mappingIndex =
-    options.chrAssetMappingIndex ??
-    buildChrAssetMappingIndex({
-      mode: options.mode,
-      animationModel: options.animationModel,
-      playfieldNametable: options.playfieldNametable,
-      destinationPatternTable: options.destinationPatternTable,
-      tiles: options.tiles,
-      baseChr: options.baseChr ?? undefined,
-      deduplicationEnabled: options.deduplicationEnabled,
-      flipDeduplicationEnabled: options.flipDeduplicationEnabled,
-      chrRegions: options.chrRegions,
-    });
-
-  const referenceIndex = buildPhysicalTileReferenceIndex({
-    mode: options.mode,
-    animationModel: options.animationModel,
-    playfieldNametable: options.playfieldNametable,
-    destinationPatternTable: options.destinationPatternTable,
-    tiles: options.tiles,
-    deduplicationEnabled: options.deduplicationEnabled,
-    flipDeduplicationEnabled: options.flipDeduplicationEnabled,
-  });
+  const referenceIndex =
+    options.placementAvailable === false
+      ? buildPhysicalTileReferenceIndex({})
+      : options.compiledGraphics
+        ? buildPhysicalTileReferenceIndex({
+            compiledBackgrounds: options.compiledGraphics.backgrounds,
+            animationModel: options.animationModel,
+          })
+        : buildPhysicalTileReferenceIndex({
+            mode: options.mode,
+            animationModel: options.animationModel,
+            playfieldNametable: options.playfieldNametable,
+            destinationPatternTable: options.destinationPatternTable,
+            tiles: options.tiles,
+            deduplicationEnabled: options.deduplicationEnabled,
+            flipDeduplicationEnabled: options.flipDeduplicationEnabled,
+          });
 
   const usageDiagnostics = calculateTileUsageDiagnostics({
     referenceIndex,
@@ -2399,7 +2442,7 @@ export function createChrWorkspace(
   const actions = document.createElement('div');
   actions.className = 'export-actions';
 
-  if (options.onDownloadBytes) {
+  if (options.onDownloadBytes && options.placementAvailable !== false) {
     const onDownloadBytes = options.onDownloadBytes;
     const downloadChrBtn = document.createElement('button');
     downloadChrBtn.type = 'button';

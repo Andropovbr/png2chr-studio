@@ -1684,6 +1684,15 @@ export interface PlayfieldTileReference {
   readonly physicalTileIndex: number;
 }
 
+export interface BackgroundTileReference {
+  readonly type: 'background';
+  readonly mapId: string;
+  readonly column: number;
+  readonly row: number;
+  readonly nametableIndex: number;
+  readonly physicalTileIndex: number;
+}
+
 export interface TilesetTileReference {
   readonly type: 'tileset';
   readonly tileIndex: number;
@@ -1692,7 +1701,10 @@ export interface TilesetTileReference {
 }
 
 export type ChrTileReference =
-  AnimationTileReference | PlayfieldTileReference | TilesetTileReference;
+  | AnimationTileReference
+  | PlayfieldTileReference
+  | BackgroundTileReference
+  | TilesetTileReference;
 
 export interface CollectChrTileReferencesOptions {
   readonly physicalTileIndex: number;
@@ -1703,6 +1715,15 @@ export interface CollectChrTileReferencesOptions {
   readonly tiles?: readonly Tile[];
   readonly deduplicationEnabled?: boolean;
   readonly flipDeduplicationEnabled?: boolean;
+  readonly compiledBackgrounds?: readonly {
+    readonly mapId: string;
+    readonly assignments: readonly {
+      readonly column: number;
+      readonly row: number;
+      readonly cellIndex: number;
+      readonly physicalTileIndex: number;
+    }[];
+  }[];
 }
 
 export function collectPhysicalTileReferences(
@@ -1815,6 +1836,19 @@ export function buildPhysicalTileReferenceIndex(
       index.set(ref.physicalTileIndex, [ref]);
     }
   };
+
+  for (const background of options.compiledBackgrounds ?? []) {
+    for (const assignment of background.assignments) {
+      addRef({
+        type: 'background',
+        mapId: background.mapId,
+        column: assignment.column,
+        row: assignment.row,
+        nametableIndex: assignment.cellIndex,
+        physicalTileIndex: assignment.physicalTileIndex,
+      });
+    }
+  }
 
   // 1. Animation references
   if (options.animationModel) {
@@ -1963,6 +1997,7 @@ export function calculateTileUsageDiagnostics(
       const distinctAnimations = new Set<string>();
       const distinctEntities = new Set<string>();
       let hasPlayfield = false;
+      let hasBackground = false;
       let hasTileset = false;
 
       for (const ref of refs) {
@@ -1977,6 +2012,9 @@ export function calculateTileUsageDiagnostics(
           case 'playfield':
             hasPlayfield = true;
             break;
+          case 'background':
+            hasBackground = true;
+            break;
           case 'tileset':
             hasTileset = true;
             break;
@@ -1987,7 +2025,10 @@ export function calculateTileUsageDiagnostics(
       animationCount = distinctAnimations.size;
       entityCount = distinctEntities.size;
       resourceCount =
-        animationCount + (hasPlayfield ? 1 : 0) + (hasTileset ? 1 : 0);
+        animationCount +
+        (hasPlayfield ? 1 : 0) +
+        (hasBackground ? 1 : 0) +
+        (hasTileset ? 1 : 0);
     }
 
     const bucket = classifyHeatmapBucket(referenceCount);
