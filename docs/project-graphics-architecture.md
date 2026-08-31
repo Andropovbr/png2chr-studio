@@ -110,10 +110,10 @@ that policy: its embedded `destinationChr` can be a generated, padded 8 KiB
 envelope rather than an imported Base CHR file. Migration therefore preserves
 the source reference but marks all Base CHR occupancy `unknown` and locked
 until an explicit policy is available. At runtime, the Studio may clear that
-provisional Base CHR only when every non-padding tile in its complete 8 KiB
-envelope is recoverable from the catalog-backed Animation demands. This ignores
-historical physical placement while proving semantic generated output; it is
-not a byte-length or non-zero-slot occupancy guess. Otherwise opening the
+provisional Base CHR only when every current catalog-backed Animation pattern
+is recoverable from its complete 8 KiB envelope. This tolerates stale
+historical generated patterns and ignores physical placement; it is not a
+byte-length or non-zero-slot occupancy guess. Otherwise opening the
 project remains possible, but future allocation must not treat unknown slots as
 free.
 
@@ -168,8 +168,8 @@ Migration performs these operations without compiling CHR:
   did not record semantic slot occupancy, migration blocks the Base CHR as
   unknown instead of deriving occupancy from embedded byte length. A complete
   padded envelope is later removed only after deterministic canonical
-  compilation proves every non-padding tile recoverable from Animation
-  content, independent of historical physical slots; ambiguous and imported
+  compilation proves every current Animation pattern recoverable, independent of
+  historical physical slots; ambiguous and imported
   Base CHR remain blocked rather than guessed.
 - CHR Regions and Reservations are preserved unchanged.
 - A legacy Playfield screen becomes one deterministic Background Map with 960

@@ -49,13 +49,11 @@ function generatedEnvelopeTileSignatures(
   return signatures;
 }
 
-function sameSet(
-  left: ReadonlySet<string>,
-  right: ReadonlySet<string>,
+function containsAll(
+  available: ReadonlySet<string>,
+  required: ReadonlySet<string>,
 ): boolean {
-  return (
-    left.size === right.size && [...left].every((value) => right.has(value))
-  );
+  return [...required].every((value) => available.has(value));
 }
 
 function isRecoverableGeneratedEnvelope(
@@ -73,7 +71,10 @@ function isRecoverableGeneratedEnvelope(
   return (
     legacyTiles.size > 0 &&
     demandTiles.size > 0 &&
-    sameSet(legacyTiles, demandTiles)
+    // A generated envelope can retain stale patterns after edits. These bytes
+    // prove neither Base CHR occupancy nor a physical layout; only the
+    // catalog-backed Animation provenance below authorizes its removal.
+    containsAll(legacyTiles, demandTiles)
   );
 }
 
@@ -228,9 +229,10 @@ export function compileRuntimeProjectGraphics(
 }
 
 /**
- * Clears a legacy Base CHR only when every non-padding tile in the envelope is
- * recoverable from the current canonical Animation demands. Physical slots are
- * deliberately ignored: historical generators used independent placement.
+ * Clears a legacy Base CHR only when every current canonical Animation pattern
+ * is recoverable from a complete historical generated envelope. Physical slots
+ * are deliberately ignored: legacy output may retain stale patterns or use a
+ * different placement, but each current canonical pattern must remain present.
  */
 export function recoverGeneratedLegacyChrEnvelope(
   project: ProjectView,

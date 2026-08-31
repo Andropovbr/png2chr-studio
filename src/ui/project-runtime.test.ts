@@ -25,6 +25,7 @@ import {
   createRuntimeAnimationDemands,
   recoverGeneratedLegacyChrEnvelope,
 } from './project-graphics-runtime';
+import { legacyNesSurvivor } from './fixtures/legacy-nes-survivor';
 
 const encodeImage = (): string => 'data:image/png;base64,runtime-image';
 const encodeBytes = (bytes: Uint8Array): string =>
@@ -929,7 +930,7 @@ describe('runtime project persistence boundary', () => {
     if (!loadedResult.success) return;
     const loaded = loadedResult.project;
     const baseSource = loaded.graphics.baseChr.source;
-    if (baseSource === null || baseSource.dataUrl === undefined) {
+    if (baseSource?.dataUrl === undefined) {
       throw new Error('Expected embedded legacy destination envelope.');
     }
     const loadedEnvelope = decodeEmbeddedBytes(baseSource.dataUrl);
@@ -1036,11 +1037,10 @@ describe('runtime project persistence boundary', () => {
       ...runtime,
       animation: {
         ...runtime.animation,
-        destinationChr: Uint8Array.from(loadedEnvelope),
+        destinationChr: Uint8Array.from(loadedEnvelope, (byte) => byte ^ 0xff),
         destinationChrName: 'external-base.chr',
       },
     };
-    ambiguousExternal.animation.destinationChr[400 * 16] = 0xff;
     expect(recoverGeneratedLegacyChrEnvelope(ambiguousExternal, [])).toBe(
       ambiguousExternal,
     );
@@ -1069,6 +1069,152 @@ describe('runtime project persistence boundary', () => {
         .map((placement) => placement.physicalSlot),
     );
     expect(animationMappingSlots).toEqual(placementSlots);
+  });
+
+  it('recovers the loaded NES Survivor v1 envelope without treating its stale tile as Base CHR', () => {
+    const initial = createDefaultProject('NES Survivor', 'animation');
+    const template = initial.animation?.animations[0];
+    if (!template) throw new Error('Expected default Animation.');
+    const destinationChr = new Uint8Array(8192);
+    destinationChr.set(
+      Uint8Array.from(atob(legacyNesSurvivor.destinationChrPrefix), (char) =>
+        char.charCodeAt(0),
+      ),
+    );
+    const legacyRaw = JSON.parse(serializeProject(initial)) as Record<
+      string,
+      unknown
+    >;
+    legacyRaw.formatVersion = 1;
+    delete legacyRaw.graphics;
+    const animation = legacyRaw.animation as Record<string, unknown>;
+    animation.patternTable = 0;
+    animation.destinationPatternTable = 0;
+    animation.flipDeduplication = true;
+    animation.destinationChr = {
+      id: 'asset-base-chr-default',
+      path: 'game.chr',
+      name: 'game.chr',
+      sourceKind: 'chr',
+      dataUrl: `data:application/octet-stream;base64,${btoa(
+        String.fromCharCode(...destinationChr),
+      )}`,
+    };
+    animation.animations = legacyNesSurvivor.animations.map((fixture) => ({
+      ...template,
+      id: fixture.id,
+      name: fixture.name,
+      entity: fixture.entity,
+      assetId: fixture.assetId,
+      asset: {
+        id: fixture.assetId,
+        path: fixture.fileName,
+        name: fixture.fileName,
+        sourceKind: 'png',
+        dataUrl: `data:image/png;base64,${fixture.id}`,
+      },
+      frameWidth: fixture.frameWidth,
+      frameHeight: fixture.frameHeight,
+      frameIndices: fixture.frameIndices,
+      frameDurations: fixture.frameIndices.map(() => 12),
+    }));
+
+    const deserialized = deserializeProject(JSON.stringify(legacyRaw));
+    expect(deserialized.success).toBe(true);
+    if (!deserialized.success) return;
+    const loaded = deserialized.project;
+    expect(loaded.animation?.flipDeduplication).toBe(true);
+    const runtimeImages = legacyNesSurvivor.animations.map((fixture) => ({
+      width: fixture.width,
+      height: fixture.height,
+      pixels: Uint8Array.from(atob(fixture.pixels), (char) =>
+        char.charCodeAt(0),
+      ),
+      colors: [
+        { red: 0, green: 0, blue: 0 },
+        { red: 85, green: 85, blue: 85 },
+        { red: 170, green: 170, blue: 170 },
+        { red: 255, green: 255, blue: 255 },
+      ],
+      transparentIndex: 0 as const,
+      colorCount: 4,
+    }));
+    expect(runtimeImages.map((image) => image.pixels.length)).toEqual(
+      runtimeImages.map((image) => image.width * image.height),
+    );
+    const restoredAnimation = restoreAnimationSourcesFromCatalog(
+      loaded,
+      runtimeImages,
+      destinationChr,
+    );
+    expect(
+      restoredAnimation.animations.map((item) => item.source?.assetId),
+    ).toEqual(legacyNesSurvivor.animations.map((fixture) => fixture.assetId));
+    expect(
+      restoredAnimation.animations.every((item) => item.source?.indexedImage),
+    ).toBe(true);
+
+    const runtime = restoreProjectView(
+      loaded,
+      createRuntimeSource(loaded),
+      restoredAnimation,
+    );
+    const unknownPolicy = runtime.graphics.baseChr.slotPolicies[0];
+    expect(runtime.graphics.baseChr.byteLength).toBeNull();
+    expect(unknownPolicy).toMatchObject({
+      occupancy: 'unknown',
+      writability: 'locked',
+      provenance: 'pending-source',
+    });
+    expect(
+      runtime.graphics.renderContexts.flatMap(
+        (context) => context.animationIds,
+      ),
+    ).toEqual(legacyNesSurvivor.animations.map((fixture) => fixture.id));
+    expect(createRuntimeAnimationDemands(runtime)).toHaveLength(5);
+    expect(compileRuntimeProjectGraphics(runtime, []).kind).toBe(
+      'failed-compilation',
+    );
+
+    const recovered = recoverGeneratedLegacyChrEnvelope(runtime, []);
+    expect(recovered).not.toBe(runtime);
+    expect(recovered.graphics.baseChr.assetId).toBeNull();
+    expect(recovered.animation.destinationChr).toHaveLength(0);
+    const compiled = compileRuntimeProjectGraphics(recovered, []);
+    expect(compiled.kind).toBe('compiled');
+    if (compiled.kind !== 'compiled') return;
+    expect(compiled.compiled.logicalTilePlacements).toHaveLength(35);
+    expect(
+      compiled.compiled.allocationManifest.filter(
+        (entry) => entry.state === 'project',
+      ),
+    ).toHaveLength(20);
+    expect(
+      new Set(
+        compiled.compiled.logicalTilePlacements.map(
+          (placement) => placement.physicalSlot,
+        ),
+      ),
+    ).toEqual(
+      new Set(
+        compiled.compiled.allocationManifest
+          .filter((entry) => entry.state === 'project')
+          .map((entry) => entry.physicalSlot),
+      ),
+    );
+
+    const ambiguous = {
+      ...runtime,
+      animation: {
+        ...runtime.animation,
+        destinationChr: Uint8Array.from(destinationChr),
+      },
+    };
+    ambiguous.animation.destinationChr = Uint8Array.from(
+      destinationChr,
+      (byte) => byte ^ 0xff,
+    );
+    expect(recoverGeneratedLegacyChrEnvelope(ambiguous, [])).toBe(ambiguous);
   });
 
   it('reports a referenced Animation without a runtime source instead of dropping its demand', () => {
