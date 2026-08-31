@@ -2,6 +2,9 @@ import {
   parseLogicalTileKey,
   type ProjectAssetId,
 } from '../core/asset-identity';
+import { decodeChrTile } from '../core/chr-decoder';
+import { encodeTile } from '../core/chr-encoder';
+import { flipTileHorizontal, flipTileVertical } from '../core/chr-tile-editor';
 import { extractLogicalAnimationFrames } from '../core/metasprite-extraction';
 import { createEmptyProjectBaseChr } from '../core/project-graphics';
 import type { GraphicsAssetDecodeSource } from '../core/project-graphics-assets';
@@ -10,10 +13,67 @@ import { compileProjectGraphics } from '../core/project-graphics-compiler';
 import type { DeliveryCompilationStatus } from './delivery-workspace';
 import type { ProjectView } from './types';
 
-function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+function tileSignature(bytes: Uint8Array): string {
+  return Array.from(bytes).join(',');
+}
+
+function flipInvariantTileSignature(bytes: Uint8Array): string {
+  const tile = decodeChrTile(bytes);
+  const variants = [
+    tile.pixels,
+    flipTileHorizontal(tile.pixels),
+    flipTileVertical(tile.pixels),
+    flipTileVertical(flipTileHorizontal(tile.pixels)),
+  ];
+  const signature = variants
+    .map((pixels) => tileSignature(encodeTile({ ...tile, pixels })))
+    .sort()[0];
+  if (signature === undefined) {
+    throw new Error('CHR tile must have at least one flip variant.');
+  }
+  return signature;
+}
+
+function generatedEnvelopeTileSignatures(
+  bytes: Uint8Array,
+): ReadonlySet<string> {
+  const signatures = new Set<string>();
+  for (let offset = 0; offset < bytes.length; offset += 16) {
+    const tile = bytes.slice(offset, offset + 16);
+    // Zero bytes remain padding here. This does not classify Base CHR slots;
+    // the legacy Base policy remains unknown until the complete envelope is
+    // proven recoverable from canonical Animation content.
+    if (tile.every((byte) => byte === 0)) continue;
+    signatures.add(flipInvariantTileSignature(tile));
+  }
+  return signatures;
+}
+
+function sameSet(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): boolean {
   return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
+    left.size === right.size && [...left].every((value) => right.has(value))
+  );
+}
+
+function isRecoverableGeneratedEnvelope(
+  legacyEnvelope: Uint8Array,
+  compilation: Extract<DeliveryCompilationStatus, { kind: 'compiled' }>,
+): boolean {
+  const legacyTiles = generatedEnvelopeTileSignatures(legacyEnvelope);
+  const demandTiles = new Set(
+    compilation.compiled.logicalTilePlacements
+      .map((placement) =>
+        flipInvariantTileSignature(Uint8Array.from(placement.exactTileBytes)),
+      )
+      .filter((signature) => signature !== tileSignature(new Uint8Array(16))),
+  );
+  return (
+    legacyTiles.size > 0 &&
+    demandTiles.size > 0 &&
+    sameSet(legacyTiles, demandTiles)
   );
 }
 
@@ -168,8 +228,9 @@ export function compileRuntimeProjectGraphics(
 }
 
 /**
- * Clears a legacy Base CHR only when a no-Base canonical compilation exactly
- * reproduces the padded runtime envelope. This proves generated output.
+ * Clears a legacy Base CHR only when every non-padding tile in the envelope is
+ * recoverable from the current canonical Animation demands. Physical slots are
+ * deliberately ignored: historical generators used independent placement.
  */
 export function recoverGeneratedLegacyChrEnvelope(
   project: ProjectView,
@@ -194,7 +255,10 @@ export function recoverGeneratedLegacyChrEnvelope(
   };
   const compilation = compileRuntimeProjectGraphics(recovered, restoredSources);
   return compilation.kind === 'compiled' &&
-    sameBytes(compilation.compiled.finalChr, project.animation.destinationChr)
+    isRecoverableGeneratedEnvelope(
+      project.animation.destinationChr,
+      compilation,
+    )
     ? recovered
     : project;
 }

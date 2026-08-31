@@ -22,6 +22,7 @@ import {
 } from './project-runtime';
 import {
   compileRuntimeProjectGraphics,
+  createRuntimeAnimationDemands,
   recoverGeneratedLegacyChrEnvelope,
 } from './project-graphics-runtime';
 
@@ -41,6 +42,69 @@ function indexedAnimation(seed: number): IndexedImage {
     transparentIndex: 0,
     colorCount: 2,
   };
+}
+
+function indexedAnimationStrip(tileCount: number, seed: number): IndexedImage {
+  const pixels = new Uint8Array(8 * tileCount * 8);
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    for (let pixelIndex = 0; pixelIndex < 64; pixelIndex += 1) {
+      const bit = (tileIndex + seed) >> (pixelIndex % 6);
+      pixels[tileIndex * 64 + pixelIndex] = (bit & 1) === 0 ? 1 : 2;
+    }
+  }
+  return {
+    width: 8,
+    height: tileCount * 8,
+    pixels,
+    colors: [
+      { red: 0, green: 0, blue: 0 },
+      { red: 255, green: 255, blue: 255 },
+      { red: 128, green: 128, blue: 128 },
+    ],
+    transparentIndex: 0,
+    colorCount: 3,
+  };
+}
+
+function nonEmptyChrTileCount(bytes: Uint8Array): number {
+  let count = 0;
+  for (let offset = 0; offset < bytes.length; offset += 16) {
+    if (bytes.subarray(offset, offset + 16).some((byte) => byte !== 0)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function firstDifferingPhysicalSlots(
+  left: Uint8Array,
+  right: Uint8Array,
+  limit = 8,
+): readonly number[] {
+  const slots: number[] = [];
+  for (let slot = 0; slot < 512 && slots.length < limit; slot += 1) {
+    const offset = slot * 16;
+    if (
+      !left
+        .subarray(offset, offset + 16)
+        .every((byte, index) => byte === right[offset + index])
+    ) {
+      slots.push(slot);
+    }
+  }
+  return slots;
+}
+
+function sameChrBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return (
+    left.length === right.length &&
+    left.every((byte, index) => byte === right[index])
+  );
+}
+
+function decodeEmbeddedBytes(dataUrl: string): Uint8Array {
+  const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
 function createAnimationRuntime(project: StudioProject): AnimationSettings {
@@ -75,7 +139,7 @@ function createAnimationRuntime(project: StudioProject): AnimationSettings {
 function restoreAnimationSourcesFromCatalog(
   project: StudioProject,
   images: readonly IndexedImage[],
-  destinationChr: Uint8Array<ArrayBufferLike> = new Uint8Array(),
+  destinationChr: Uint8Array = new Uint8Array(),
 ): AnimationSettings {
   return {
     ...createAnimationRuntime(project),
@@ -93,9 +157,13 @@ function restoreAnimationSourcesFromCatalog(
             assetId: resolved.assetId,
             fileName: resolved.asset.name ?? resolved.asset.path,
             sourceImage: {
-              width: 8,
-              height: 8,
-              data: new Uint8ClampedArray(8 * 8 * 4),
+              width: (images[index] ?? indexedAnimation(1)).width,
+              height: (images[index] ?? indexedAnimation(1)).height,
+              data: new Uint8ClampedArray(
+                (images[index] ?? indexedAnimation(1)).width *
+                  (images[index] ?? indexedAnimation(1)).height *
+                  4,
+              ),
             } as ImageData,
             indexedImage: images[index] ?? indexedAnimation(1),
           },
@@ -511,6 +579,7 @@ describe('runtime project persistence boundary', () => {
         }),
       ),
     });
+    expect(recoverGeneratedLegacyChrEnvelope(runtime, [])).toBe(runtime);
     const decoded = decodeProjectGraphicsAssets(
       runtime.graphics,
       runtime.animation.animations.flatMap((animation) =>
@@ -729,6 +798,277 @@ describe('runtime project persistence boundary', () => {
       ),
     ).toHaveLength(2);
     expect(compiled.compiled.logicalTilePlacements[0]?.physicalSlot).toBe(0);
+  });
+
+  it('diagnoses a legacy generated envelope whose historical physical layout differs from canonical placement', () => {
+    const initial = createDefaultProject(
+      'Historical generated layout',
+      'animation',
+    );
+    const first = initial.animation?.animations[0];
+    if (!first) throw new Error('Expected default Animation.');
+    const assetIds = ['asset-hero', 'asset-enemy'] as const;
+    const tileCounts = [11, 10] as const;
+    const canonical: StudioProject = {
+      ...initial,
+      graphics: {
+        ...initial.graphics,
+        assets: assetIds.map((id) => ({
+          id,
+          kind: 'spritesheet' as const,
+          name: id,
+          source: {
+            path: `${id}.png`,
+            name: `${id}.png`,
+            sourceKind: 'png' as const,
+            dataUrl: `data:image/png;base64,${id}`,
+          },
+          logicalTiles: {
+            decoding: 'png-indexed' as const,
+            quantization: initial.settings.quantization,
+            paletteBank: 'sprite' as const,
+          },
+        })),
+        renderContexts: [
+          {
+            id: 'sprites',
+            name: 'Sprites',
+            backgroundPatternTable: 1,
+            spriteMode: '8x8',
+            spritePatternTable: 0,
+            mapIds: [],
+            animationIds: ['anim-hero', 'anim-enemy'],
+          },
+        ],
+      },
+      animation: {
+        ...initial.animation,
+        patternTable: 0,
+        flipDeduplication: false,
+        animations: assetIds.map((assetId, index) => ({
+          ...first,
+          id: index === 0 ? 'anim-hero' : 'anim-enemy',
+          name: assetId,
+          assetId,
+          asset: null,
+          frameWidth: 8,
+          frameHeight: (tileCounts[index] ?? 0) * 8,
+          frameIndices: [0],
+          frameDurations: [8],
+        })),
+      },
+    };
+    const canonicalResult = deserializeProject(serializeProject(canonical));
+    expect(canonicalResult.success).toBe(true);
+    if (!canonicalResult.success) return;
+    const images = tileCounts.map((count, index) =>
+      indexedAnimationStrip(count, index * 11 + 1),
+    );
+    const noBaseRuntime = restoreProjectView(
+      canonicalResult.project,
+      createRuntimeSource(canonicalResult.project),
+      restoreAnimationSourcesFromCatalog(canonicalResult.project, images),
+    );
+    const noBaseCompilation = compileRuntimeProjectGraphics(noBaseRuntime, []);
+    expect(noBaseCompilation.kind).toBe('compiled');
+    if (noBaseCompilation.kind !== 'compiled') return;
+    expect(noBaseCompilation.compiled.logicalTilePlacements).toHaveLength(21);
+
+    const legacyEnvelope = new Uint8Array(8192);
+    for (const [
+      index,
+      placement,
+    ] of noBaseCompilation.compiled.logicalTilePlacements.entries()) {
+      const sourceOffset = placement.physicalSlot * 16;
+      legacyEnvelope.set(
+        noBaseCompilation.compiled.finalChr.slice(
+          sourceOffset,
+          sourceOffset + 16,
+        ),
+        (128 + index) * 16,
+      );
+    }
+    const legacyRaw = JSON.parse(serializeProject(canonical)) as Record<
+      string,
+      unknown
+    >;
+    legacyRaw.formatVersion = 1;
+    delete legacyRaw.graphics;
+    const legacyAnimation = legacyRaw.animation as Record<string, unknown>;
+    legacyAnimation.destinationChr = {
+      id: 'asset-legacy-output',
+      path: 'game.chr',
+      name: 'game.chr',
+      sourceKind: 'chr',
+      dataUrl: `data:application/octet-stream;base64,${btoa(
+        String.fromCharCode(...legacyEnvelope),
+      )}`,
+    };
+    legacyAnimation.animations = assetIds.map((assetId, index) => ({
+      ...first,
+      id: index === 0 ? 'anim-hero' : 'anim-enemy',
+      name: assetId,
+      assetId,
+      asset: {
+        id: assetId,
+        path: `${assetId}.png`,
+        name: `${assetId}.png`,
+        sourceKind: 'png',
+        dataUrl: `data:image/png;base64,${assetId}`,
+      },
+      frameWidth: 8,
+      frameHeight: (tileCounts[index] ?? 0) * 8,
+      frameIndices: [0],
+      frameDurations: [8],
+    }));
+    const migrated = deserializeProject(JSON.stringify(legacyRaw));
+    expect(migrated.success).toBe(true);
+    if (!migrated.success) return;
+    const loadedResult = deserializeProject(serializeProject(migrated.project));
+    expect(loadedResult.success).toBe(true);
+    if (!loadedResult.success) return;
+    const loaded = loadedResult.project;
+    const baseSource = loaded.graphics.baseChr.source;
+    if (baseSource === null || baseSource.dataUrl === undefined) {
+      throw new Error('Expected embedded legacy destination envelope.');
+    }
+    const loadedEnvelope = decodeEmbeddedBytes(baseSource.dataUrl);
+    const runtime = restoreProjectView(
+      loaded,
+      createRuntimeSource(loaded),
+      restoreAnimationSourcesFromCatalog(loaded, images, loadedEnvelope),
+    );
+    const candidate = {
+      ...runtime,
+      graphics: {
+        ...runtime.graphics,
+        baseChr: createDefaultProject().graphics.baseChr,
+      },
+      animation: {
+        ...runtime.animation,
+        destinationChr: new Uint8Array(),
+        destinationChrAssetId: null,
+        destinationChrAsset: null,
+        destinationChrName: null,
+      },
+    };
+    const candidateCompilation = compileRuntimeProjectGraphics(candidate, []);
+    const candidateFailures =
+      candidateCompilation.kind === 'failed-compilation'
+        ? candidateCompilation.result.failures.map((failure) => failure.code)
+        : [];
+    const basePolicy = runtime.graphics.baseChr.slotPolicies[0];
+    if (basePolicy === undefined) {
+      throw new Error('Expected unknown legacy Base CHR policy.');
+    }
+    const diagnostics = {
+      isLegacyUnknownBaseChr:
+        runtime.graphics.baseChr.byteLength === null &&
+        basePolicy.occupancy === 'unknown' &&
+        basePolicy.writability === 'locked',
+      destinationChrLength: runtime.animation.destinationChr.length,
+      destinationChrName: runtime.animation.destinationChrName,
+      destinationChrAssetId: runtime.animation.destinationChrAssetId,
+      noBaseStatus: candidateCompilation.kind,
+      noBaseFailures: candidateFailures,
+      projectPlacements:
+        candidateCompilation.kind === 'compiled'
+          ? candidateCompilation.compiled.logicalTilePlacements.length
+          : 0,
+      legacyNonEmptyTiles: nonEmptyChrTileCount(
+        runtime.animation.destinationChr,
+      ),
+      noBaseNonEmptyTiles:
+        candidateCompilation.kind === 'compiled'
+          ? nonEmptyChrTileCount(candidateCompilation.compiled.finalChr)
+          : 0,
+      sameBytes:
+        candidateCompilation.kind === 'compiled' &&
+        sameChrBytes(
+          candidateCompilation.compiled.finalChr,
+          runtime.animation.destinationChr,
+        ),
+      firstDifferingSlots:
+        candidateCompilation.kind === 'compiled'
+          ? firstDifferingPhysicalSlots(
+              candidateCompilation.compiled.finalChr,
+              runtime.animation.destinationChr,
+            )
+          : [],
+      demands: createRuntimeAnimationDemands(runtime).map((demand) => ({
+        animationId: demand.animationId,
+        spriteCount: demand.frames[0]?.sprites.length ?? 0,
+      })),
+      placements:
+        candidateCompilation.kind === 'compiled'
+          ? candidateCompilation.compiled.logicalTilePlacements.map(
+              (placement) => ({
+                logicalKey: placement.logicalKey,
+                physicalSlot: placement.physicalSlot,
+              }),
+            )
+          : [],
+    };
+
+    expect(diagnostics).toMatchObject({
+      isLegacyUnknownBaseChr: true,
+      destinationChrLength: 8192,
+      destinationChrName: 'game.chr',
+      destinationChrAssetId: 'asset-legacy-output',
+      noBaseStatus: 'compiled',
+      noBaseFailures: [],
+      projectPlacements: 21,
+      legacyNonEmptyTiles: 21,
+      noBaseNonEmptyTiles: 21,
+      sameBytes: false,
+      firstDifferingSlots: [0, 1, 2, 3, 4, 5, 6, 7],
+      demands: [
+        { animationId: 'anim-hero', spriteCount: 11 },
+        { animationId: 'anim-enemy', spriteCount: 10 },
+      ],
+    });
+    expect(diagnostics.placements).toHaveLength(21);
+    const recovered = recoverGeneratedLegacyChrEnvelope(runtime, []);
+    expect(recovered).not.toBe(runtime);
+    expect(recovered.graphics.baseChr.assetId).toBeNull();
+    expect(recovered.animation.destinationChr).toHaveLength(0);
+    const ambiguousExternal = {
+      ...runtime,
+      animation: {
+        ...runtime.animation,
+        destinationChr: Uint8Array.from(loadedEnvelope),
+        destinationChrName: 'external-base.chr',
+      },
+    };
+    ambiguousExternal.animation.destinationChr[400 * 16] = 0xff;
+    expect(recoverGeneratedLegacyChrEnvelope(ambiguousExternal, [])).toBe(
+      ambiguousExternal,
+    );
+    expect(compileRuntimeProjectGraphics(ambiguousExternal, []).kind).toBe(
+      'failed-compilation',
+    );
+    const recoveredCompilation = compileRuntimeProjectGraphics(recovered, []);
+    expect(recoveredCompilation.kind).toBe('compiled');
+    if (recoveredCompilation.kind !== 'compiled') return;
+    const placementSlots = new Set(
+      recoveredCompilation.compiled.logicalTilePlacements.map(
+        (placement) => placement.physicalSlot,
+      ),
+    );
+    const manifestProjectSlots = new Set(
+      recoveredCompilation.compiled.allocationManifest
+        .filter((slot) => slot.state === 'project')
+        .map((slot) => slot.physicalSlot),
+    );
+    expect(manifestProjectSlots).toEqual(placementSlots);
+    const animationMappingSlots = new Set(
+      recoveredCompilation.compiled.logicalTilePlacements
+        .filter((placement) =>
+          placement.usages.some((usage) => usage.kind === 'animation'),
+        )
+        .map((placement) => placement.physicalSlot),
+    );
+    expect(animationMappingSlots).toEqual(placementSlots);
   });
 
   it('reports a referenced Animation without a runtime source instead of dropping its demand', () => {
