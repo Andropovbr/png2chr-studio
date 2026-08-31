@@ -84,12 +84,14 @@ function sparseOverrides(
 export function decodeProjectGraphicsAssets(
   graphics: ProjectGraphicsConfiguration,
   sources: readonly GraphicsAssetDecodeSource[],
+  requiredAssetIds?: ReadonlySet<ProjectAssetId>,
 ): GraphicsAssetDecodeResult {
   const sourcesById = new Map(
     sources.map((source) => [source.assetId, source]),
   );
   const decodedAssets: DecodedGraphicsAsset[] = [];
   for (const asset of graphics.assets) {
+    if (requiredAssetIds && !requiredAssetIds.has(asset.id)) continue;
     const source = sourcesById.get(asset.id);
     if (!source) {
       return { success: false, assetId: asset.id, reason: 'missing-source' };

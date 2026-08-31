@@ -384,17 +384,30 @@ describe('runtime project persistence boundary', () => {
             },
           ],
         },
-        assets: assetIds.map((id) => ({
-          id,
-          kind: 'spritesheet' as const,
-          name: id,
-          source: null,
-          logicalTiles: {
-            decoding: 'png-indexed' as const,
-            quantization: null,
-            paletteBank: 'sprite' as const,
+        assets: [
+          ...assetIds.map((id) => ({
+            id,
+            kind: 'spritesheet' as const,
+            name: id,
+            source: null,
+            logicalTiles: {
+              decoding: 'png-indexed' as const,
+              quantization: null,
+              paletteBank: 'sprite' as const,
+            },
+          })),
+          {
+            id: 'asset-detached',
+            kind: 'spritesheet' as const,
+            name: 'Detached',
+            source: null,
+            logicalTiles: {
+              decoding: 'png-indexed' as const,
+              quantization: null,
+              paletteBank: 'sprite' as const,
+            },
           },
-        })),
+        ],
         renderContexts: [
           {
             id: 'context-sprites',
@@ -472,6 +485,7 @@ describe('runtime project persistence boundary', () => {
             ]
           : [],
       ),
+      new Set(assetIds),
     );
     expect(decoded.success).toBe(true);
     if (!decoded.success) return;

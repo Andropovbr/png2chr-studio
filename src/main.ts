@@ -130,6 +130,7 @@ import {
 import {
   extractProjectAssets,
   normalizeProjectAssetId,
+  parseLogicalTileKey,
   type LogicalTileKey,
   type ProjectAssetId,
 } from './core/asset-identity';
@@ -3190,9 +3191,51 @@ function withCompiledAnimationPlacements(
 function compileCurrentProjectGraphics(
   currentProject: ProjectView,
 ): DeliveryCompilationStatus {
+  const animationDemands = currentProject.animation.animations.flatMap(
+    (animation) =>
+      animation.source?.indexedImage && animation.source.assetId
+        ? [
+            {
+              animationId: animation.id,
+              frames: extractLogicalAnimationFrames({
+                image: animation.source.indexedImage,
+                pixelOverrides: animation.pixelOverrides,
+                frameIndices: animation.frameIndices,
+                defaultDuration: animation.defaultDuration,
+                frameDurations: animation.frameDurations,
+                framePalettes: animation.framePalettes,
+                paletteIndex: animation.paletteIndex,
+                frameWidth: animation.frameWidth,
+                frameHeight: animation.frameHeight,
+                originX: animation.originX,
+                originY: animation.originY,
+                assetId: animation.source.assetId,
+              }),
+              flipDeduplication: currentProject.animation.flipDeduplication,
+            },
+          ]
+        : [],
+  );
+  const requiredAssetIds = new Set<ProjectAssetId>();
+  for (const map of currentProject.backgrounds?.maps ?? []) {
+    for (const cell of map.cells) {
+      if (cell === null) continue;
+      const parsed = parseLogicalTileKey(cell.logicalKey);
+      if (parsed) requiredAssetIds.add(parsed.assetId);
+    }
+  }
+  for (const demand of animationDemands) {
+    for (const frame of demand.frames) {
+      for (const sprite of frame.sprites) {
+        const parsed = parseLogicalTileKey(sprite.logicalKey);
+        if (parsed) requiredAssetIds.add(parsed.assetId);
+      }
+    }
+  }
   const decoded = decodeProjectGraphicsAssets(
     currentProject.graphics,
     runtimeGraphicsAssetSources(currentProject),
+    requiredAssetIds,
   );
   if (!decoded.success) {
     return {
@@ -3207,31 +3250,7 @@ function compileCurrentProjectGraphics(
     graphics: currentProject.graphics,
     decodedAssets: decoded.assets,
     backgroundMaps: currentProject.backgrounds?.maps ?? [],
-    animationDemands: currentProject.animation.animations.flatMap(
-      (animation) =>
-        animation.source?.indexedImage && animation.source.assetId
-          ? [
-              {
-                animationId: animation.id,
-                frames: extractLogicalAnimationFrames({
-                  image: animation.source.indexedImage,
-                  pixelOverrides: animation.pixelOverrides,
-                  frameIndices: animation.frameIndices,
-                  defaultDuration: animation.defaultDuration,
-                  frameDurations: animation.frameDurations,
-                  framePalettes: animation.framePalettes,
-                  paletteIndex: animation.paletteIndex,
-                  frameWidth: animation.frameWidth,
-                  frameHeight: animation.frameHeight,
-                  originX: animation.originX,
-                  originY: animation.originY,
-                  assetId: animation.source.assetId,
-                }),
-                flipDeduplication: currentProject.animation.flipDeduplication,
-              },
-            ]
-          : [],
-    ),
+    animationDemands,
     baseChrBytes:
       currentProject.animation.destinationChr.length > 0
         ? currentProject.animation.destinationChr
