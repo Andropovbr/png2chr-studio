@@ -130,7 +130,6 @@ import {
 import {
   extractProjectAssets,
   normalizeProjectAssetId,
-  parseLogicalTileKey,
   type LogicalTileKey,
   type ProjectAssetId,
 } from './core/asset-identity';
@@ -140,11 +139,7 @@ import {
 } from './core/project-graphics-assets';
 import { reconcileAnimationGeometry } from './core/asset-lifecycle';
 import { buildChrAssetMappingIndex } from './core/chr-asset-mapping';
-import { extractLogicalAnimationFrames } from './core/metasprite-extraction';
-import {
-  compileProjectGraphics,
-  type CompiledProjectGraphics,
-} from './core/project-graphics-compiler';
+import { type CompiledProjectGraphics } from './core/project-graphics-compiler';
 import {
   createDeliveryWorkspace,
   type DeliveryCompilationStatus,
@@ -169,9 +164,15 @@ import {
 import {
   beginGraphicsSourceImport,
   buildStudioProjectFromRuntime,
+  resolveAnimationRuntimeAsset,
   restoreProjectView,
   type RestoredRuntimeSource,
 } from './ui/project-runtime';
+import {
+  compileRuntimeProjectGraphics,
+  recoverGeneratedLegacyChrEnvelope,
+  runtimeGraphicsAssetSources,
+} from './ui/project-graphics-runtime';
 import {
   createDerivedStatus,
   createWorkspaceState,
@@ -561,7 +562,8 @@ async function restoreProjectAnimation(loaded: StudioProject): Promise<{
   for (const anim of animSettings?.animations ?? []) {
     let source: AnimationSourceData | null = null;
     let detection: FrameDetectionResult | null = null;
-    const matchingFile = findMatchingAssetFile(anim.asset);
+    const runtimeAsset = resolveAnimationRuntimeAsset(loaded, anim);
+    const matchingFile = findMatchingAssetFile(runtimeAsset.asset);
     const quantMode =
       anim.quantizationMode ?? animSettings?.quantizationMode ?? 'median-cut';
     const dithMode =
@@ -576,7 +578,7 @@ async function restoreProjectAnimation(loaded: StudioProject): Promise<{
           colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
         });
         source = {
-          assetId: anim.asset?.id,
+          assetId: runtimeAsset.assetId ?? undefined,
           fileName: matchingFile.name,
           sourceImage: imageData,
           indexedImage,
@@ -592,17 +594,17 @@ async function restoreProjectAnimation(loaded: StudioProject): Promise<{
             ? displayPngLoadError(error.failure)
             : { key: 'imageProcessingFailed' };
       }
-    } else if (anim.asset?.dataUrl) {
+    } else if (runtimeAsset.asset?.dataUrl) {
       try {
-        const imageData = await decodeDataUrl(anim.asset.dataUrl);
+        const imageData = await decodeDataUrl(runtimeAsset.asset.dataUrl);
         const indexedImage = quantizePngSource(imageData, 'animation', {
           quantizationMode: quantMode,
           ditheringMode: dithMode,
           colorDistanceMode: loaded.settings.quantization.colorDistanceMode,
         });
         source = {
-          assetId: anim.asset.id,
-          fileName: anim.asset.name ?? anim.asset.path,
+          assetId: runtimeAsset.assetId ?? undefined,
+          fileName: runtimeAsset.asset.name ?? runtimeAsset.asset.path,
           sourceImage: imageData,
           indexedImage,
         };
@@ -638,7 +640,7 @@ async function restoreProjectAnimation(loaded: StudioProject): Promise<{
       id: anim.id,
       name: anim.name,
       entity: anim.entity ?? 'entity',
-      asset: anim.asset,
+      asset: runtimeAsset.asset,
       source,
       paletteId: anim.paletteId ?? null,
       paletteIndex: anim.paletteIndex ?? null,
@@ -794,10 +796,9 @@ async function loadProjectFile(
         pixelOverrides: new Uint8Array(),
         collisionCells: createEmptyCollisionMap(),
       };
-      project = restoreProjectView(
-        loaded,
-        emptySource,
-        restoredAnimation.animation,
+      project = recoverGeneratedLegacyChrEnvelope(
+        restoreProjectView(loaded, emptySource, restoredAnimation.animation),
+        restoredGraphicsAssetSources.values(),
       );
       resetTransientState(restoredAnimation.error ?? missingError);
       render();
@@ -985,10 +986,9 @@ async function loadProjectFile(
       paletteAssignments,
       pixelOverrides,
     };
-    project = restoreProjectView(
-      loaded,
-      restoredSource,
-      restoredAnimation.animation,
+    project = recoverGeneratedLegacyChrEnvelope(
+      restoreProjectView(loaded, restoredSource, restoredAnimation.animation),
+      restoredGraphicsAssetSources.values(),
     );
     resetTransientState(
       restoredPngError ?? restoredAnimation.error ?? missingError,
@@ -3191,75 +3191,10 @@ function withCompiledAnimationPlacements(
 function compileCurrentProjectGraphics(
   currentProject: ProjectView,
 ): DeliveryCompilationStatus {
-  const animationDemands = currentProject.animation.animations.flatMap(
-    (animation) =>
-      animation.source?.indexedImage && animation.source.assetId
-        ? [
-            {
-              animationId: animation.id,
-              frames: extractLogicalAnimationFrames({
-                image: animation.source.indexedImage,
-                pixelOverrides: animation.pixelOverrides,
-                frameIndices: animation.frameIndices,
-                defaultDuration: animation.defaultDuration,
-                frameDurations: animation.frameDurations,
-                framePalettes: animation.framePalettes,
-                paletteIndex: animation.paletteIndex,
-                frameWidth: animation.frameWidth,
-                frameHeight: animation.frameHeight,
-                originX: animation.originX,
-                originY: animation.originY,
-                assetId: animation.source.assetId,
-              }),
-              flipDeduplication: currentProject.animation.flipDeduplication,
-            },
-          ]
-        : [],
+  return compileRuntimeProjectGraphics(
+    currentProject,
+    restoredGraphicsAssetSources.values(),
   );
-  const requiredAssetIds = new Set<ProjectAssetId>();
-  for (const map of currentProject.backgrounds?.maps ?? []) {
-    for (const cell of map.cells) {
-      if (cell === null) continue;
-      const parsed = parseLogicalTileKey(cell.logicalKey);
-      if (parsed) requiredAssetIds.add(parsed.assetId);
-    }
-  }
-  for (const demand of animationDemands) {
-    for (const frame of demand.frames) {
-      for (const sprite of frame.sprites) {
-        const parsed = parseLogicalTileKey(sprite.logicalKey);
-        if (parsed) requiredAssetIds.add(parsed.assetId);
-      }
-    }
-  }
-  const decoded = decodeProjectGraphicsAssets(
-    currentProject.graphics,
-    runtimeGraphicsAssetSources(currentProject),
-    requiredAssetIds,
-  );
-  if (!decoded.success) {
-    return {
-      kind:
-        decoded.reason === 'missing-source'
-          ? 'missing-assets'
-          : 'unsupported-source',
-      assetId: decoded.assetId,
-    };
-  }
-  const result = compileProjectGraphics({
-    graphics: currentProject.graphics,
-    decodedAssets: decoded.assets,
-    backgroundMaps: currentProject.backgrounds?.maps ?? [],
-    animationDemands,
-    baseChrBytes:
-      currentProject.animation.destinationChr.length > 0
-        ? currentProject.animation.destinationChr
-        : undefined,
-    chrRegions: currentProject.chrRegions,
-  });
-  return result.success
-    ? { kind: 'compiled', compiled: result }
-    : { kind: 'failed-compilation', result };
 }
 
 function chrPlacementUnavailableReason(
@@ -3285,30 +3220,6 @@ function chrPlacementUnavailableReason(
       .join(' ');
   }
   return t('deliveryCompilerUnknown');
-}
-
-/** Runtime source registry. IDs are explicit; absent assets remain unresolved. */
-function runtimeGraphicsAssetSources(
-  currentProject: ProjectView,
-): readonly GraphicsAssetDecodeSource[] {
-  const sources = Array.from(restoredGraphicsAssetSources.values());
-  if (currentProject.assetId && currentProject.indexedImage) {
-    sources.push({
-      assetId: currentProject.assetId,
-      indexedImage: currentProject.indexedImage,
-      tiles: currentProject.tiles,
-    });
-  }
-  for (const animation of currentProject.animation.animations) {
-    const source = animation.source;
-    if (source?.assetId) {
-      sources.push({
-        assetId: source.assetId,
-        indexedImage: source.indexedImage,
-      });
-    }
-  }
-  return sources;
 }
 
 function buildCurrentSourcePaletteContexts(
@@ -3768,7 +3679,7 @@ function renderBackgroundWorkspace(): void {
   const projectAssets = extractProjectAssets(project);
   const decoded = decodeProjectGraphicsAssets(
     project.graphics,
-    runtimeGraphicsAssetSources(project),
+    runtimeGraphicsAssetSources(project, restoredGraphicsAssetSources.values()),
   );
   const assetTilesMap = new Map<ProjectAssetId, readonly Tile[]>();
   if (decoded.success) {

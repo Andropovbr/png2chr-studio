@@ -16,9 +16,14 @@ import type { AnimationSettings } from './types';
 import {
   beginGraphicsSourceImport,
   buildStudioProjectFromRuntime,
+  resolveAnimationRuntimeAsset,
   restoreProjectView,
   type RestoredRuntimeSource,
 } from './project-runtime';
+import {
+  compileRuntimeProjectGraphics,
+  recoverGeneratedLegacyChrEnvelope,
+} from './project-graphics-runtime';
 
 const encodeImage = (): string => 'data:image/png;base64,runtime-image';
 const encodeBytes = (bytes: Uint8Array): string =>
@@ -64,6 +69,39 @@ function createAnimationRuntime(project: StudioProject): AnimationSettings {
     destinationChr: new Uint8Array(),
     patternTable: animation.patternTable,
     destinationPatternTable: animation.destinationPatternTable,
+  };
+}
+
+function restoreAnimationSourcesFromCatalog(
+  project: StudioProject,
+  images: readonly IndexedImage[],
+  destinationChr: Uint8Array<ArrayBufferLike> = new Uint8Array(),
+): AnimationSettings {
+  return {
+    ...createAnimationRuntime(project),
+    destinationChr,
+    animations: (project.animation?.animations ?? []).map(
+      (animation, index) => {
+        const resolved = resolveAnimationRuntimeAsset(project, animation);
+        if (resolved.asset === null || resolved.assetId === null) {
+          throw new Error('Expected canonical Animation asset source.');
+        }
+        return {
+          ...animation,
+          asset: resolved.asset,
+          source: {
+            assetId: resolved.assetId,
+            fileName: resolved.asset.name ?? resolved.asset.path,
+            sourceImage: {
+              width: 8,
+              height: 8,
+              data: new Uint8ClampedArray(8 * 8 * 4),
+            } as ImageData,
+            indexedImage: images[index] ?? indexedAnimation(1),
+          },
+        };
+      },
+    ),
   };
 }
 
@@ -533,6 +571,181 @@ describe('runtime project persistence boundary', () => {
     ).toEqual([21, 22]);
     expect(createLogicalTileKey('asset-hero', 0, 0)).toBe(
       compiled.logicalTilePlacements[0]?.logicalKey,
+    );
+  });
+
+  it('recovers a proven generated legacy CHR envelope through the real catalog-backed Animation load path', () => {
+    const initial = createDefaultProject(
+      'Legacy generated envelope',
+      'animation',
+    );
+    const first = initial.animation?.animations[0];
+    if (!first) throw new Error('Expected default Animation.');
+    const assetIds = ['asset-hero', 'asset-enemy'] as const;
+    const canonical: StudioProject = {
+      ...initial,
+      graphics: {
+        ...initial.graphics,
+        assets: assetIds.map((id) => ({
+          id,
+          kind: 'spritesheet' as const,
+          name: id,
+          source: {
+            path: `${id}.png`,
+            name: `${id}.png`,
+            sourceKind: 'png' as const,
+            dataUrl: `data:image/png;base64,${id}`,
+          },
+          logicalTiles: {
+            decoding: 'png-indexed' as const,
+            quantization: initial.settings.quantization,
+            paletteBank: 'sprite' as const,
+          },
+        })),
+        renderContexts: [
+          {
+            id: 'sprites',
+            name: 'Sprites',
+            backgroundPatternTable: 1,
+            spriteMode: '8x8',
+            spritePatternTable: 0,
+            mapIds: [],
+            animationIds: ['anim-hero', 'anim-enemy'],
+          },
+        ],
+      },
+      animation: {
+        ...initial.animation,
+        patternTable: 0,
+        animations: assetIds.map((assetId, index) => ({
+          ...first,
+          id: index === 0 ? 'anim-hero' : 'anim-enemy',
+          name: assetId,
+          assetId,
+          asset: null,
+          frameWidth: 8,
+          frameHeight: 8,
+          frameIndices: [0],
+          frameDurations: [8],
+        })),
+      },
+    };
+    const canonicalResult = deserializeProject(serializeProject(canonical));
+    expect(canonicalResult.success).toBe(true);
+    if (!canonicalResult.success) return;
+
+    const images = assetIds.map((_, index) => indexedAnimation(index + 1));
+    const noBaseRuntime = restoreProjectView(
+      canonicalResult.project,
+      createRuntimeSource(canonicalResult.project),
+      restoreAnimationSourcesFromCatalog(canonicalResult.project, images),
+    );
+    const noBaseCompilation = compileRuntimeProjectGraphics(noBaseRuntime, []);
+    expect(noBaseCompilation.kind).toBe('compiled');
+    if (noBaseCompilation.kind !== 'compiled') return;
+    const generatedEnvelope = noBaseCompilation.compiled.finalChr;
+
+    const legacyRaw = JSON.parse(serializeProject(canonical)) as Record<
+      string,
+      unknown
+    >;
+    legacyRaw.formatVersion = 1;
+    delete legacyRaw.graphics;
+    const legacyAnimation = legacyRaw.animation as Record<string, unknown>;
+    legacyAnimation.destinationChr = {
+      id: 'asset-legacy-output',
+      path: 'legacy-output.chr',
+      name: 'legacy-output.chr',
+      sourceKind: 'chr',
+      dataUrl: `data:application/octet-stream;base64,${btoa(
+        String.fromCharCode(...generatedEnvelope),
+      )}`,
+    };
+    legacyAnimation.animations = assetIds.map((assetId, index) => ({
+      ...first,
+      id: index === 0 ? 'anim-hero' : 'anim-enemy',
+      name: assetId,
+      assetId,
+      asset: {
+        id: assetId,
+        path: `${assetId}.png`,
+        name: `${assetId}.png`,
+        sourceKind: 'png',
+        dataUrl: `data:image/png;base64,${assetId}`,
+      },
+      frameWidth: 8,
+      frameHeight: 8,
+      frameIndices: [0],
+      frameDurations: [8],
+    }));
+    const migrated = deserializeProject(JSON.stringify(legacyRaw));
+    expect(migrated.success).toBe(true);
+    if (!migrated.success) return;
+    const loadedResult = deserializeProject(serializeProject(migrated.project));
+    expect(loadedResult.success).toBe(true);
+    if (!loadedResult.success) return;
+    const loaded = loadedResult.project;
+    for (const animation of loaded.animation?.animations ?? []) {
+      const resolved = resolveAnimationRuntimeAsset(loaded, animation);
+      expect(resolved.assetId).toBe(animation.assetId);
+      expect(resolved.asset?.id).toBe(animation.assetId);
+      const withoutCompatibilityAlias = { ...animation, asset: null };
+      expect(
+        resolveAnimationRuntimeAsset(loaded, withoutCompatibilityAlias),
+      ).toEqual(resolved);
+    }
+
+    const runtime = restoreProjectView(
+      loaded,
+      createRuntimeSource(loaded),
+      restoreAnimationSourcesFromCatalog(loaded, images, generatedEnvelope),
+    );
+    const blocked = compileRuntimeProjectGraphics(runtime, []);
+    expect(blocked.kind).toBe('failed-compilation');
+    const recovered = recoverGeneratedLegacyChrEnvelope(runtime, []);
+    expect(recovered.graphics.baseChr.assetId).toBeNull();
+    expect(recovered.animation.destinationChr).toHaveLength(0);
+
+    const ambiguousRuntime = {
+      ...runtime,
+      animation: {
+        ...runtime.animation,
+        destinationChr: Uint8Array.from(generatedEnvelope, (byte, index) =>
+          index === 0 ? byte ^ 0xff : byte,
+        ),
+      },
+    };
+    expect(recoverGeneratedLegacyChrEnvelope(ambiguousRuntime, [])).toBe(
+      ambiguousRuntime,
+    );
+
+    const compiled = compileRuntimeProjectGraphics(recovered, []);
+    expect(compiled.kind).toBe('compiled');
+    if (compiled.kind !== 'compiled') return;
+    expect(compiled.compiled.finalChr).toEqual(generatedEnvelope);
+    expect(
+      compiled.compiled.allocationManifest.filter(
+        (slot) => slot.state === 'project',
+      ),
+    ).toHaveLength(2);
+    expect(compiled.compiled.logicalTilePlacements[0]?.physicalSlot).toBe(0);
+  });
+
+  it('reports a referenced Animation without a runtime source instead of dropping its demand', () => {
+    const persisted = createCompleteProject('animation');
+    const loadedResult = deserializeProject(serializeProject(persisted));
+    expect(loadedResult.success).toBe(true);
+    if (!loadedResult.success) return;
+    const runtime = restoreProjectView(
+      loadedResult.project,
+      createRuntimeSource(loadedResult.project),
+      createAnimationRuntime(loadedResult.project),
+    );
+    const result = compileRuntimeProjectGraphics(runtime, []);
+    expect(result.kind).toBe('failed-compilation');
+    if (result.kind !== 'failed-compilation') return;
+    expect(result.result.failures[0]?.code).toBe(
+      'unresolved-render-context-consumer',
     );
   });
 
