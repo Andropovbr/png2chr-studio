@@ -8,6 +8,7 @@ import {
   CURRENT_PROJECT_FORMAT_VERSION,
   type ProjectAnimationItemConfig,
   type ProjectAnimationSettingsConfig,
+  type ProjectAssetId,
   type ProjectAssetReference,
   type ProjectPlayfieldConfig,
   type ProjectTilesetConfig,
@@ -21,6 +22,34 @@ import { DEFAULT_RANDOM_PLAYFIELD_FEATURES } from '../core/random-playfield';
 import type { SourceKind, ProjectView, AnimationSettings } from './types';
 
 export type ImageDataEncoder = (image: ImageData) => string;
+
+/**
+ * Reconnects an Animation compatibility item to its canonical catalog source.
+ * FormatVersion 2 strips duplicated item.asset payloads, while assetId remains
+ * the stable link required by runtime source reconstruction.
+ */
+export function resolveAnimationRuntimeAsset(
+  project: Pick<StudioProject, 'graphics'>,
+  animation: ProjectAnimationItemConfig,
+): Readonly<{
+  assetId: ProjectAssetId | null;
+  asset: ProjectAssetReference | null;
+}> {
+  const assetId = animation.assetId ?? animation.asset?.id ?? null;
+  if (assetId === null) {
+    return { assetId: null, asset: animation.asset ?? null };
+  }
+  const canonical = project.graphics.assets.find(
+    (asset) => asset.id === assetId,
+  );
+  if (canonical?.source) {
+    return {
+      assetId: canonical.id,
+      asset: { id: canonical.id, ...canonical.source },
+    };
+  }
+  return { assetId, asset: animation.asset ?? null };
+}
 
 function buildActiveAssetReference(
   project: ProjectView,

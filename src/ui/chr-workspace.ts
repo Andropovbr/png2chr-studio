@@ -20,6 +20,7 @@ import {
   type ChrHighlightScope,
   type ChrRegion,
   type ChrSlotClassification,
+  type ChrSlotOccupancy,
   type ChrSlotRegionMembership,
   type ChrTileUsageDiagnostic,
   type ChrUsageHeatmapSummary,
@@ -51,7 +52,10 @@ import { padChrRom } from '../core/chr-rom';
 import type { TileHistory } from '../core/chr-tile-editor';
 import type { ChrDrawingTool } from './chr-tile-editor';
 import type { Tile } from '../core/types';
-import type { CompiledProjectGraphics } from '../core/project-graphics-compiler';
+import type {
+  CompiledChrSlotState,
+  CompiledProjectGraphics,
+} from '../core/project-graphics-compiler';
 import { t } from '../i18n';
 import { createChrRegionManagerPanel } from './chr-region-manager';
 import { createChrTileInspector } from './chr-tile-inspector';
@@ -72,6 +76,8 @@ export interface ChrWorkspaceOptions {
   readonly compiledGraphics?: CompiledProjectGraphics | null;
   /** False when compiler cannot establish project physical placement. */
   readonly placementAvailable?: boolean;
+  /** Compiler failure projected by application orchestration. */
+  readonly placementUnavailableReason?: string;
   readonly mode: ProjectMode;
   readonly animationModel: AnimationProjectModel | null;
   readonly playfieldNametable?: Uint8Array | null;
@@ -165,6 +171,20 @@ interface ComputedChrMetrics {
   readonly outputFileName: string;
 }
 
+function classifyCompiledManifestSlot(
+  state: CompiledChrSlotState,
+): ChrSlotOccupancy {
+  if (state === 'project') return 'project';
+  if (state === 'base-chr') return 'base';
+  if (state === 'reserved') return 'reserved';
+  return 'empty';
+}
+
+function isCompiledContentSlot(state: CompiledChrSlotState): boolean {
+  const occupancy = classifyCompiledManifestSlot(state);
+  return occupancy === 'project' || occupancy === 'base';
+}
+
 function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
   if (options.compiledGraphics) {
     const manifest = options.compiledGraphics.allocationManifest;
@@ -172,8 +192,7 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
       manifest.filter(
         (slot) =>
           slot.patternTable === patternTable &&
-          slot.state !== 'available' &&
-          slot.state !== 'reserved',
+          isCompiledContentSlot(slot.state),
       ).length;
     const base = (patternTable: SpritePatternTable) =>
       manifest.filter(
@@ -219,7 +238,9 @@ function computeMetrics(options: ChrWorkspaceOptions): ComputedChrMetrics {
       reusedImportedTiles: 0,
       newTileCount: 0,
       deduplicationSavings: 0,
-      finalChrBytes: padChrRom(options.baseChr ?? new Uint8Array()),
+      // Raw runtime/Base-CHR bytes do not establish a physical layout without
+      // a successful canonical compilation.
+      finalChrBytes: new Uint8Array(NES_CHR_ROM_SIZE),
       outputFileName: 'project.chr',
     };
   }
@@ -646,7 +667,9 @@ function createPatternTableView(
     startPhysical + NES_PATTERN_TABLE_TILE_COUNT,
   );
   const occupiedCount = ptClassifications.filter(
-    (c) => c.occupancy !== 'empty',
+    (classification) =>
+      classification.occupancy === 'project' ||
+      classification.occupancy === 'base',
   ).length;
   const freeCount = NES_PATTERN_TABLE_TILE_COUNT - occupiedCount;
   const ptRange = patternTable === 0 ? '$0000..$0FFF' : '$1000..$1FFF';
@@ -1963,14 +1986,7 @@ export function createChrWorkspace(
           physicalIndex: slot.physicalSlot,
           localIndex: slot.localPatternTableIndex,
           patternTable: slot.patternTable,
-          occupancy:
-            slot.state === 'project'
-              ? 'project'
-              : slot.state === 'base-chr'
-                ? 'base'
-                : slot.state === 'reserved'
-                  ? 'reserved'
-                  : 'empty',
+          occupancy: classifyCompiledManifestSlot(slot.state),
         }))
       : options.placementAvailable === false
         ? Array.from(
@@ -2056,7 +2072,22 @@ export function createChrWorkspace(
 
   const baseStatusBadge = document.createElement('div');
   baseStatusBadge.className = 'chr-base-status-badge';
-  if (options.baseChr) {
+  if (options.placementAvailable === false) {
+    baseStatusBadge.textContent = t('chrWorkspacePlacementUnavailable', {
+      reason:
+        options.placementUnavailableReason ?? t('deliveryCompilerUnknown'),
+    });
+  } else if (options.compiledGraphics && options.baseChr) {
+    const baseSlots = options.compiledGraphics.allocationManifest.filter(
+      (slot) => slot.state === 'base-chr',
+    ).length;
+    baseStatusBadge.textContent = t('chrWorkspaceBaseChrLoaded', {
+      name: options.baseChrName ?? 'base.chr',
+      size: options.baseChr.length,
+      slots: options.baseChr.length / 16,
+      occupied: baseSlots,
+    });
+  } else if (options.baseChr) {
     const baseOccupancy = analyzeBaseChrOccupancy(options.baseChr);
     baseStatusBadge.textContent = t('chrWorkspaceBaseChrLoaded', {
       name: options.baseChrName ?? 'base.chr',

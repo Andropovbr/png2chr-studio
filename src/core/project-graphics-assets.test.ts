@@ -94,6 +94,17 @@ describe('independent project graphics asset decoding', () => {
     ).toEqual({ success: false, assetId: 'asset-b', reason: 'missing-source' });
   });
 
+  it('decodes only assets required by canonical logical demands', () => {
+    const result = decodeProjectGraphicsAssets(
+      graphics(),
+      [{ assetId: 'asset-a', indexedImage: image(1) }],
+      new Set(['asset-a']),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.assets.map((asset) => asset.assetId)).toEqual(['asset-a']);
+  });
+
   it('keeps raw tile packs separate from compiled project CHR', () => {
     const decoded = decodeProjectGraphicsAssets(graphics(), [
       { assetId: 'asset-a', indexedImage: image(1) },

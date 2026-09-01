@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createLogicalTileKey } from './asset-identity';
 import { createEmptyBackgroundMap } from './background-model';
+import {
+  analyzeChrOwnershipDiagnostics,
+  buildChrAssetMappingIndex,
+} from './chr-asset-mapping';
 import { createProjectBaseChr } from './project-graphics';
 import {
   compileProjectGraphics,
@@ -317,6 +321,91 @@ describe('compileProjectGraphics', () => {
       { physicalTileIndex: 256, flipAttributes: 0 },
       { physicalTileIndex: 257, flipAttributes: 0 },
     ]);
+  });
+
+  it('keeps each Animation asset identity for exact and flipped shared placements', () => {
+    const input = options(0, 1);
+    const backgroundAsset = input.decodedAssets[0];
+    if (!backgroundAsset) return;
+    const asymmetric = pixels(1701);
+    const flipped = flipHorizontal(asymmetric);
+    const result = compileProjectGraphics({
+      ...input,
+      graphics: {
+        ...input.graphics,
+        assets: [
+          ...input.graphics.assets,
+          {
+            id: 'asset-sprite-flipped',
+            kind: 'spritesheet',
+            name: 'Flipped sprite',
+            source: null,
+            logicalTiles: {
+              decoding: 'png-indexed',
+              quantization: null,
+              paletteBank: 'sprite',
+            },
+          },
+        ],
+        renderContexts: input.graphics.renderContexts.map((context) => ({
+          ...context,
+          animationIds: ['anim-main', 'anim-flipped'],
+        })),
+      },
+      decodedAssets: [
+        backgroundAsset,
+        decodedAsset('asset-sprite', [
+          { id: 0, column: 0, row: 0, pixels: asymmetric },
+        ]),
+        decodedAsset('asset-sprite-flipped', [
+          { id: 0, column: 0, row: 0, pixels: asymmetric },
+          { id: 1, column: 1, row: 0, pixels: flipped },
+        ]),
+      ],
+      animationDemands: [
+        {
+          animationId: 'anim-main',
+          flipDeduplication: true,
+          frames: [frame('asset-sprite', [{ tileX: 0, pixels: asymmetric }])],
+        },
+        {
+          animationId: 'anim-flipped',
+          flipDeduplication: true,
+          frames: [
+            frame('asset-sprite-flipped', [
+              { tileX: 0, pixels: asymmetric },
+              { tileX: 1, pixels: flipped },
+            ]),
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const mapping = buildChrAssetMappingIndex({ compiled: result });
+    const slot = result.logicalTilePlacements.find(
+      (placement) => placement.physicalSlot === 256,
+    )?.physicalSlot;
+    expect(slot).toBe(256);
+    if (slot === undefined) return;
+    expect(
+      mapping.byPhysicalIndex[slot]?.usages.map((usage) => usage.assetId),
+    ).toEqual(['asset-sprite', 'asset-sprite-flipped', 'asset-sprite-flipped']);
+    expect(
+      analyzeChrOwnershipDiagnostics({
+        mappingIndex: mapping,
+        activeAssetIds: new Set([
+          'asset-bg',
+          'asset-sprite',
+          'asset-sprite-flipped',
+        ]),
+      }).filter(
+        (diagnostic) =>
+          diagnostic.kind === 'invalid-logical-key' &&
+          diagnostic.reason === 'asset-mismatch',
+      ),
+    ).toEqual([]);
   });
 
   it('preserves Base CHR, reuses exact zero bytes, and allocates new tiles after occupied slots', () => {

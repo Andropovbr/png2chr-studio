@@ -443,6 +443,8 @@ const en = {
   chrWorkspaceGoToAnimation: 'Go to Animation Editor',
   chrWorkspaceGoToPalettes: 'Go to Palette Workspace',
   chrWorkspaceNoBaseChr: 'No Base CHR loaded (Fresh 8 KiB space)',
+  chrWorkspacePlacementUnavailable:
+    'Authoritative CHR layout unavailable: {reason}',
   chrWorkspaceBaseChrLoaded:
     'Base CHR: {name} ({size} bytes, {slots} slots, {occupied} occupied)',
   chrTileInspectorTitle: 'Tile Inspector',
@@ -555,11 +557,13 @@ const en = {
   animationOccupancyRatio: '{occupied} occupied / {capacity} slots',
   animationReusedDestination: 'Reused from destination',
   animationReusedImported: 'Reused from imported frames',
-  animationNewTiles: 'New tiles',
+  animationNewTiles: 'New tiles from animations',
   animationAppendStart: 'Append starts at',
   animationFinalTiles: 'Final tiles',
-  animationTotalChr: 'Total CHR',
-  animationSpritePatternTableUsage: 'Pattern Table {table}',
+  animationTotalChr: 'CHR used by animations',
+  animationSpritePatternTableUsage: 'PT{table} used by animations',
+  animationStatsScopeNote:
+    'These metrics include animations only. For total project physical occupancy, see CHR ROM.',
   animationRemainingTiles: 'Remaining in sprite pattern table',
   animationFinalChrSize: 'Final CHR size',
   animationExportsTitle: 'Animation exports',
@@ -1574,6 +1578,8 @@ const ptBr = {
   chrWorkspaceGoToAnimation: 'Ir para Editor de Animação',
   chrWorkspaceGoToPalettes: 'Ir para Workspace de Paletas',
   chrWorkspaceNoBaseChr: 'Nenhum CHR-base carregado (Espaço limpo de 8 KiB)',
+  chrWorkspacePlacementUnavailable:
+    'Layout CHR autoritativo indisponível: {reason}',
   chrWorkspaceBaseChrLoaded:
     'CHR-Base: {name} ({size} bytes, {slots} slots, {occupied} ocupados)',
   chrTileInspectorTitle: 'Inspetor de Tile',
@@ -1686,11 +1692,13 @@ const ptBr = {
   animationOccupancyRatio: '{occupied} ocupados / {capacity} slots',
   animationReusedDestination: 'Reutilizados do destino',
   animationReusedImported: 'Reutilizados dos frames importados',
-  animationNewTiles: 'Tiles novos',
+  animationNewTiles: 'Tiles novos das animações',
   animationAppendStart: 'Início da anexação',
   animationFinalTiles: 'Tiles finais',
-  animationTotalChr: 'CHR total',
-  animationSpritePatternTableUsage: 'Pattern Table {table}',
+  animationTotalChr: 'CHR usado por animações',
+  animationSpritePatternTableUsage: 'PT{table} usada por animações',
+  animationStatsScopeNote:
+    'Estas métricas consideram apenas as animações. Para a ocupação física total do projeto, consulte CHR ROM.',
   animationRemainingTiles: 'Restante na Pattern Table de sprites',
   animationFinalChrSize: 'Tamanho final do CHR',
   animationExportsTitle: 'Exportações da animação',

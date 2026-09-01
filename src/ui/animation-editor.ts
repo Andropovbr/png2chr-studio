@@ -2386,6 +2386,9 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
     stat(t('animationFinalChrSize'), `${String(exportedChr.length)} bytes`),
   );
   const id = model.symbolBase;
+  const scopeNote = document.createElement('p');
+  scopeNote.className = 'animation-stats-scope-note';
+  scopeNote.textContent = t('animationStatsScopeNote');
   const c = generateCAnimationExport(model);
   const asm = generateCa65AnimationExport(model);
   const actions = document.createElement('div');
@@ -2458,7 +2461,7 @@ function createExports(options: AnimationEditorOptions): HTMLElement {
   estimate.textContent = t('animationEstimatedRom', {
     bytes: c.estimatedRomBytes,
   });
-  section.append(statsHeading, stats, actions, estimate);
+  section.append(statsHeading, stats, scopeNote, actions, estimate);
   return section;
 }
 
